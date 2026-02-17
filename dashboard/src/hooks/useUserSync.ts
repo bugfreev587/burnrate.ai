@@ -11,6 +11,7 @@ interface UserSyncState {
   isSyncing: boolean
   error: string | null
   userId: string | null   // Clerk user ID
+  tenantId: number | null
   role: UserRole | null
   status: UserStatus | null
   isNewUser: boolean
@@ -33,6 +34,7 @@ export function useUserSync(): UserSyncState {
     isSyncing: false,
     error: null,
     userId: null,
+    tenantId: null,
     role: null,
     status: null,
     isNewUser: false,
@@ -53,6 +55,7 @@ export function useUserSync(): UserSyncState {
         apiKey: null,
       })
       localStorage.removeItem('user_id')
+      localStorage.removeItem('tenant_id')
       localStorage.removeItem('user_role')
       localStorage.removeItem('user_status')
       syncAttempted.current = false
@@ -97,6 +100,7 @@ export function useUserSync(): UserSyncState {
           isSyncing: false,
           error: null,
           userId: data.user_id,
+          tenantId: data.tenant_id ?? null,
           role: data.role as UserRole,
           status: data.status as UserStatus,
           isNewUser: data.is_new_user ?? false,
@@ -104,6 +108,7 @@ export function useUserSync(): UserSyncState {
         })
 
         localStorage.setItem('user_id', String(data.user_id))
+        localStorage.setItem('tenant_id', String(data.tenant_id ?? ''))
         localStorage.setItem('user_role', data.role ?? '')
         localStorage.setItem('user_status', data.status ?? '')
       } catch (err) {
