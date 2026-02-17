@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Node
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env.local
+
+# Go
+api-server/bin/
+api-server/*.exe
+
+# Env files with secrets
+.env
+*.env.local

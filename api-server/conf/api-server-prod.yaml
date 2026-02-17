@@ -1,0 +1,20 @@
+environment: production
+
+server:
+  host: "0.0.0.0"
+  port: "8080"
+  cors_origins:
+    - "https://burnrate.ai"
+  rate_limit_per_minute: 120
+
+postgres:
+  dsn: ""  # set via POSTGRES_DB_URL env var
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+security:
+  api_key_pepper: ""  # set via API_KEY_PEPPER env var
+  api_key_cache_ttl_seconds: 300
