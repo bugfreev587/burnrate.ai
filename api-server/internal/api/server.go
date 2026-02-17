@@ -102,6 +102,7 @@ func (s *Server) setupRoutes() {
 		admin.PATCH("/users/:user_id/role", s.handleUpdateUserRole)
 		admin.PATCH("/users/:user_id/suspend", s.handleSuspendUser)
 		admin.PATCH("/users/:user_id/unsuspend", s.handleUnsuspendUser)
+		admin.DELETE("/users/:user_id", s.handleRemoveUser)
 	}
 }
 
