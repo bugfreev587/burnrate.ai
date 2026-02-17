@@ -20,20 +20,9 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	environment := os.Getenv("ENVIRONMENT")
-	log.Printf("environment: %s", environment)
-
-	confFile := ""
-	if environment == "production" || environment == "prod" {
-		confFile = "/app/conf/api-server-prod.yaml"
-		if _, err := os.Stat(confFile); os.IsNotExist(err) {
-			confFile = "./conf/api-server-prod.yaml"
-		}
-	} else {
-		confFile = "/app/conf/api-server-dev.yaml"
-		if _, err := os.Stat(confFile); os.IsNotExist(err) {
-			confFile = "./conf/api-server-dev.yaml"
-		}
+	confFile := "/app/conf/api-server-prod.yaml"
+	if _, err := os.Stat(confFile); os.IsNotExist(err) {
+		confFile = "./conf/api-server-prod.yaml"
 	}
 	log.Printf("loading config from: %s", confFile)
 

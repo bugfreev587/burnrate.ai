@@ -22,8 +22,6 @@ WORKDIR /app
 COPY --from=builder /bin/api-server /bin/api-server
 COPY conf ./conf
 
-ENV ENVIRONMENT=production
-
 EXPOSE 8080
 
 CMD ["/bin/api-server"]
