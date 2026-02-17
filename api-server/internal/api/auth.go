@@ -1,10 +1,12 @@
 package api
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
@@ -18,6 +20,11 @@ type authSyncReq struct {
 
 // handleAuthSync syncs a Clerk-authenticated user with the local database.
 // POST /v1/auth/sync
+//
+// Flow:
+//  1. User exists by Clerk ID → return existing user + tenant
+//  2. Pending invitation found by email → activate with invited role + tenant
+//  3. Neither → create new tenant and make caller the owner
 func (s *Server) handleAuthSync(c *gin.Context) {
 	var req authSyncReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -27,65 +34,101 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 
 	db := s.postgresDB.GetDB()
 
-	// Check if user already exists (by Clerk ID or email)
+	name := req.FirstName
+	if req.LastName != "" {
+		name += " " + req.LastName
+	}
+	if name == "" || name == " " {
+		name = req.Email
+	}
+
+	// ── 1. Existing user by Clerk ID ────────────────────────────────────────
 	var user models.User
-	err := db.First(&user, "id = ? OR email = ?", req.ClerkUserID, req.Email).Error
-	if err == nil {
-		// If found by email but with a different Clerk ID, update the ID
-		if user.ID != req.ClerkUserID {
-			db.Model(&user).Update("id", req.ClerkUserID)
-			user.ID = req.ClerkUserID
-		}
+	if err := db.Where("id = ?", req.ClerkUserID).First(&user).Error; err == nil {
 		if user.Status == models.StatusSuspended {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 			return
 		}
+		var tenant models.Tenant
+		db.First(&tenant, user.TenantID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     user.ID,
-			"email":       user.Email,
-			"role":        user.Role,
-			"status":      user.Status,
+			"user_id":    user.ID,
+			"tenant_id":  user.TenantID,
+			"email":      user.Email,
+			"name":       user.Name,
+			"role":       user.Role,
+			"status":     user.Status,
 			"is_new_user": false,
 		})
 		return
 	}
 
-	if err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+	// ── 2. Pending invitation by email ──────────────────────────────────────
+	var pending models.User
+	if err := db.Where("email = ? AND status = ?", req.Email, models.StatusPending).First(&pending).Error; err == nil {
+		oldID := pending.ID
+		pending.ID = req.ClerkUserID
+		pending.Name = name
+		pending.Status = models.StatusActive
+
+		if err := db.Delete(&models.User{}, "id = ?", oldID).Error; err != nil {
+			log.Printf("failed to delete pending user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
+			return
+		}
+		if err := db.Create(&pending).Error; err != nil {
+			log.Printf("failed to create activated user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
+			return
+		}
+		log.Printf("activated invited user: email=%s tenant_id=%d role=%s", pending.Email, pending.TenantID, pending.Role)
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":    pending.ID,
+			"tenant_id":  pending.TenantID,
+			"email":      pending.Email,
+			"name":       pending.Name,
+			"role":       pending.Role,
+			"status":     pending.Status,
+			"is_new_user": true,
+		})
 		return
 	}
 
-	// New user — create record
-	name := req.FirstName
-	if req.LastName != "" {
-		name += " " + req.LastName
+	// ── 3. New user — create tenant + owner ─────────────────────────────────
+	tenant := models.Tenant{
+		Name:      fmt.Sprintf("%s's Workspace", name),
+		CreatedAt: time.Now(),
+	}
+	if err := db.Create(&tenant).Error; err != nil {
+		log.Printf("failed to create tenant: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tenant"})
+		return
 	}
 
-	// Check if this is the very first user — make them owner
-	var count int64
-	db.Model(&models.User{}).Count(&count)
-	role := models.RoleViewer
-	if count == 0 {
-		role = models.RoleOwner
+	newUser := models.User{
+		ID:        req.ClerkUserID,
+		TenantID:  tenant.ID,
+		Email:     req.Email,
+		Name:      name,
+		Role:      models.RoleOwner,
+		Status:    models.StatusActive,
+		CreatedAt: time.Now(),
 	}
-
-	user = models.User{
-		ID:     req.ClerkUserID,
-		Email:  req.Email,
-		Name:   name,
-		Role:   role,
-		Status: models.StatusActive,
-	}
-	if err := db.Create(&user).Error; err != nil {
+	if err := db.Create(&newUser).Error; err != nil {
+		log.Printf("failed to create user: %v", err)
+		db.Delete(&tenant)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
 
+	log.Printf("new tenant+owner: email=%s tenant_id=%d user_id=%s", newUser.Email, tenant.ID, newUser.ID)
 	c.JSON(http.StatusCreated, gin.H{
-		"user_id":     user.ID,
-		"email":       user.Email,
-		"role":        user.Role,
-		"status":      user.Status,
+		"user_id":    newUser.ID,
+		"tenant_id":  tenant.ID,
+		"email":      newUser.Email,
+		"name":       newUser.Name,
+		"role":       newUser.Role,
+		"status":     newUser.Status,
 		"is_new_user": true,
 	})
 }

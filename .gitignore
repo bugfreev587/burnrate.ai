@@ -14,3 +14,4 @@ api-server/.env.local
 # Go build artifacts
 api-server/bin/
 api-server/*.exe
+.vercel

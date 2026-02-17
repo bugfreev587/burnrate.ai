@@ -58,9 +58,10 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 
 	// Auto-migrate schema
 	if err := db.AutoMigrate(
+		&models.Tenant{},
 		&models.User{},
-		&models.ProviderKey{},
 		&models.APIKey{},
+		&models.ProviderKey{},
 		&models.UsageLog{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)

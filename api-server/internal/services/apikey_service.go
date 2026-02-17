@@ -27,7 +27,7 @@ type APIKeyService struct {
 
 type apiKeyCacheData struct {
 	KeyID      string     `json:"key_id"`
-	UserID     string     `json:"user_id"`
+	TenantID   uint       `json:"tenant_id"`
 	Label      string     `json:"label"`
 	Revoked    bool       `json:"revoked"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
@@ -40,9 +40,9 @@ func NewAPIKeyService(db *gorm.DB, pepper []byte, cache *redis.Client, ttl time.
 	return &APIKeyService{db: db, pepper: pepper, cache: cache, cacheTTL: ttl}
 }
 
-// CreateKey creates a new API key and returns (keyID, secret, error).
+// CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
-func (s *APIKeyService) CreateKey(ctx context.Context, userID, label string, scopes []string, expiresAt *time.Time) (string, string, error) {
+func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time) (string, string, error) {
 	rawSecret := make([]byte, 32)
 	if _, err := rand.Read(rawSecret); err != nil {
 		return "", "", err
@@ -61,7 +61,7 @@ func (s *APIKeyService) CreateKey(ctx context.Context, userID, label string, sco
 
 	kid := uuid.New().String()
 	ak := models.APIKey{
-		UserID:     userID,
+		TenantID:   tenantID,
 		KeyID:      kid,
 		Label:      label,
 		Salt:       salt,
@@ -104,7 +104,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 					return nil, fmt.Errorf("invalid key: hash mismatch")
 				}
 				return &models.APIKey{
-					UserID:     cd.UserID,
+					TenantID:   cd.TenantID,
 					KeyID:      cd.KeyID,
 					Label:      cd.Label,
 					Salt:       salt,
@@ -138,10 +138,10 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 	return &ak, nil
 }
 
-// RevokeKey marks a key as revoked and removes it from cache.
-func (s *APIKeyService) RevokeKey(ctx context.Context, userID, keyID string) error {
+// RevokeKey marks a tenant's key as revoked and removes it from cache.
+func (s *APIKeyService) RevokeKey(ctx context.Context, tenantID uint, keyID string) error {
 	res := s.db.Model(&models.APIKey{}).
-		Where("key_id = ? AND user_id = ?", keyID, userID).
+		Where("key_id = ? AND tenant_id = ?", keyID, tenantID).
 		Update("revoked", true)
 	if res.Error != nil {
 		return res.Error
@@ -155,10 +155,10 @@ func (s *APIKeyService) RevokeKey(ctx context.Context, userID, keyID string) err
 	return nil
 }
 
-// ListKeys returns all non-revoked API keys for a user.
-func (s *APIKeyService) ListKeys(ctx context.Context, userID string) ([]models.APIKey, error) {
+// ListKeys returns all non-revoked API keys for a tenant.
+func (s *APIKeyService) ListKeys(ctx context.Context, tenantID uint) ([]models.APIKey, error) {
 	var keys []models.APIKey
-	if err := s.db.Where("user_id = ? AND revoked = ?", userID, false).Find(&keys).Error; err != nil {
+	if err := s.db.Where("tenant_id = ? AND revoked = ?", tenantID, false).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 	return keys, nil
@@ -178,7 +178,7 @@ func (s *APIKeyService) cacheKey(ctx context.Context, ak *models.APIKey) {
 	}
 	cd := apiKeyCacheData{
 		KeyID:      ak.KeyID,
-		UserID:     ak.UserID,
+		TenantID:   ak.TenantID,
 		Label:      ak.Label,
 		Revoked:    ak.Revoked,
 		ExpiresAt:  ak.ExpiresAt,

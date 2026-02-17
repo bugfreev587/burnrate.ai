@@ -1,7 +1,10 @@
 package api
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -9,22 +12,119 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
 
-// handleListUsers returns all users.
+type userResponse struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	Role      string    `json:"role"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func toUserResponse(u models.User) userResponse {
+	return userResponse{ID: u.ID, Email: u.Email, Name: u.Name, Role: u.Role, Status: u.Status, CreatedAt: u.CreatedAt}
+}
+
+// handleListUsers returns all users in the caller's tenant.
 // GET /v1/admin/users
 func (s *Server) handleListUsers(c *gin.Context) {
-	var users []models.User
-	if err := s.postgresDB.GetDB().Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"users": users})
+
+	var users []models.User
+	if err := s.postgresDB.GetDB().
+		Where("tenant_id = ?", caller.TenantID).
+		Order("created_at ASC").
+		Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch users"})
+		return
+	}
+
+	out := make([]userResponse, len(users))
+	for i, u := range users {
+		out[i] = toUserResponse(u)
+	}
+	c.JSON(http.StatusOK, gin.H{"users": out, "total": len(out)})
 }
+
+// ── Invite ───────────────────────────────────────────────────────────────────
+
+type inviteUserReq struct {
+	Email string `json:"email" binding:"required,email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"` // viewer | editor; defaults to viewer
+}
+
+// handleInviteUser creates a pending user in the tenant.
+// The invitee activates on first sign-in via auth/sync (email matched).
+// POST /v1/admin/users/invite
+func (s *Server) handleInviteUser(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req inviteUserReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	role := models.RoleViewer
+	if req.Role == models.RoleEditor {
+		role = models.RoleEditor
+	} else if req.Role != "" && req.Role != models.RoleViewer {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid_role",
+			"message": "Can only invite users as 'viewer' or 'editor'",
+		})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+
+	var existing models.User
+	if err := db.Where("email = ?", req.Email).First(&existing).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":   "user_exists",
+			"message": "A user with this email already exists",
+		})
+		return
+	}
+
+	invited := models.User{
+		ID:        fmt.Sprintf("pending_%s_%d", req.Email, time.Now().UnixNano()),
+		TenantID:  caller.TenantID,
+		Email:     req.Email,
+		Name:      req.Name,
+		Role:      role,
+		Status:    models.StatusPending,
+		CreatedAt: time.Now(),
+	}
+	if err := db.Create(&invited).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to invite user"})
+		return
+	}
+
+	log.Printf("user invited: email=%s role=%s by=%s tenant_id=%d", req.Email, role, caller.Email, caller.TenantID)
+	c.JSON(http.StatusCreated, gin.H{
+		"message":        "User invited. They will join your tenant when they sign up.",
+		"signup_url":     "https://burnrate-ai-weld.vercel.app/sign-up",
+		"user":           toUserResponse(invited),
+	})
+}
+
+// ── Role management (admin+) ─────────────────────────────────────────────────
 
 type updateRoleReq struct {
 	Role string `json:"role" binding:"required"`
 }
 
-// handleUpdateUserRole changes a user's role (viewer/editor only; admin/owner via owner routes).
+// handleUpdateUserRole changes a user's role (viewer/editor only for admins).
 // PATCH /v1/admin/users/:user_id/role
 func (s *Server) handleUpdateUserRole(c *gin.Context) {
 	caller, ok := middleware.GetUserFromContext(c)
@@ -39,9 +139,11 @@ func (s *Server) handleUpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	// Admins can only assign viewer or editor
 	if req.Role != models.RoleViewer && req.Role != models.RoleEditor {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admins can only assign viewer or editor roles"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid_role",
+			"message": "Can only set role to 'viewer' or 'editor'. Use owner endpoints for admin promotion.",
+		})
 		return
 	}
 
@@ -51,25 +153,28 @@ func (s *Server) handleUpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	// Cannot demote another admin/owner unless you are owner
 	var target models.User
-	if err := s.postgresDB.GetDB().First(&target, "id = ?", targetID).Error; err != nil {
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
-	if models.RoleLevel(target.Role) >= models.RoleLevel(models.RoleAdmin) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change role of admin or owner"})
+
+	if target.Role == models.RoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change the owner's role"})
+		return
+	}
+	if target.Role == models.RoleAdmin && caller.Role != models.RoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can change admin roles"})
 		return
 	}
 
 	if err := s.postgresDB.GetDB().Model(&models.User{}).
-		Where("id = ?", targetID).
-		Update("role", req.Role).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		Where("id = ?", targetID).Update("role", req.Role).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update role"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"user_id": targetID, "role": req.Role})
+	target.Role = req.Role
+	c.JSON(http.StatusOK, gin.H{"message": "Role updated successfully", "user": toUserResponse(target)})
 }
 
 // handleSuspendUser suspends a user account.
@@ -88,43 +193,55 @@ func (s *Server) handleSuspendUser(c *gin.Context) {
 	}
 
 	var target models.User
-	if err := s.postgresDB.GetDB().First(&target, "id = ?", targetID).Error; err != nil {
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
+
 	if target.Role == models.RoleOwner {
-		c.JSON(http.StatusForbidden, gin.H{"error": "cannot suspend the owner"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot suspend the tenant owner"})
 		return
 	}
-	// Admins cannot suspend other admins
 	if target.Role == models.RoleAdmin && caller.Role != models.RoleOwner {
 		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can suspend admins"})
 		return
 	}
 
 	if err := s.postgresDB.GetDB().Model(&models.User{}).
-		Where("id = ?", targetID).
-		Update("status", models.StatusSuspended).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		Where("id = ?", targetID).Update("status", models.StatusSuspended).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to suspend user"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"suspended": targetID})
+	target.Status = models.StatusSuspended
+	c.JSON(http.StatusOK, gin.H{"message": "User suspended successfully", "user": toUserResponse(target)})
 }
 
-// handleUnsuspendUser reactivates a user account.
+// handleUnsuspendUser reactivates a suspended user account.
 // PATCH /v1/admin/users/:user_id/unsuspend
 func (s *Server) handleUnsuspendUser(c *gin.Context) {
-	targetID := c.Param("user_id")
-	if err := s.postgresDB.GetDB().Model(&models.User{}).
-		Where("id = ?", targetID).
-		Update("status", models.StatusActive).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"unsuspended": targetID})
+
+	targetID := c.Param("user_id")
+	var target models.User
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if err := s.postgresDB.GetDB().Model(&models.User{}).
+		Where("id = ?", targetID).Update("status", models.StatusActive).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unsuspend user"})
+		return
+	}
+	target.Status = models.StatusActive
+	c.JSON(http.StatusOK, gin.H{"message": "User unsuspended successfully", "user": toUserResponse(target)})
 }
 
-// handleRemoveUser deletes a user record.
+// handleRemoveUser deletes a user from the tenant.
 // DELETE /v1/admin/users/:user_id
 func (s *Server) handleRemoveUser(c *gin.Context) {
 	caller, ok := middleware.GetUserFromContext(c)
@@ -140,12 +257,13 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 	}
 
 	var target models.User
-	if err := s.postgresDB.GetDB().First(&target, "id = ?", targetID).Error; err != nil {
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
+
 	if target.Role == models.RoleOwner {
-		c.JSON(http.StatusForbidden, gin.H{"error": "cannot remove the owner"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot remove the tenant owner. Transfer ownership first."})
 		return
 	}
 	if target.Role == models.RoleAdmin && caller.Role != models.RoleOwner {
@@ -154,8 +272,135 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 	}
 
 	if err := s.postgresDB.GetDB().Delete(&models.User{}, "id = ?", targetID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove user"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"removed": targetID})
+	log.Printf("user removed: %s by %s", target.Email, caller.Email)
+	c.JSON(http.StatusOK, gin.H{"message": "User removed successfully"})
+}
+
+// ── Owner-only endpoints ─────────────────────────────────────────────────────
+
+// handlePromoteAdmin promotes a viewer or editor to admin (owner only).
+// POST /v1/owner/users/:user_id/promote-admin
+func (s *Server) handlePromoteAdmin(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	targetID := c.Param("user_id")
+	if targetID == caller.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot promote yourself"})
+		return
+	}
+
+	var target models.User
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if target.Role == models.RoleOwner {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user is already the owner"})
+		return
+	}
+	if target.Role == models.RoleAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user is already an admin"})
+		return
+	}
+
+	if err := s.postgresDB.GetDB().Model(&models.User{}).
+		Where("id = ?", targetID).Update("role", models.RoleAdmin).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to promote user"})
+		return
+	}
+	target.Role = models.RoleAdmin
+	log.Printf("user promoted to admin: %s by %s", target.Email, caller.Email)
+	c.JSON(http.StatusOK, gin.H{"message": "User promoted to admin successfully", "user": toUserResponse(target)})
+}
+
+// handleDemoteAdmin demotes an admin to editor (owner only).
+// DELETE /v1/owner/users/:user_id/demote-admin
+func (s *Server) handleDemoteAdmin(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	targetID := c.Param("user_id")
+	var target models.User
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", targetID, caller.TenantID).First(&target).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if target.Role != models.RoleAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user is not an admin"})
+		return
+	}
+
+	if err := s.postgresDB.GetDB().Model(&models.User{}).
+		Where("id = ?", targetID).Update("role", models.RoleEditor).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to demote admin"})
+		return
+	}
+	target.Role = models.RoleEditor
+	log.Printf("admin demoted to editor: %s by %s", target.Email, caller.Email)
+	c.JSON(http.StatusOK, gin.H{"message": "Admin demoted to editor successfully", "user": toUserResponse(target)})
+}
+
+// handleTransferOwnership transfers ownership to another active tenant member.
+// POST /v1/owner/transfer-ownership
+func (s *Server) handleTransferOwnership(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req struct {
+		NewOwnerID string `json:"new_owner_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.NewOwnerID == caller.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "you are already the owner"})
+		return
+	}
+
+	var newOwner models.User
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", req.NewOwnerID, caller.TenantID).First(&newOwner).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "target user not found in your tenant"})
+		return
+	}
+
+	if newOwner.Status != models.StatusActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot transfer ownership to a suspended user"})
+		return
+	}
+
+	tx := s.postgresDB.GetDB().Begin()
+	if err := tx.Model(&models.User{}).Where("id = ?", caller.ID).Update("role", models.RoleAdmin).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to transfer ownership"})
+		return
+	}
+	if err := tx.Model(&models.User{}).Where("id = ?", newOwner.ID).Update("role", models.RoleOwner).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to transfer ownership"})
+		return
+	}
+	tx.Commit()
+
+	log.Printf("ownership transferred from %s to %s", caller.Email, newOwner.Email)
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Ownership transferred successfully",
+		"new_owner": newOwner.Email,
+	})
 }

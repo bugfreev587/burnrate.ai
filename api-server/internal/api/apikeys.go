@@ -15,7 +15,7 @@ type createAPIKeyReq struct {
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 
-// handleCreateAPIKey creates a new API key for the authenticated user.
+// handleCreateAPIKey creates a new tenant-scoped API key.
 // POST /v1/admin/api_keys
 func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	var req createAPIKeyReq
@@ -30,7 +30,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.ID, req.Label, req.Scopes, req.ExpiresAt)
+	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -43,7 +43,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	})
 }
 
-// handleListAPIKeys lists all active API keys for the authenticated user.
+// handleListAPIKeys lists all active API keys for the caller's tenant.
 // GET /v1/admin/api_keys
 func (s *Server) handleListAPIKeys(c *gin.Context) {
 	user, ok := middleware.GetUserFromContext(c)
@@ -52,13 +52,12 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	keys, err := s.apiKeySvc.ListKeys(c.Request.Context(), user.ID)
+	keys, err := s.apiKeySvc.ListKeys(c.Request.Context(), user.TenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Strip sensitive fields
 	type keyView struct {
 		KeyID     string     `json:"key_id"`
 		Label     string     `json:"label"`
@@ -79,7 +78,7 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"api_keys": out})
 }
 
-// handleRevokeAPIKey revokes an API key by key_id.
+// handleRevokeAPIKey revokes a tenant API key by key_id.
 // DELETE /v1/admin/api_keys/:key_id
 func (s *Server) handleRevokeAPIKey(c *gin.Context) {
 	user, ok := middleware.GetUserFromContext(c)
@@ -89,7 +88,7 @@ func (s *Server) handleRevokeAPIKey(c *gin.Context) {
 	}
 
 	keyID := c.Param("key_id")
-	if err := s.apiKeySvc.RevokeKey(c.Request.Context(), user.ID, keyID); err != nil {
+	if err := s.apiKeySvc.RevokeKey(c.Request.Context(), user.TenantID, keyID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}

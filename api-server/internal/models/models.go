@@ -6,15 +6,23 @@ import (
 	"github.com/lib/pq"
 )
 
+// Tenant is the top-level multi-tenant boundary.
+// Every user, API key, provider key, and usage log belongs to exactly one tenant.
+type Tenant struct {
+	ID        uint      `gorm:"primaryKey"`
+	Name      string
+	CreatedAt time.Time
+}
+
 // User represents a dashboard user synced from Clerk on first sign-in.
 type User struct {
-	ID              string    `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
-	Email           string    `gorm:"uniqueIndex"`
-	Name            string
-	Role            string    `gorm:"default:viewer"` // owner | admin | editor | viewer
-	Status          string    `gorm:"default:active"` // active | suspended | pending
-	BurnrateAPIKey  string    `gorm:"column:burnrate_api_key"` // key_id of the user's primary gateway key
-	CreatedAt       time.Time
+	ID        string    `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
+	TenantID  uint      `gorm:"index"`
+	Email     string    `gorm:"uniqueIndex"`
+	Name      string
+	Role      string    `gorm:"default:viewer"` // owner | admin | editor | viewer
+	Status    string    `gorm:"default:active"` // active | suspended | pending
+	CreatedAt time.Time
 }
 
 // Role constants
@@ -56,11 +64,10 @@ func (u *User) IsActive() bool {
 }
 
 // APIKey is the machine-to-machine key used by the claude-code agent
-// to authenticate with the burnrate gateway.
-// Pattern mirrors kubernetes-cost-monitor api_keys table.
+// to authenticate with the burnrate gateway. Scoped to a tenant.
 type APIKey struct {
 	ID         uint           `gorm:"primaryKey"`
-	UserID     string         `gorm:"index;type:text"`
+	TenantID   uint           `gorm:"index"`
 	KeyID      string         `gorm:"uniqueIndex;size:36"`
 	Label      string
 	Salt       []byte
@@ -75,7 +82,7 @@ type APIKey struct {
 // application layer (AES-256-GCM) before being written to the database.
 type ProviderKey struct {
 	ID              uint      `gorm:"primaryKey"`
-	UserID          string    `gorm:"index;type:text"`
+	TenantID        uint      `gorm:"index"`
 	Provider        string    // "anthropic" | "openai"
 	EncryptedAPIKey []byte    `gorm:"column:encrypted_api_key"`
 	Label           string
@@ -87,7 +94,7 @@ type ProviderKey struct {
 // request_id is an idempotency key; duplicate submissions are ignored.
 type UsageLog struct {
 	ID               uint      `gorm:"primaryKey"`
-	UserID           string    `gorm:"index;type:text"`
+	TenantID         uint      `gorm:"index"`
 	Provider         string
 	Model            string
 	PromptTokens     int64     `gorm:"column:prompt_tokens"`

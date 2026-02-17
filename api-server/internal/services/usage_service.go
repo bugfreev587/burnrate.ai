@@ -20,9 +20,9 @@ func (s *UsageLogService) Create(ctx context.Context, log *models.UsageLog) erro
 	return s.db.Create(log).Error
 }
 
-func (s *UsageLogService) ListByUser(ctx context.Context, userID string, limit int) ([]models.UsageLog, error) {
+func (s *UsageLogService) ListByTenant(ctx context.Context, tenantID uint, limit int) ([]models.UsageLog, error) {
 	var logs []models.UsageLog
-	q := s.db.Where("user_id = ?", userID).Order("requested_at DESC")
+	q := s.db.Where("tenant_id = ?", tenantID).Order("created_at DESC")
 	if limit > 0 {
 		q = q.Limit(limit)
 	}

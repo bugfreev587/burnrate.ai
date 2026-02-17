@@ -38,8 +38,8 @@ func (s *Server) handleReportUsage(c *gin.Context) {
 		return
 	}
 
-	log := &models.UsageLog{
-		UserID:           apiKey.UserID,
+	entry := &models.UsageLog{
+		TenantID:         apiKey.TenantID,
 		Provider:         req.Provider,
 		Model:            req.Model,
 		PromptTokens:     req.PromptTokens,
@@ -47,7 +47,7 @@ func (s *Server) handleReportUsage(c *gin.Context) {
 		Cost:             req.Cost,
 		RequestID:        req.RequestID,
 	}
-	if err := s.usageSvc.Create(c.Request.Context(), log); err != nil {
+	if err := s.usageSvc.Create(c.Request.Context(), entry); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -55,16 +55,16 @@ func (s *Server) handleReportUsage(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"recorded": true})
 }
 
-// handleListUsage returns usage logs for the authenticated dashboard user.
+// handleListUsage returns usage logs for the caller's tenant.
 // GET /v1/usage
 func (s *Server) handleListUsage(c *gin.Context) {
-	user, ok := middleware.GetUserFromContext(c)
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	logs, err := s.usageSvc.ListByUser(c.Request.Context(), user.ID, 100)
+	logs, err := s.usageSvc.ListByTenant(c.Request.Context(), tenantID, 500)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -73,9 +73,8 @@ func (s *Server) handleListUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"usage_logs": logs})
 }
 
-// handleUsageSummary returns aggregated usage for the authenticated user.
+// handleUsageSummary returns aggregated usage for the caller's tenant.
 // GET /v1/usage/summary
 func (s *Server) handleUsageSummary(c *gin.Context) {
-	// TODO: implement aggregations
 	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
 }

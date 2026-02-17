@@ -15,12 +15,12 @@ import (
 )
 
 type Server struct {
-	cfg       *config.Config
+	cfg        *config.Config
 	postgresDB *db.PostgresDB
-	apiKeySvc *services.APIKeyService
-	usageSvc  *services.UsageLogService
-	rbac      *middleware.RBACMiddleware
-	router    *gin.Engine
+	apiKeySvc  *services.APIKeyService
+	usageSvc   *services.UsageLogService
+	rbac       *middleware.RBACMiddleware
+	router     *gin.Engine
 	httpServer *http.Server
 }
 
@@ -63,19 +63,16 @@ func (s *Server) setupRoutes() {
 
 	// ─── Public ────────────────────────────────────────────────────────────────
 	s.router.GET("/v1/health", s.handleHealth)
-
-	// Auth sync (Clerk → backend)
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
 
-	// ─── API-key authenticated (machine-to-machine) ─────────────────────────
-	// e.g. claude-code agent reports usage
+	// ─── API-key authenticated (agent → reports usage) ───────────────────────
 	agent := s.router.Group("/v1/agent")
 	agent.Use(apiKeyAuth)
 	{
 		agent.POST("/usage", s.handleReportUsage)
 	}
 
-	// ─── Viewer+ (dashboard users) ──────────────────────────────────────────
+	// ─── Viewer+ (any signed-in tenant member) ───────────────────────────────
 	viewer := s.router.Group("/v1")
 	viewer.Use(s.rbac.RequireUser(), s.rbac.RequireViewer())
 	{
@@ -83,26 +80,36 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/summary", s.handleUsageSummary)
 	}
 
-	// ─── Admin+ ─────────────────────────────────────────────────────────────
+	// ─── Admin+ ──────────────────────────────────────────────────────────────
 	admin := s.router.Group("/v1/admin")
 	admin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
 	{
+		// User management
+		admin.GET("/users", s.handleListUsers)
+		admin.POST("/users/invite", s.handleInviteUser)
+		admin.PATCH("/users/:user_id/role", s.handleUpdateUserRole)
+		admin.PATCH("/users/:user_id/suspend", s.handleSuspendUser)
+		admin.PATCH("/users/:user_id/unsuspend", s.handleUnsuspendUser)
+		admin.DELETE("/users/:user_id", s.handleRemoveUser)
+
 		// API key management
 		admin.POST("/api_keys", s.handleCreateAPIKey)
 		admin.GET("/api_keys", s.handleListAPIKeys)
 		admin.DELETE("/api_keys/:key_id", s.handleRevokeAPIKey)
 
-		// Provider keys management
+		// Provider key management
 		admin.POST("/provider_keys", s.handleCreateProviderKey)
 		admin.GET("/provider_keys", s.handleListProviderKeys)
 		admin.DELETE("/provider_keys/:key_id", s.handleRevokeProviderKey)
+	}
 
-		// Users
-		admin.GET("/users", s.handleListUsers)
-		admin.PATCH("/users/:user_id/role", s.handleUpdateUserRole)
-		admin.PATCH("/users/:user_id/suspend", s.handleSuspendUser)
-		admin.PATCH("/users/:user_id/unsuspend", s.handleUnsuspendUser)
-		admin.DELETE("/users/:user_id", s.handleRemoveUser)
+	// ─── Owner only ──────────────────────────────────────────────────────────
+	owner := s.router.Group("/v1/owner")
+	owner.Use(s.rbac.RequireUser(), s.rbac.RequireOwner())
+	{
+		owner.POST("/users/:user_id/promote-admin", s.handlePromoteAdmin)
+		owner.DELETE("/users/:user_id/demote-admin", s.handleDemoteAdmin)
+		owner.POST("/transfer-ownership", s.handleTransferOwnership)
 	}
 }
 
