@@ -6,14 +6,15 @@ import (
 	"github.com/lib/pq"
 )
 
-// User represents a dashboard user (synced from Clerk).
+// User represents a dashboard user synced from Clerk on first sign-in.
 type User struct {
-	ID        string    `gorm:"primaryKey;type:text"` // Clerk user ID
-	Email     string    `gorm:"uniqueIndex"`
-	Name      string
-	Role      string    `gorm:"default:viewer"` // owner | admin | editor | viewer
-	Status    string    `gorm:"default:active"` // active | suspended | pending
-	CreatedAt time.Time
+	ID              string    `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
+	Email           string    `gorm:"uniqueIndex"`
+	Name            string
+	Role            string    `gorm:"default:viewer"` // owner | admin | editor | viewer
+	Status          string    `gorm:"default:active"` // active | suspended | pending
+	BurnrateAPIKey  string    `gorm:"column:burnrate_api_key"` // key_id of the user's primary gateway key
+	CreatedAt       time.Time
 }
 
 // Role constants
@@ -54,44 +55,44 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
-// ProviderKey stores an upstream LLM provider API key for a user.
-type ProviderKey struct {
-	ID         uint      `gorm:"primaryKey"`
-	UserID     string    `gorm:"index;type:text"` // references users.id
-	Provider   string    // e.g. "anthropic", "openai"
-	KeyID      string    `gorm:"uniqueIndex;size:36"` // UUID
-	Salt       []byte
-	SecretHash []byte
-	Label      string
-	Revoked    bool
-	ExpiresAt  *time.Time
-	CreatedAt  time.Time
-}
-
-// UsageLog records token usage events reported by the claude-code agent.
-type UsageLog struct {
-	ID           uint      `gorm:"primaryKey"`
-	UserID       string    `gorm:"index;type:text"`
-	Provider     string    // "anthropic"
-	Model        string    // e.g. "claude-sonnet-4-6"
-	InputTokens  int64
-	OutputTokens int64
-	CostUSD      float64
-	RequestedAt  time.Time `gorm:"index"`
-	CreatedAt    time.Time
-}
-
 // APIKey is the machine-to-machine key used by the claude-code agent
-// (or CI pipelines) to authenticate with the burnrate gateway.
+// to authenticate with the burnrate gateway.
+// Pattern mirrors kubernetes-cost-monitor api_keys table.
 type APIKey struct {
 	ID         uint           `gorm:"primaryKey"`
 	UserID     string         `gorm:"index;type:text"`
 	KeyID      string         `gorm:"uniqueIndex;size:36"`
+	Label      string
 	Salt       []byte
 	SecretHash []byte
-	Label      string
 	Scopes     pq.StringArray `gorm:"type:text[]"`
 	Revoked    bool
 	ExpiresAt  *time.Time
 	CreatedAt  time.Time
+}
+
+// ProviderKey stores an upstream LLM provider API key encrypted at the
+// application layer (AES-256-GCM) before being written to the database.
+type ProviderKey struct {
+	ID              uint      `gorm:"primaryKey"`
+	UserID          string    `gorm:"index;type:text"`
+	Provider        string    // "anthropic" | "openai"
+	EncryptedAPIKey []byte    `gorm:"column:encrypted_api_key"`
+	Label           string
+	Revoked         bool
+	CreatedAt       time.Time
+}
+
+// UsageLog records one LLM request reported by the claude-code agent.
+// request_id is an idempotency key; duplicate submissions are ignored.
+type UsageLog struct {
+	ID               uint      `gorm:"primaryKey"`
+	UserID           string    `gorm:"index;type:text"`
+	Provider         string
+	Model            string
+	PromptTokens     int64     `gorm:"column:prompt_tokens"`
+	CompletionTokens int64     `gorm:"column:completion_tokens"`
+	Cost             float64   `gorm:"type:numeric(14,8)"`
+	RequestID        string    `gorm:"column:request_id;uniqueIndex"`
+	CreatedAt        time.Time `gorm:"index"`
 }

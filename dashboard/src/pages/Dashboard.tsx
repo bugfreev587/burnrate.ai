@@ -7,8 +7,8 @@ export default function Dashboard() {
   const { user } = useUser()
   const { logs, loading, error, refresh } = useUsageData()
 
-  const totalTokens = logs.reduce((sum, l) => sum + l.input_tokens + l.output_tokens, 0)
-  const totalCost = logs.reduce((sum, l) => sum + l.cost_usd, 0)
+  const totalTokens = logs.reduce((sum, l) => sum + l.prompt_tokens + l.completion_tokens, 0)
+  const totalCost = logs.reduce((sum, l) => sum + l.cost, 0)
 
   return (
     <div className="page-container">
@@ -81,12 +81,12 @@ export default function Dashboard() {
                 <tbody>
                   {logs.map(log => (
                     <tr key={log.id}>
-                      <td>{new Date(log.requested_at).toLocaleString()}</td>
+                      <td>{new Date(log.created_at).toLocaleString()}</td>
                       <td><code>{log.model}</code></td>
                       <td>{log.provider}</td>
-                      <td>{log.input_tokens.toLocaleString()}</td>
-                      <td>{log.output_tokens.toLocaleString()}</td>
-                      <td>${log.cost_usd.toFixed(4)}</td>
+                      <td>{log.prompt_tokens.toLocaleString()}</td>
+                      <td>{log.completion_tokens.toLocaleString()}</td>
+                      <td>${log.cost.toFixed(4)}</td>
                     </tr>
                   ))}
                 </tbody>

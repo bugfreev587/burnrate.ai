@@ -10,11 +10,12 @@ import (
 )
 
 type reportUsageReq struct {
-	Provider     string  `json:"provider"      binding:"required"`
-	Model        string  `json:"model"         binding:"required"`
-	InputTokens  int64   `json:"input_tokens"`
-	OutputTokens int64   `json:"output_tokens"`
-	CostUSD      float64 `json:"cost_usd"`
+	Provider         string  `json:"provider"           binding:"required"`
+	Model            string  `json:"model"              binding:"required"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	Cost             float64 `json:"cost"`
+	RequestID        string  `json:"request_id"`
 }
 
 // handleReportUsage is called by the claude-code agent (API-key auth).
@@ -38,12 +39,13 @@ func (s *Server) handleReportUsage(c *gin.Context) {
 	}
 
 	log := &models.UsageLog{
-		UserID:       apiKey.UserID,
-		Provider:     req.Provider,
-		Model:        req.Model,
-		InputTokens:  req.InputTokens,
-		OutputTokens: req.OutputTokens,
-		CostUSD:      req.CostUSD,
+		UserID:           apiKey.UserID,
+		Provider:         req.Provider,
+		Model:            req.Model,
+		PromptTokens:     req.PromptTokens,
+		CompletionTokens: req.CompletionTokens,
+		Cost:             req.Cost,
+		RequestID:        req.RequestID,
 	}
 	if err := s.usageSvc.Create(c.Request.Context(), log); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

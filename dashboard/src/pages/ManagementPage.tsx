@@ -491,7 +491,7 @@ export default function ManagementPage() {
                     <pre>{`curl -X POST ${API_SERVER_URL}/v1/agent/usage \\
   -H "Authorization: ApiKey ${newKeyID}:<secret>" \\
   -H "Content-Type: application/json" \\
-  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","input_tokens":100,"output_tokens":50,"cost_usd":0.001}'`}</pre>
+  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","prompt_tokens":100,"completion_tokens":50,"cost":0.001,"request_id":"req_abc123"}'`}</pre>
                     <button className="btn btn-small btn-secondary"
                       onClick={() => copy(
                         `curl -X POST ${API_SERVER_URL}/v1/agent/usage \\\n  -H "Authorization: ApiKey ${newKeyID}:<secret>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","input_tokens":100,"output_tokens":50,"cost_usd":0.001}'`,

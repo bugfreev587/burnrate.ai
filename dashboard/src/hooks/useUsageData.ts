@@ -7,10 +7,10 @@ export interface UsageLog {
   user_id: string
   provider: string
   model: string
-  input_tokens: number
-  output_tokens: number
-  cost_usd: number
-  requested_at: string
+  prompt_tokens: number
+  completion_tokens: number
+  cost: number
+  request_id: string | null
   created_at: string
 }
 
