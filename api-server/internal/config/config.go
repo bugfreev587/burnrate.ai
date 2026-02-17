@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -56,5 +57,19 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("POSTGRES_DB_URL"); v != "" {
 		cfg.Postgres.DSN = v
+	}
+	// CORS_ORIGINS accepts a comma-separated list of allowed origins,
+	// e.g. "https://app.vercel.app,https://burnrate.ai"
+	// Setting it to "*" allows all origins (useful during development).
+	if v := os.Getenv("CORS_ORIGINS"); v != "" {
+		if v == "*" {
+			cfg.Server.CORSOrigins = []string{"*"}
+		} else {
+			origins := strings.Split(v, ",")
+			for i, o := range origins {
+				origins[i] = strings.TrimSpace(o)
+			}
+			cfg.Server.CORSOrigins = origins
+		}
 	}
 }
