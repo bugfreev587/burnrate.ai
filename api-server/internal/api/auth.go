@@ -27,20 +27,24 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 
 	db := s.postgresDB.GetDB()
 
-	// Check if user already exists
+	// Check if user already exists (by Clerk ID or email)
 	var user models.User
-	err := db.First(&user, "id = ?", req.ClerkUserID).Error
+	err := db.First(&user, "id = ? OR email = ?", req.ClerkUserID, req.Email).Error
 	if err == nil {
-		// Existing user
+		// If found by email but with a different Clerk ID, update the ID
+		if user.ID != req.ClerkUserID {
+			db.Model(&user).Update("id", req.ClerkUserID)
+			user.ID = req.ClerkUserID
+		}
 		if user.Status == models.StatusSuspended {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":    user.ID,
-			"email":      user.Email,
-			"role":       user.Role,
-			"status":     user.Status,
+			"user_id":     user.ID,
+			"email":       user.Email,
+			"role":        user.Role,
+			"status":      user.Status,
 			"is_new_user": false,
 		})
 		return
