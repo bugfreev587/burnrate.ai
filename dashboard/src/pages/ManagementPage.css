@@ -368,6 +368,68 @@
   font-family: 'Monaco', 'Menlo', monospace;
 }
 
+/* ── Role selector (invite modal) ────────────────────────────────────────── */
+
+.role-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.role-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.role-option:hover { border-color: var(--color-primary); }
+
+.role-option.selected {
+  border-color: var(--color-primary);
+  background: rgba(99,102,241,.08);
+}
+
+.role-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+}
+
+.role-option > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.role-option strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.role-desc {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Form label helpers ───────────────────────────────────────────────────── */
+
+.required {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.optional {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-size: 0.8em;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {

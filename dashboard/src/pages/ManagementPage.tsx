@@ -8,12 +8,12 @@ import './ManagementPage.css'
 const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 interface User {
-  ID: string
-  Email: string
-  Name: string
-  Role: UserRole
-  Status: string
-  CreatedAt: string
+  id: string
+  email: string
+  name: string
+  role: UserRole
+  status: string
+  created_at: string
 }
 
 interface APIKey {
@@ -34,13 +34,20 @@ export default function ManagementPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // Modal states
+  // Create API key modal
   const [showCreateKeyModal, setShowCreateKeyModal] = useState(false)
   const [showNewKeyModal, setShowNewKeyModal] = useState(false)
   const [newKeyLabel, setNewKeyLabel] = useState('')
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null)
   const [newKeyID, setNewKeyID] = useState('')
   const [copiedID, setCopiedID] = useState<string | null>(null)
+
+  // Invite modal
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteName, setInviteName] = useState('')
+  const [inviteRole, setInviteRole] = useState<'viewer' | 'editor'>('viewer')
+  const [inviting, setInviting] = useState(false)
 
   const isAdmin = hasPermission(role, 'admin')
   const isOwner = role === 'owner'
@@ -97,7 +104,40 @@ export default function ManagementPage() {
     load()
   }, [isSynced, isAdmin, navigate, fetchUsers, fetchAPIKeys])
 
-  // ── User actions ─────────────────────────────────────────────────────────
+  // ── Invite user ──────────────────────────────────────────────────────────
+
+  const handleInviteUser = async () => {
+    if (!inviteEmail.trim()) {
+      showError('Email is required')
+      return
+    }
+    setInviting(true)
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/invite`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          name: inviteName.trim(),
+          role: inviteRole,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message ?? data.error ?? 'Failed to invite user')
+      showSuccess(`Invite sent to ${inviteEmail}. They'll join when they sign up.`)
+      setShowInviteModal(false)
+      setInviteEmail('')
+      setInviteName('')
+      setInviteRole('viewer')
+      fetchUsers()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to invite user')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  // ── User role actions ────────────────────────────────────────────────────
 
   const handleUpdateRole = async (targetID: string, newRole: 'viewer' | 'editor') => {
     try {
@@ -108,12 +148,48 @@ export default function ManagementPage() {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? 'Failed to update role')
+        throw new Error(d.message ?? d.error ?? 'Failed to update role')
       }
       showSuccess(`Role updated to ${newRole}`)
       fetchUsers()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to update role')
+    }
+  }
+
+  const handlePromoteAdmin = async (targetID: string) => {
+    if (!confirm('Promote this user to admin?')) return
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/owner/users/${targetID}/promote-admin`, {
+        method: 'POST',
+        headers: headers(),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.message ?? d.error ?? 'Failed to promote user')
+      }
+      showSuccess('User promoted to admin')
+      fetchUsers()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to promote user')
+    }
+  }
+
+  const handleDemoteAdmin = async (targetID: string) => {
+    if (!confirm('Demote this admin to editor?')) return
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/owner/users/${targetID}/demote-admin`, {
+        method: 'DELETE',
+        headers: headers(),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.message ?? d.error ?? 'Failed to demote admin')
+      }
+      showSuccess('Admin demoted to editor')
+      fetchUsers()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to demote admin')
     }
   }
 
@@ -126,7 +202,7 @@ export default function ManagementPage() {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? 'Failed to suspend')
+        throw new Error(d.message ?? d.error ?? 'Failed to suspend')
       }
       showSuccess('User suspended')
       fetchUsers()
@@ -143,7 +219,7 @@ export default function ManagementPage() {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? 'Failed to unsuspend')
+        throw new Error(d.message ?? d.error ?? 'Failed to unsuspend')
       }
       showSuccess('User unsuspended')
       fetchUsers()
@@ -161,7 +237,7 @@ export default function ManagementPage() {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? 'Failed to remove user')
+        throw new Error(d.message ?? d.error ?? 'Failed to remove user')
       }
       showSuccess('User removed')
       fetchUsers()
@@ -261,7 +337,16 @@ export default function ManagementPage() {
           {/* ── Team Members ─────────────────────────────────────────────── */}
           <section className="mgmt-section">
             <div className="section-hdr">
-              <h2>Team Members</h2>
+              <div>
+                <h2>Team Members</h2>
+                <p className="section-desc">Manage who has access to your workspace.</p>
+              </div>
+              <button className="btn btn-primary" onClick={() => {
+                setInviteEmail(''); setInviteName(''); setInviteRole('viewer')
+                setShowInviteModal(true)
+              }}>
+                Invite Member
+              </button>
             </div>
             <div className="table-scroll">
               <table className="mgmt-table">
@@ -278,48 +363,60 @@ export default function ManagementPage() {
                   {users.length === 0 ? (
                     <tr><td colSpan={5} className="empty-cell">No users found.</td></tr>
                   ) : users.map(u => (
-                    <tr key={u.ID} className={u.ID === userId ? 'row-self' : ''}>
-                      <td>{u.Name || u.Email?.split('@')[0] || '—'}</td>
-                      <td className="text-muted">{u.Email}</td>
-                      <td><span className={`role-badge role-${u.Role}`}>{u.Role}</span></td>
-                      <td><span className={`status-badge status-${u.Status}`}>{u.Status}</span></td>
+                    <tr key={u.id} className={u.id === userId ? 'row-self' : ''}>
+                      <td>{u.name || u.email?.split('@')[0] || '—'}</td>
+                      <td className="text-muted">{u.email}</td>
+                      <td><span className={`role-badge role-${u.role}`}>{u.role}</span></td>
+                      <td><span className={`status-badge status-${u.status}`}>{u.status}</span></td>
                       <td className="actions-cell">
-                        {u.ID === userId ? (
+                        {u.id === userId ? (
                           <span className="you-badge">You</span>
                         ) : (
                           <>
-                            {/* Promote viewer → editor */}
-                            {u.Role === 'viewer' && (
+                            {/* viewer ↔ editor (admin+) */}
+                            {u.role === 'viewer' && u.status !== 'pending' && (
                               <button className="btn btn-small btn-secondary"
-                                onClick={() => handleUpdateRole(u.ID, 'editor')}>
-                                Promote
+                                onClick={() => handleUpdateRole(u.id, 'editor')}>
+                                → Editor
                               </button>
                             )}
-                            {/* Demote editor → viewer */}
-                            {u.Role === 'editor' && (
+                            {u.role === 'editor' && (
                               <button className="btn btn-small btn-secondary"
-                                onClick={() => handleUpdateRole(u.ID, 'viewer')}>
-                                Demote
+                                onClick={() => handleUpdateRole(u.id, 'viewer')}>
+                                → Viewer
+                              </button>
+                            )}
+                            {/* promote/demote admin (owner only) */}
+                            {isOwner && (u.role === 'viewer' || u.role === 'editor') && (
+                              <button className="btn btn-small btn-secondary"
+                                onClick={() => handlePromoteAdmin(u.id)}>
+                                → Admin
+                              </button>
+                            )}
+                            {isOwner && u.role === 'admin' && (
+                              <button className="btn btn-small btn-secondary"
+                                onClick={() => handleDemoteAdmin(u.id)}>
+                                ↓ Editor
                               </button>
                             )}
                             {/* Suspend / Unsuspend */}
-                            {u.Role !== 'owner' && (u.Role !== 'admin' || isOwner) && (
-                              u.Status === 'active' ? (
+                            {u.role !== 'owner' && u.status !== 'pending' && (u.role !== 'admin' || isOwner) && (
+                              u.status === 'active' ? (
                                 <button className="btn btn-small btn-warning"
-                                  onClick={() => handleSuspend(u.ID)}>
+                                  onClick={() => handleSuspend(u.id)}>
                                   Suspend
                                 </button>
-                              ) : u.Status === 'suspended' ? (
+                              ) : u.status === 'suspended' ? (
                                 <button className="btn btn-small btn-secondary"
-                                  onClick={() => handleUnsuspend(u.ID)}>
+                                  onClick={() => handleUnsuspend(u.id)}>
                                   Unsuspend
                                 </button>
                               ) : null
                             )}
                             {/* Remove */}
-                            {u.Role !== 'owner' && (u.Role !== 'admin' || isOwner) && (
+                            {u.role !== 'owner' && (u.role !== 'admin' || isOwner) && (
                               <button className="btn btn-small btn-danger"
-                                onClick={() => handleRemoveUser(u.ID)}>
+                                onClick={() => handleRemoveUser(u.id)}>
                                 Remove
                               </button>
                             )}
@@ -413,6 +510,74 @@ export default function ManagementPage() {
         </div>
       </div>
 
+      {/* ── Invite Member Modal ───────────────────────────────────────────── */}
+      {showInviteModal && (
+        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Invite Team Member</h2>
+            </div>
+            <div className="modal-body">
+              <p className="modal-hint">
+                Enter the invitee's email address. They'll join your workspace automatically
+                when they sign up with that email.
+              </p>
+              <div className="form-group">
+                <label>Email <span className="required">*</span></label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="colleague@company.com"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label>Name <span className="optional">(optional)</span></label>
+                <input
+                  type="text"
+                  value={inviteName}
+                  onChange={e => setInviteName(e.target.value)}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="form-group">
+                <label>Role</label>
+                <div className="role-select">
+                  {(['viewer', 'editor'] as const).map(r => (
+                    <label key={r} className={`role-option ${inviteRole === r ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="invite-role"
+                        value={r}
+                        checked={inviteRole === r}
+                        onChange={() => setInviteRole(r)}
+                      />
+                      <div>
+                        <strong>{r.charAt(0).toUpperCase() + r.slice(1)}</strong>
+                        <span className="role-desc">
+                          {r === 'viewer' ? 'Can view usage data' : 'Can view and manage API keys'}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setShowInviteModal(false)}
+                disabled={inviting}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleInviteUser}
+                disabled={!inviteEmail.trim() || inviting}>
+                {inviting ? 'Inviting…' : 'Send Invite'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Create API Key Modal ─────────────────────────────────────────── */}
       {showCreateKeyModal && (
         <div className="modal-overlay" onClick={() => setShowCreateKeyModal(false)}>
@@ -462,7 +627,6 @@ export default function ManagementPage() {
                 <span className="warn-icon">!</span>
                 <p><strong>Save this now.</strong> The full secret is shown only once and cannot be retrieved again.</p>
               </div>
-
               <div className="key-reveal">
                 <code>{newKeySecret}</code>
                 <button className="btn btn-small btn-secondary"
@@ -470,10 +634,8 @@ export default function ManagementPage() {
                   {copiedID === 'secret' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-
               <div className="install-box">
                 <h3>Quick Setup</h3>
-
                 <div className="install-step">
                   <h4>Set environment variable</h4>
                   <div className="cmd-box">
@@ -484,7 +646,6 @@ export default function ManagementPage() {
                     </button>
                   </div>
                 </div>
-
                 <div className="install-step">
                   <h4>Report usage (example curl)</h4>
                   <div className="cmd-box">
@@ -494,7 +655,7 @@ export default function ManagementPage() {
   -d '{"provider":"anthropic","model":"claude-sonnet-4-6","prompt_tokens":100,"completion_tokens":50,"cost":0.001,"request_id":"req_abc123"}'`}</pre>
                     <button className="btn btn-small btn-secondary"
                       onClick={() => copy(
-                        `curl -X POST ${API_SERVER_URL}/v1/agent/usage \\\n  -H "Authorization: ApiKey ${newKeyID}:<secret>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","input_tokens":100,"output_tokens":50,"cost_usd":0.001}'`,
+                        `curl -X POST ${API_SERVER_URL}/v1/agent/usage \\\n  -H "Authorization: ApiKey ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","prompt_tokens":100,"completion_tokens":50,"cost":0.001,"request_id":"req_abc123"}'`,
                         'curl'
                       )}>
                       {copiedID === 'curl' ? 'Copied!' : 'Copy'}
