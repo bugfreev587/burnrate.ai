@@ -49,6 +49,7 @@ export function useUserSync(): UserSyncState {
         isSyncing: false,
         error: null,
         userId: null,
+        tenantId: null,
         role: null,
         status: null,
         isNewUser: false,
