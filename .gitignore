@@ -4,12 +4,13 @@
 # Node
 dashboard/node_modules/
 dashboard/dist/
-dashboard/.env.local
 
-# Go
+# Local env overrides (contain secrets / machine-specific values)
+dashboard/.env.local
+dashboard/.env.*.local
+api-server/.env
+api-server/.env.local
+
+# Go build artifacts
 api-server/bin/
 api-server/*.exe
-
-# Env files with secrets
-.env
-*.env.local
