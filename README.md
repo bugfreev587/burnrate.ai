@@ -158,8 +158,8 @@ api-server/
     ├── services/
     │   ├── apikey_service.go         # HMAC-SHA256 + Redis cache
     │   ├── usage_service.go          # Usage log CRUD
-    │   └── providerkey_service.go    # AES-256-GCM envelope encryption + in-process cache (1 min TTL)
-    │                                 # + Redis TPS cache (60 s) + atomic Rotate + policy_version
+    │   └── providerkey_service.go    # AES-256-GCM envelope encryption + in-process cache (30s idle / 5m hard)
+    │                                 # + Redis TPS cache (30s idle / 5m hard) + atomic Rotate + policy_version
     ├── events/
     │   ├── queue.go                  # Redis Streams producer (XADD)
     │   └── worker.go                 # Redis Streams consumer (XREADGROUP + XACK)
@@ -206,8 +206,8 @@ encrypted_key + key_nonce
 
 - A fresh 32-byte DEK and 12-byte nonce are generated per key using `crypto/rand`. Nonces are never reused.
 - The master key is a 32-byte value decoded from `PROVIDER_KEY_ENCRYPTION_KEY` (64-char hex). The server refuses to start if this variable is unset.
-- Decrypted plaintexts are cached **in-process** with a **1-minute TTL** (`sync.RWMutex` map keyed by `ProviderKey.ID`). Redis never stores plaintext keys.
-- `TenantProviderSettings` (the active key pointer) is cached in Redis under `tps:{tenantID}:{provider}` with a **60-second TTL**, eliminating a Postgres round trip on every proxy request.
+- Decrypted plaintexts are cached **in-process** (`sync.RWMutex` map keyed by `ProviderKey.ID`) with a **sliding idle TTL of 30 seconds** (reset on every cache hit) and an **absolute hard ceiling of 5 minutes** (set once at write time, never extended). A TOCTOU guard re-checks the entry under a write lock before extending the idle expiry. Redis never stores plaintext keys.
+- `TenantProviderSettings` (the active key pointer) is cached in Redis under `tps:{tenantID}:{provider}` with a **sliding idle TTL of 30 seconds** (refreshed via `EXPIRE` on each hit) and a **hard ceiling of 5 minutes** embedded as a `hard_expiry` JSON field in the value. On a cache hit the hard expiry is checked first; if exceeded the entry is DEL'd and the lookup falls through to Postgres.
 - Both caches are invalidated immediately on `Activate` and `Rotate` — the in-process entry is evicted by key ID, the Redis TPS entry is DEL'd — so every pod picks up the new key on its very next request.
 - `policy_version` on `TenantProviderSettings` is a monotonically-increasing counter bumped atomically (SQL `+ 1`) on every `Activate` or `Rotate`. It is stored in the Redis TPS cache entry and serves as a staleness signal: if the TTL-based self-heal fires, the version mismatch is observable in the cache entry.
 - Revoking a key evicts it from the in-process cache and clears `TenantProviderSettings` if it was the active key.
