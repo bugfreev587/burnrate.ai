@@ -149,6 +149,7 @@ func (s *Server) setupRoutes() {
 		// Budget management
 		admin.GET("/budget", s.handleGetBudget)
 		admin.PUT("/budget", s.handleUpsertBudget)
+		admin.DELETE("/budget/:budget_id", s.handleDeleteBudget)
 	}
 
 	// ─── Owner only ──────────────────────────────────────────────────────────

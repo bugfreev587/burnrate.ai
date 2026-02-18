@@ -101,6 +101,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	cacheCreationTokens, _ := strconv.ParseInt(fmt.Sprintf("%v", v["cache_creation_tokens"]), 10, 64)
 	cacheReadTokens, _ := strconv.ParseInt(fmt.Sprintf("%v", v["cache_read_tokens"]), 10, 64)
 
+	keyID := fmt.Sprintf("%v", v["key_id"])
 	provider := fmt.Sprintf("%v", v["provider"])
 	model := fmt.Sprintf("%v", v["model"])
 	messageID := fmt.Sprintf("%v", v["message_id"])
@@ -145,6 +146,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		CacheReadTokens:     cacheReadTokens,
 		Timestamp:           ts,
 		IdempotencyKey:      messageID,
+		APIKeyRef:           keyID,
 	}
 	if _, err := w.pricingEngine.Process(ctx, event); err != nil {
 		return fmt.Errorf("pricing engine: %w", err)

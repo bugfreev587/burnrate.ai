@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/events"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
@@ -21,14 +23,16 @@ const defaultAnthropicVersion = "2023-06-01"
 type ProxyHandler struct {
 	providerKeySvc *services.ProviderKeyService
 	eventQueue     *events.EventQueue
+	pricingEngine  *pricing.PricingEngine
 	httpClient     *http.Client
 }
 
 // NewProxyHandler creates a new ProxyHandler.
-func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue) *ProxyHandler {
+func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue, pricingEngine *pricing.PricingEngine) *ProxyHandler {
 	return &ProxyHandler{
 		providerKeySvc: providerKeySvc,
 		eventQueue:     eventQueue,
+		pricingEngine:  pricingEngine,
 		// No overall Timeout: streaming responses can run arbitrarily long.
 		// Client disconnect is handled via context cancellation on the upstream request.
 		// ResponseHeaderTimeout ensures we fail fast if Anthropic is unresponsive.
@@ -46,6 +50,31 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 // HandleMessages handles POST /v1/messages — the main Anthropic proxy endpoint.
 func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
+	keyID, _ := c.Get("key_id")
+	keyIDStr, _ := keyID.(string)
+
+	// Pre-check budget before forwarding to Anthropic.
+	if h.pricingEngine != nil {
+		status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyIDStr, time.Now())
+		if err != nil {
+			var budgetErr *pricing.ErrBudgetExceeded
+			if errors.As(err, &budgetErr) {
+				c.JSON(http.StatusPaymentRequired, gin.H{
+					"error":   "budget_exceeded",
+					"message": fmt.Sprintf("Budget limit exceeded for period=%s. Limit: %s, Current: %s", budgetErr.Period, budgetErr.LimitAmount.StringFixed(4), budgetErr.CurrentSpend.StringFixed(4)),
+				})
+				return
+			}
+		}
+		// Set budget warning headers if approaching threshold
+		if status != nil && status.AtWarning {
+			c.Header("X-Burnrate-Budget-Warning", "true")
+			c.Header("X-Burnrate-Budget-Limit", status.LimitAmount.StringFixed(4))
+			c.Header("X-Burnrate-Budget-Used", status.CurrentSpend.StringFixed(4))
+			c.Header("X-Burnrate-Budget-Period", status.Period)
+			c.Header("X-Burnrate-Budget-Scope", status.Scope)
+		}
+	}
 
 	// Fetch the active Anthropic key for this tenant.
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
@@ -151,6 +180,7 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 	if counts.MessageID != "" || counts.InputTokens > 0 || counts.OutputTokens > 0 {
 		msg := events.UsageEventMsg{
 			TenantID:            tenantID,
+			KeyID:               keyIDStr,
 			Provider:            "anthropic",
 			Model:               counts.Model,
 			InputTokens:         counts.InputTokens,

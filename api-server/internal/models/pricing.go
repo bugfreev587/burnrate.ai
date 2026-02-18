@@ -81,13 +81,17 @@ type CostLedger struct {
 	CreatedAt           time.Time
 }
 
-// BudgetLimit enforces per-tenant spend limits for a given period.
+// BudgetLimit enforces spend limits scoped to a tenant, optionally further
+// scoped to a specific API key. ScopeType = "account" applies to the whole
+// tenant; ScopeType = "api_key" applies to one key (ScopeID = key_id).
 type BudgetLimit struct {
 	ID             uint            `gorm:"primaryKey"`
-	TenantID       uint            `gorm:"uniqueIndex:idx_budget_tenant_period"`
-	PeriodType     string          `gorm:"uniqueIndex:idx_budget_tenant_period"` // monthly|weekly|daily
+	TenantID       uint            `gorm:"uniqueIndex:idx_budget_tenant_scope"`
+	ScopeType      string          `gorm:"uniqueIndex:idx_budget_tenant_scope;size:16;default:account"` // account|api_key
+	ScopeID        string          `gorm:"uniqueIndex:idx_budget_tenant_scope;size:64"`                 // "" for account, key_id for api_key
+	PeriodType     string          `gorm:"uniqueIndex:idx_budget_tenant_scope"`                         // monthly|weekly|daily
 	LimitAmount    decimal.Decimal `gorm:"type:numeric(20,8)"`
-	AlertThreshold decimal.Decimal `gorm:"type:numeric(5,2);default:80"` // percentage
+	AlertThreshold decimal.Decimal `gorm:"type:numeric(5,2);default:80"` // percentage, e.g. 80 = warn at 80%
 	Action         string          `gorm:"default:alert"`                // alert|block
 	CreatedAt      time.Time
 }
@@ -117,7 +121,7 @@ type PricingConfigRate struct {
 type APIKeyConfig struct {
 	ID        uint      `gorm:"primaryKey"`
 	TenantID  uint      `gorm:"index"`
-	KeyID     string    `gorm:"uniqueIndex;size:36"` // references api_keys.key_id
+	KeyID     string    `gorm:"uniqueIndex;size:64"` // references api_keys.key_id
 	ConfigID  uint      `gorm:"index"`
 	CreatedAt time.Time
 }
@@ -142,4 +146,10 @@ const (
 const (
 	BudgetActionAlert = "alert"
 	BudgetActionBlock = "block"
+)
+
+// Budget scope constants
+const (
+	BudgetScopeAccount = "account"
+	BudgetScopeAPIKey  = "api_key"
 )

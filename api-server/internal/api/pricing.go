@@ -356,6 +356,8 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 }
 
 type upsertBudgetReq struct {
+	ScopeType      string `json:"scope_type"`                         // account|api_key (default: account)
+	ScopeID        string `json:"scope_id"`                           // "" for account, key_id for api_key
 	PeriodType     string `json:"period_type"     binding:"required"` // monthly|weekly|daily
 	LimitAmount    string `json:"limit_amount"    binding:"required"` // decimal string
 	AlertThreshold string `json:"alert_threshold"`                    // percentage, default 80
@@ -372,6 +374,14 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 	var req upsertBudgetReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	scopeType := req.ScopeType
+	if scopeType == "" {
+		scopeType = models.BudgetScopeAccount
+	}
+	if scopeType != models.BudgetScopeAccount && scopeType != models.BudgetScopeAPIKey {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "scope_type must be 'account' or 'api_key'"})
 		return
 	}
 	limit, err := decimal.NewFromString(req.LimitAmount)
@@ -392,15 +402,18 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 
 	budgetLimit := models.BudgetLimit{
 		TenantID:       tenantID,
+		ScopeType:      scopeType,
+		ScopeID:        req.ScopeID,
 		PeriodType:     req.PeriodType,
 		LimitAmount:    limit,
 		AlertThreshold: alertThreshold,
 		Action:         action,
 	}
 
-	// Upsert: update if exists, create if not
+	// Upsert: find by (tenant_id, scope_type, scope_id, period_type) and update, or create.
 	result := s.postgresDB.GetDB().
-		Where("tenant_id = ? AND period_type = ?", tenantID, req.PeriodType).
+		Where("tenant_id = ? AND scope_type = ? AND scope_id = ? AND period_type = ?",
+			tenantID, scopeType, req.ScopeID, req.PeriodType).
 		Assign(models.BudgetLimit{
 			LimitAmount:    limit,
 			AlertThreshold: alertThreshold,
@@ -411,7 +424,6 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
-	// If it already existed, update the fields
 	if result.RowsAffected == 0 {
 		s.postgresDB.GetDB().Model(&budgetLimit).Updates(map[string]interface{}{
 			"limit_amount":    limit,
@@ -421,6 +433,32 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, budgetLimit)
+}
+
+// DELETE /v1/admin/budget/:budget_id
+func (s *Server) handleDeleteBudget(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("budget_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid budget_id"})
+		return
+	}
+	result := s.postgresDB.GetDB().
+		Where("id = ? AND tenant_id = ?", id, tenantID).
+		Delete(&models.BudgetLimit{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "budget limit not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
 // ─── Cost Ledger ─────────────────────────────────────────────────────────────

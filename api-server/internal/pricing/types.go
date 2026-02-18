@@ -51,6 +51,17 @@ type PricingResult struct {
 	ModelID      uint
 }
 
+// BudgetStatus is returned by PreCheckBudget. It carries the nearest-threshold
+// budget state so the proxy can set informational response headers.
+type BudgetStatus struct {
+	AtWarning    bool
+	Scope        string          // "account" | "api_key"
+	Period       string          // "monthly" | "weekly" | "daily"
+	LimitAmount  decimal.Decimal
+	CurrentSpend decimal.Decimal
+	Threshold    decimal.Decimal // alert threshold percentage (e.g. 80)
+}
+
 // ErrBudgetExceeded is returned when a blocking budget limit is breached.
 type ErrBudgetExceeded struct {
 	TenantID     uint

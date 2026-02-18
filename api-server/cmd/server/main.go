@@ -95,7 +95,7 @@ func main() {
 	log.Println("✓ Usage worker started")
 
 	// Proxy handler
-	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue)
+	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine)
 
 	// API server
 	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)

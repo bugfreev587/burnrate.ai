@@ -126,29 +126,105 @@ func (e *PricingEngine) resolveMarkups(ctx context.Context, event UsageEvent, re
 	return markups
 }
 
-// checkBudget checks all blocking budget limits for the tenant.
+// PreCheckBudget checks whether the tenant's current spend already exceeds any
+// blocking budget limit. It also returns the nearest-threshold BudgetStatus for
+// informational headers. Call this before forwarding a proxy request.
+//
+// Returns (*BudgetStatus, *ErrBudgetExceeded) — the status is non-nil when any
+// limit is at or above its alert threshold; the error is non-nil when a blocking
+// limit is exceeded.
+func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID string, now time.Time) (*BudgetStatus, error) {
+	var limits []models.BudgetLimit
+	query := e.db.WithContext(ctx).
+		Where("tenant_id = ? AND (scope_type = ? OR (scope_type = ? AND scope_id = ?))",
+			tenantID,
+			models.BudgetScopeAccount,
+			models.BudgetScopeAPIKey, keyID,
+		).
+		Find(&limits)
+	if query.Error != nil {
+		return nil, nil // don't block on DB errors
+	}
+
+	var nearestStatus *BudgetStatus
+
+	for _, limit := range limits {
+		spend := e.getSpend(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, now)
+
+		// Compute threshold amount
+		thresholdAmount := limit.LimitAmount.Mul(limit.AlertThreshold).Div(decimal.NewFromInt(100))
+
+		if limit.Action == models.BudgetActionBlock && spend.GreaterThanOrEqual(limit.LimitAmount) {
+			return &BudgetStatus{
+				AtWarning:    true,
+				Scope:        limit.ScopeType,
+				Period:       limit.PeriodType,
+				LimitAmount:  limit.LimitAmount,
+				CurrentSpend: spend,
+				Threshold:    limit.AlertThreshold,
+			}, &ErrBudgetExceeded{
+				TenantID:     tenantID,
+				LimitAmount:  limit.LimitAmount,
+				CurrentSpend: spend,
+				Period:       limit.PeriodType,
+			}
+		}
+
+		if spend.GreaterThanOrEqual(thresholdAmount) {
+			if nearestStatus == nil || spend.Div(limit.LimitAmount).GreaterThan(nearestStatus.CurrentSpend.Div(nearestStatus.LimitAmount)) {
+				nearestStatus = &BudgetStatus{
+					AtWarning:    true,
+					Scope:        limit.ScopeType,
+					Period:       limit.PeriodType,
+					LimitAmount:  limit.LimitAmount,
+					CurrentSpend: spend,
+					Threshold:    limit.AlertThreshold,
+				}
+			}
+		}
+	}
+
+	return nearestStatus, nil
+}
+
+// getSpend returns the current spend for a budget limit scope from Redis (or DB fallback).
+func (e *PricingEngine) getSpend(ctx context.Context, tenantID uint, keyID, scopeType, scopeID, periodType string, t time.Time) decimal.Decimal {
+	var key string
+	if scopeType == models.BudgetScopeAPIKey {
+		key = e.budgetRedisKeyForKey(scopeID, periodType, t)
+	} else {
+		key = e.budgetRedisKey(tenantID, periodType, t)
+	}
+
+	if e.rdb != nil {
+		if val, err := e.rdb.Get(ctx, key).Result(); err == nil {
+			if spend, err := decimal.NewFromString(val); err == nil {
+				return spend
+			}
+		}
+	}
+
+	// DB fallback (account-level only; key-level falls back to 0 if Redis missing)
+	if scopeType == models.BudgetScopeAccount {
+		return e.dbBudgetSpend(ctx, tenantID, periodType, t)
+	}
+	return decimal.Zero
+}
+
+// checkBudget checks all blocking budget limits for the tenant (account + api_key scoped).
 // Returns *ErrBudgetExceeded if any blocking limit is breached.
 func (e *PricingEngine) checkBudget(ctx context.Context, event UsageEvent, finalCost decimal.Decimal) error {
 	var limits []models.BudgetLimit
 	e.db.WithContext(ctx).
-		Where("tenant_id = ? AND action = ?", event.TenantID, models.BudgetActionBlock).
+		Where(`tenant_id = ? AND action = ? AND (scope_type = ? OR (scope_type = ? AND scope_id = ?))`,
+			event.TenantID, models.BudgetActionBlock,
+			models.BudgetScopeAccount,
+			models.BudgetScopeAPIKey, event.APIKeyRef,
+		).
 		Find(&limits)
 
 	for _, limit := range limits {
-		key := e.budgetRedisKey(event.TenantID, limit.PeriodType, event.Timestamp)
-		var currentSpend decimal.Decimal
-
-		if e.rdb != nil {
-			val, err := e.rdb.Get(ctx, key).Result()
-			if err == nil {
-				currentSpend, _ = decimal.NewFromString(val)
-			} else {
-				// Fall back to DB if Redis key missing
-				currentSpend = e.dbBudgetSpend(ctx, event.TenantID, limit.PeriodType, event.Timestamp)
-			}
-		} else {
-			currentSpend = e.dbBudgetSpend(ctx, event.TenantID, limit.PeriodType, event.Timestamp)
-		}
+		currentSpend := e.getSpend(ctx, event.TenantID, event.APIKeyRef, limit.ScopeType, limit.ScopeID, limit.PeriodType, event.Timestamp)
 
 		if currentSpend.Add(finalCost).GreaterThan(limit.LimitAmount) {
 			return &ErrBudgetExceeded{
@@ -174,19 +250,26 @@ func (e *PricingEngine) dbBudgetSpend(ctx context.Context, tenantID uint, period
 	return total
 }
 
-// incrementBudget increments the Redis budget counters for all periods.
+// incrementBudget increments Redis budget counters for all periods at both
+// account scope and (if APIKeyRef is set) api_key scope.
 // Uses INCRBYFLOAT (acceptable soft-cap precision; ledger is authoritative).
 func (e *PricingEngine) incrementBudget(ctx context.Context, event UsageEvent, finalCost decimal.Decimal) {
 	if e.rdb == nil {
 		return
 	}
+	amount := finalCost.InexactFloat64()
 	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
+		// Account-level counter
 		key := e.budgetRedisKey(event.TenantID, period, event.Timestamp)
-		amount := finalCost.InexactFloat64()
 		e.rdb.IncrByFloat(ctx, key, amount)
-		// Set expiry to end of period
-		expiry := periodEnd(period, event.Timestamp)
-		e.rdb.ExpireAt(ctx, key, expiry)
+		e.rdb.ExpireAt(ctx, key, periodEnd(period, event.Timestamp))
+
+		// API-key-level counter (if key ref is available)
+		if event.APIKeyRef != "" {
+			keyKey := e.budgetRedisKeyForKey(event.APIKeyRef, period, event.Timestamp)
+			e.rdb.IncrByFloat(ctx, keyKey, amount)
+			e.rdb.ExpireAt(ctx, keyKey, periodEnd(period, event.Timestamp))
+		}
 	}
 }
 
@@ -227,7 +310,22 @@ func (e *PricingEngine) writeLedger(ctx context.Context, event UsageEvent, resul
 	return nil
 }
 
-// budgetRedisKey returns the Redis key for a tenant's budget counter.
+// budgetRedisKeyForKey returns the Redis key for an API key's budget counter.
+func (e *PricingEngine) budgetRedisKeyForKey(keyID, periodType string, t time.Time) string {
+	switch periodType {
+	case models.PeriodMonthly:
+		return fmt.Sprintf("budget:key:%s:%d-%02d", keyID, t.Year(), t.Month())
+	case models.PeriodWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("budget:key:%s:w%d-%02d", keyID, year, week)
+	case models.PeriodDaily:
+		return fmt.Sprintf("budget:key:%s:%d-%02d-%02d", keyID, t.Year(), t.Month(), t.Day())
+	default:
+		return fmt.Sprintf("budget:key:%s:%s:%d-%02d", keyID, periodType, t.Year(), t.Month())
+	}
+}
+
+// budgetRedisKey returns the Redis key for a tenant's account-level budget counter.
 func (e *PricingEngine) budgetRedisKey(tenantID uint, periodType string, t time.Time) string {
 	switch periodType {
 	case models.PeriodMonthly:

@@ -62,6 +62,7 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 
 		c.Set(ContextKeyAPIKey, ak)
 		c.Set("tenant_id", ak.TenantID)
+		c.Set("key_id", ak.KeyID)
 		c.Next()
 	}
 }
