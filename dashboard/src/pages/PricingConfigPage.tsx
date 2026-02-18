@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import Navbar from '../components/Navbar'
 import { usePricingConfig, CatalogEntry, PricingConfigView } from '../hooks/usePricingConfig'
 import './PricingConfigPage.css'
 
@@ -24,7 +25,6 @@ function shortKey(keyId: string) {
   return keyId.slice(0, 8) + '…'
 }
 
-// ── Provider badge colour ─────────────────────────────────────────────────────
 const PROVIDER_COLORS: Record<string, string> = {
   anthropic: '#c96442',
   openai: '#10a37f',
@@ -36,13 +36,12 @@ const PROVIDER_COLORS: Record<string, string> = {
 function ProviderBadge({ name }: { name: string }) {
   const color = PROVIDER_COLORS[name.toLowerCase()] || '#6366f1'
   return (
-    <span className="provider-badge" style={{ background: color + '22', color, borderColor: color + '55' }}>
+    <span className="pc-provider-badge" style={{ background: color + '22', color, borderColor: color + '55' }}>
       {name}
     </span>
   )
 }
 
-// ── Group catalog by provider ─────────────────────────────────────────────────
 function groupByProvider(catalog: CatalogEntry[]) {
   const map: Record<string, CatalogEntry[]> = {}
   for (const entry of catalog) {
@@ -69,10 +68,7 @@ export default function PricingConfigPage() {
     setTimeout(() => setFlash(null), 4000)
   }
 
-  // ── Selected model (top-right detail panel) ───────────────────────────────
   const [selectedModel, setSelectedModel] = useState<CatalogEntry | null>(null)
-
-  // ── Expanded config ───────────────────────────────────────────────────────
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
   // ── Create config modal ───────────────────────────────────────────────────
@@ -113,7 +109,6 @@ export default function PricingConfigPage() {
 
   function openAddRate(cfg: PricingConfigView) {
     setAddRateFor(cfg)
-    // Pre-fill with currently selected catalog model if available
     setRateModelId(selectedModel?.model_id ?? catalog[0]?.model_id ?? 0)
     setRatePriceType('input')
     setRatePrice('')
@@ -177,263 +172,258 @@ export default function PricingConfigPage() {
     }
   }
 
-  // ── Grouped catalog ───────────────────────────────────────────────────────
   const grouped = useMemo(() => groupByProvider(catalog), [catalog])
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="page-container">
-      <div className="pc-page">
+      <Navbar />
+      <div className="page-content">
+        <div className="mgmt-container">
 
-        {/* Header */}
-        <div className="pc-header">
-          <div>
-            <h1 className="pc-title">Pricing Config</h1>
-            <p className="pc-subtitle">
-              View default model pricing and create custom overrides per API key.
-            </p>
+          {/* Header */}
+          <div className="mgmt-header">
+            <h1>Pricing Config</h1>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + New Config
-          </button>
-        </div>
 
-        {/* Flash */}
-        {flash && (
-          <div className={`flash flash-${flash.type}`}>{flash.msg}</div>
-        )}
+          {/* Flash */}
+          {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
-        {loading && <div className="pc-spinner" />}
-        {error && <div className="flash flash-error">{error}</div>}
+          {loading && <div className="loading-center"><div className="spinner" /></div>}
+          {error && <div className="flash flash-error">{error}</div>}
 
-        {!loading && !error && (
-          <>
-            {/* ── Top: two-panel catalog + detail ────────────────────────── */}
-            <div className="pc-top-grid">
+          {!loading && !error && (
+            <>
+              {/* ── Top: two-panel catalog + detail ──────────────────────── */}
+              <div className="pc-top-grid">
 
-              {/* Left: model list */}
-              <div className="pc-catalog-panel">
-                <div className="pc-panel-header">
-                  <h2>Default Model Pricing</h2>
-                  <span className="pc-section-note">per 1M tokens · read-only</span>
-                </div>
-                <div className="pc-model-list">
-                  {Object.entries(grouped).map(([providerDisplay, entries]) => (
-                    <div key={providerDisplay} className="pc-model-group">
-                      <div className="pc-model-group-label">
-                        <ProviderBadge name={entries[0].provider} />
-                        <span>{providerDisplay}</span>
-                      </div>
-                      {entries.map(entry => (
-                        <div
-                          key={entry.model_id}
-                          className={`pc-model-row${selectedModel?.model_id === entry.model_id ? ' selected' : ''}`}
-                          onClick={() => setSelectedModel(entry)}
-                        >
-                          <code className="model-name">{entry.model_name}</code>
-                          <span className="pc-model-price-hint">
-                            {entry.prices['input'] ? fmt(entry.prices['input'].price_per_unit) : '—'}
-                          </span>
-                        </div>
-                      ))}
+                {/* Left: model list */}
+                <div className="mgmt-section pc-catalog-panel">
+                  <div className="pc-panel-header">
+                    <div>
+                      <h2>Default Model Pricing</h2>
+                      <p className="section-desc">Official list prices · per 1M tokens · read-only</p>
                     </div>
-                  ))}
+                  </div>
+                  <div className="pc-model-list">
+                    {Object.entries(grouped).map(([providerDisplay, entries]) => (
+                      <div key={providerDisplay} className="pc-model-group">
+                        <div className="pc-model-group-label">
+                          <ProviderBadge name={entries[0].provider} />
+                          <span>{providerDisplay}</span>
+                        </div>
+                        {entries.map(entry => (
+                          <div
+                            key={entry.model_id}
+                            className={`pc-model-row${selectedModel?.model_id === entry.model_id ? ' selected' : ''}`}
+                            onClick={() => setSelectedModel(entry)}
+                          >
+                            <code className="pc-model-name">{entry.model_name}</code>
+                            <span className="pc-model-price-hint">
+                              {entry.prices['input'] ? fmt(entry.prices['input'].price_per_unit) : '—'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: model detail */}
+                <div className="mgmt-section pc-detail-panel">
+                  {selectedModel ? (
+                    <div className="pc-model-detail">
+                      <div className="pc-detail-header">
+                        <ProviderBadge name={selectedModel.provider} />
+                        <h2 className="pc-detail-model-name">{selectedModel.model_name}</h2>
+                      </div>
+                      <p className="pc-detail-note">per 1,000,000 tokens</p>
+
+                      <div className="pc-detail-prices">
+                        {PRICE_TYPES.map(pt => {
+                          const price = selectedModel.prices[pt]
+                          return (
+                            <div key={pt} className={`pc-detail-price-row${!price ? ' pc-detail-na' : ''}`}>
+                              <span className="pc-detail-price-label">{PRICE_TYPE_LABELS[pt]}</span>
+                              <span className="pc-detail-price-value">
+                                {price ? fmt(price.price_per_unit) : '—'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div className="pc-detail-actions">
+                        <button
+                          className="btn btn-secondary btn-small"
+                          onClick={() => configs.length > 0 ? openAddRate(configs[0]) : setShowCreate(true)}
+                          title={configs.length === 0 ? 'Create a config first' : `Add override to "${configs[0].name}"`}
+                        >
+                          + Override this model
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pc-no-selection">
+                      <div className="pc-no-selection-icon">↖</div>
+                      <h3>Select a model</h3>
+                      <p>Click any model from the list to view its pricing details.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Right: model detail */}
-              <div className="pc-detail-panel">
-                {selectedModel ? (
-                  <div className="pc-model-detail">
-                    <div className="pc-detail-header">
-                      <ProviderBadge name={selectedModel.provider} />
-                      <h2 className="pc-detail-model-name">{selectedModel.model_name}</h2>
-                    </div>
-                    <p className="pc-detail-note">Official list prices · per 1,000,000 tokens</p>
+              {/* ── My Pricing Configs ────────────────────────────────────── */}
+              <div className="mgmt-section">
+                <div className="section-hdr">
+                  <div>
+                    <h2>My Pricing Configs</h2>
+                    <p className="section-desc">
+                      Override default pricing per model and assign to an API key.
+                      {configs.length > 0 && ` ${configs.length} config${configs.length !== 1 ? 's' : ''}.`}
+                    </p>
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+                    + New Config
+                  </button>
+                </div>
 
-                    <div className="pc-detail-prices">
-                      {PRICE_TYPES.map(pt => {
-                        const price = selectedModel.prices[pt]
-                        return (
-                          <div key={pt} className={`pc-detail-price-row${!price ? ' pc-detail-na' : ''}`}>
-                            <span className="pc-detail-price-label">{PRICE_TYPE_LABELS[pt]}</span>
-                            <span className="pc-detail-price-value">
-                              {price ? fmt(price.price_per_unit) : '—'}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    <div className="pc-detail-actions">
-                      <button
-                        className="btn btn-secondary pc-btn-sm"
-                        onClick={() => {
-                          if (configs.length === 0) {
-                            setShowCreate(true)
-                          } else {
-                            // Open override modal for first config as shortcut
-                            openAddRate(configs[0])
-                          }
-                        }}
-                        title={configs.length === 0 ? 'Create a config first' : `Add override to "${configs[0].name}"`}
-                      >
-                        + Override this model
-                      </button>
-                    </div>
+                {configs.length === 0 ? (
+                  <div className="empty-cta">
+                    <p className="text-muted">No configs yet. Create one to override default pricing for a specific API key.</p>
                   </div>
                 ) : (
-                  <div className="pc-no-selection">
-                    <div className="pc-no-selection-icon">↖</div>
-                    <h3>Select a model</h3>
-                    <p>Click any model from the list to view its pricing details.</p>
+                  <div className="pc-configs-list">
+                    {configs.map(cfg => (
+                      <div key={cfg.id} className="pc-config-card">
+
+                        {/* Config header row */}
+                        <div
+                          className="pc-config-header"
+                          onClick={() => setExpandedId(expandedId === cfg.id ? null : cfg.id)}
+                        >
+                          <div className="pc-config-title-group">
+                            <span className="pc-chevron">{expandedId === cfg.id ? '▾' : '▸'}</span>
+                            <strong className="pc-config-name">{cfg.name}</strong>
+                            {cfg.description && (
+                              <span className="pc-config-desc">{cfg.description}</span>
+                            )}
+                          </div>
+
+                          <div className="pc-config-meta" onClick={e => e.stopPropagation()}>
+                            {cfg.assigned_key ? (
+                              <span className="pc-key-badge">
+                                🔑 {cfg.assigned_key.label}
+                                <code>{shortKey(cfg.assigned_key.key_id)}</code>
+                                <button
+                                  className="pc-unassign"
+                                  title="Remove assignment"
+                                  onClick={async () => {
+                                    try {
+                                      await unassignKey(cfg.id)
+                                      showFlash('success', 'Assignment removed.')
+                                    } catch (e: unknown) {
+                                      showFlash('error', e instanceof Error ? e.message : 'Failed')
+                                    }
+                                  }}
+                                >×</button>
+                              </span>
+                            ) : (
+                              <span className="text-muted pc-no-key">No API key assigned</span>
+                            )}
+                            <div className="pc-config-actions">
+                              <button
+                                className="btn btn-secondary btn-small"
+                                onClick={() => openAddRate(cfg)}
+                              >+ Override</button>
+                              <button
+                                className="btn btn-secondary btn-small"
+                                onClick={() => openAssign(cfg)}
+                                disabled={activeKeys.length === 0}
+                                title={activeKeys.length === 0 ? 'No active API keys' : 'Assign to API key'}
+                              >Assign Key</button>
+                              <button
+                                className="btn btn-danger btn-small"
+                                onClick={() => setDeleteFor(cfg)}
+                              >Delete</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded rates table */}
+                        {expandedId === cfg.id && (
+                          <div className="pc-rates-body">
+                            {cfg.rates.length === 0 ? (
+                              <p className="pc-rates-empty text-muted">
+                                No overrides yet. Click <strong>+ Override</strong> to add a price override for a specific model.
+                              </p>
+                            ) : (
+                              <div className="table-scroll">
+                                <table className="mgmt-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Provider</th>
+                                      <th>Model</th>
+                                      <th>Price Type</th>
+                                      <th>Override (per 1M)</th>
+                                      <th></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {cfg.rates.map(rate => (
+                                      <tr key={rate.id}>
+                                        <td><ProviderBadge name={rate.provider} /></td>
+                                        <td><code className="pc-model-name">{rate.model_name}</code></td>
+                                        <td>
+                                          <span className="pc-ptype-badge">
+                                            {PRICE_TYPE_LABELS[rate.price_type as PriceType] || rate.price_type}
+                                          </span>
+                                        </td>
+                                        <td className="pc-price-cell">{fmt(rate.price_per_unit)}</td>
+                                        <td>
+                                          <button
+                                            className="pc-delete-rate"
+                                            title="Remove override"
+                                            onClick={async () => {
+                                              try {
+                                                await deleteRate(cfg.id, rate.id)
+                                                showFlash('success', 'Override removed.')
+                                              } catch (e: unknown) {
+                                                showFlash('error', e instanceof Error ? e.message : 'Failed')
+                                              }
+                                            }}
+                                          >×</button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* ── Bottom: My Pricing Configs ──────────────────────────────── */}
-            <section className="pc-section">
-              <div className="pc-section-header">
-                <h2>My Pricing Configs</h2>
-                <span className="pc-section-note">
-                  {configs.length} config{configs.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-
-              {configs.length === 0 && (
-                <div className="pc-empty">
-                  No configs yet. Create one to override default pricing for a specific API key.
-                </div>
-              )}
-
-              <div className="pc-configs-list">
-                {configs.map(cfg => (
-                  <div key={cfg.id} className="pc-config-card">
-
-                    {/* Config header row */}
-                    <div
-                      className="pc-config-header"
-                      onClick={() => setExpandedId(expandedId === cfg.id ? null : cfg.id)}
-                    >
-                      <div className="pc-config-title-group">
-                        <span className="pc-chevron">{expandedId === cfg.id ? '▾' : '▸'}</span>
-                        <strong className="pc-config-name">{cfg.name}</strong>
-                        {cfg.description && (
-                          <span className="pc-config-desc">{cfg.description}</span>
-                        )}
-                      </div>
-
-                      <div className="pc-config-meta" onClick={e => e.stopPropagation()}>
-                        {cfg.assigned_key ? (
-                          <span className="pc-key-badge">
-                            🔑 {cfg.assigned_key.label}
-                            <code>{shortKey(cfg.assigned_key.key_id)}</code>
-                            <button
-                              className="pc-unassign"
-                              title="Remove assignment"
-                              onClick={async () => {
-                                try {
-                                  await unassignKey(cfg.id)
-                                  showFlash('success', 'Assignment removed.')
-                                } catch (e: unknown) {
-                                  showFlash('error', e instanceof Error ? e.message : 'Failed')
-                                }
-                              }}
-                            >×</button>
-                          </span>
-                        ) : (
-                          <span className="pc-no-key">No API key assigned</span>
-                        )}
-                        <div className="pc-config-actions">
-                          <button
-                            className="btn btn-secondary pc-btn-sm"
-                            onClick={() => openAddRate(cfg)}
-                          >+ Override</button>
-                          <button
-                            className="btn btn-secondary pc-btn-sm"
-                            onClick={() => openAssign(cfg)}
-                            disabled={activeKeys.length === 0}
-                            title={activeKeys.length === 0 ? 'No active API keys' : 'Assign to API key'}
-                          >Assign Key</button>
-                          <button
-                            className="btn btn-danger pc-btn-sm"
-                            onClick={() => setDeleteFor(cfg)}
-                          >Delete</button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded rates table */}
-                    {expandedId === cfg.id && (
-                      <div className="pc-rates-body">
-                        {cfg.rates.length === 0 ? (
-                          <p className="pc-rates-empty">
-                            No overrides yet. Click <strong>+ Override</strong> to add a price override for a specific model.
-                          </p>
-                        ) : (
-                          <table className="pc-table pc-rates-table">
-                            <thead>
-                              <tr>
-                                <th>Provider</th>
-                                <th>Model</th>
-                                <th>Price Type</th>
-                                <th>Override (per 1M)</th>
-                                <th></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {cfg.rates.map(rate => (
-                                <tr key={rate.id}>
-                                  <td><ProviderBadge name={rate.provider} /></td>
-                                  <td><code className="model-name">{rate.model_name}</code></td>
-                                  <td>
-                                    <span className="pc-ptype-badge">
-                                      {PRICE_TYPE_LABELS[rate.price_type as PriceType] || rate.price_type}
-                                    </span>
-                                  </td>
-                                  <td className="pc-price-cell">{fmt(rate.price_per_unit)}</td>
-                                  <td>
-                                    <button
-                                      className="pc-delete-rate"
-                                      title="Remove override"
-                                      onClick={async () => {
-                                        try {
-                                          await deleteRate(cfg.id, rate.id)
-                                          showFlash('success', 'Override removed.')
-                                        } catch (e: unknown) {
-                                          showFlash('error', e instanceof Error ? e.message : 'Failed')
-                                        }
-                                      }}
-                                    >×</button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Modal: Create Config ──────────────────────────────────────────── */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>New Pricing Config</h3>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>New Pricing Config</h2>
             </div>
             <div className="modal-body">
               <div className="form-group">
                 <label>Name <span className="required">*</span></label>
                 <input
-                  className="form-input"
+                  type="text"
                   placeholder="e.g. Enterprise Plan"
                   value={createName}
                   onChange={e => setCreateName(e.target.value)}
@@ -441,16 +431,16 @@ export default function PricingConfigPage() {
                 />
               </div>
               <div className="form-group">
-                <label>Description</label>
+                <label>Description <span className="optional">(optional)</span></label>
                 <input
-                  className="form-input"
-                  placeholder="Optional description"
+                  type="text"
+                  placeholder="e.g. Custom rates for enterprise customers"
                   value={createDesc}
                   onChange={e => setCreateDesc(e.target.value)}
                 />
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="modal-ftr">
               <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
               <button
                 className="btn btn-primary"
@@ -467,16 +457,15 @@ export default function PricingConfigPage() {
       {/* ── Modal: Add Rate Override ──────────────────────────────────────── */}
       {addRateFor && (
         <div className="modal-overlay" onClick={() => setAddRateFor(null)}>
-          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Add Price Override</h3>
-              <p className="modal-subtitle">Config: <strong>{addRateFor.name}</strong></p>
+          <div className="modal-box modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Add Price Override</h2>
             </div>
             <div className="modal-body">
+              <p className="modal-hint">Config: <strong>{addRateFor.name}</strong></p>
               <div className="form-group">
                 <label>Model <span className="required">*</span></label>
                 <select
-                  className="form-input"
                   value={rateModelId}
                   onChange={e => {
                     setRateModelId(Number(e.target.value))
@@ -522,7 +511,7 @@ export default function PricingConfigPage() {
                 <label>
                   Override Price per 1M tokens <span className="required">*</span>
                   {defaultPriceHint && (
-                    <span className="form-hint">
+                    <span className="pc-form-hint">
                       default: {fmt(defaultPriceHint)}
                       <button
                         className="pc-use-default"
@@ -533,7 +522,6 @@ export default function PricingConfigPage() {
                   )}
                 </label>
                 <input
-                  className="form-input"
                   type="number"
                   min="0"
                   step="0.001"
@@ -543,7 +531,7 @@ export default function PricingConfigPage() {
                 />
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="modal-ftr">
               <button className="btn btn-secondary" onClick={() => setAddRateFor(null)}>Cancel</button>
               <button
                 className="btn btn-primary"
@@ -560,19 +548,18 @@ export default function PricingConfigPage() {
       {/* ── Modal: Assign Key ─────────────────────────────────────────────── */}
       {assignFor && (
         <div className="modal-overlay" onClick={() => setAssignFor(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Assign to API Key</h3>
-              <p className="modal-subtitle">Config: <strong>{assignFor.name}</strong></p>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Assign to API Key</h2>
             </div>
             <div className="modal-body">
+              <p className="modal-hint">Config: <strong>{assignFor.name}</strong></p>
               {activeKeys.length === 0 ? (
-                <p className="pc-empty">No active API keys. Create one first.</p>
+                <p className="text-muted">No active API keys. Create one in Management first.</p>
               ) : (
                 <div className="form-group">
                   <label>API Key <span className="required">*</span></label>
                   <select
-                    className="form-input"
                     value={assignKeyId}
                     onChange={e => setAssignKeyId(e.target.value)}
                   >
@@ -582,13 +569,13 @@ export default function PricingConfigPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="form-hint" style={{ marginTop: 8 }}>
+                  <p className="modal-hint" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
                     If this key already has a config assigned, it will be replaced.
                   </p>
                 </div>
               )}
             </div>
-            <div className="modal-footer">
+            <div className="modal-ftr">
               <button className="btn btn-secondary" onClick={() => setAssignFor(null)}>Cancel</button>
               <button
                 className="btn btn-primary"
@@ -605,19 +592,20 @@ export default function PricingConfigPage() {
       {/* ── Modal: Delete Confirm ─────────────────────────────────────────── */}
       {deleteFor && (
         <div className="modal-overlay" onClick={() => setDeleteFor(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Delete Config</h3>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Delete Config</h2>
             </div>
             <div className="modal-body">
-              <div className="warning-box">
+              <div className="warn-box">
+                <span className="warn-icon">!</span>
                 <p>
                   Delete <strong>"{deleteFor.name}"</strong>? This will remove all rate overrides and
                   unassign it from any API key. This cannot be undone.
                 </p>
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="modal-ftr">
               <button className="btn btn-secondary" onClick={() => setDeleteFor(null)}>Cancel</button>
               <button
                 className="btn btn-danger"
