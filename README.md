@@ -12,7 +12,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with a per-request history table.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
-- **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once.
+- **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once. Each tenant has a configurable limit (default 5, owner-adjustable up to 100).
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 - **Provider key vault** – Centralized Anthropic/OpenAI key storage *(coming soon)*.
 
@@ -73,7 +73,7 @@ api-server/
 
 | Model | Key fields |
 |---|---|
-| `Tenant` | `id`, `name` |
+| `Tenant` | `id`, `name`, `max_api_keys` (default 5) |
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
 | `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `encrypted_key` |
@@ -192,7 +192,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | PATCH | `/v1/admin/users/:id/suspend` | Suspend user |
 | PATCH | `/v1/admin/users/:id/unsuspend` | Unsuspend user |
 | DELETE | `/v1/admin/users/:id` | Remove user |
-| GET / POST | `/v1/admin/api_keys` | List / create API keys |
+| GET / POST | `/v1/admin/api_keys` | List / create API keys (response includes `count`, `limit`, `slots_left`) |
 | DELETE | `/v1/admin/api_keys/:id` | Revoke API key |
 | GET / POST | `/v1/admin/provider_keys` | List / add provider keys |
 | DELETE | `/v1/admin/provider_keys/:id` | Revoke provider key |
@@ -214,12 +214,14 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | POST | `/v1/owner/users/:id/promote-admin` | Promote user to admin |
 | DELETE | `/v1/owner/users/:id/demote-admin` | Demote admin to editor |
 | POST | `/v1/owner/transfer-ownership` | Transfer workspace ownership |
+| GET | `/v1/owner/settings` | View tenant settings (`name`, `max_api_keys`) |
+| PATCH | `/v1/owner/settings` | Update tenant settings — `{ "max_api_keys": 25 }` (range: 1–100) |
 
 ### RBAC roles
 
 | Role | Level | Permissions |
 |---|---|---|
-| `owner` | 4 | Everything + promote/demote admins, transfer ownership |
+| `owner` | 4 | Everything + promote/demote admins, transfer ownership, adjust API key limit |
 | `admin` | 3 | Invite/suspend/remove users, manage keys, manage pricing & budgets |
 | `editor` | 2 | View usage, manage API keys |
 | `viewer` | 1 | View usage, cost ledger, forecast |
@@ -367,6 +369,7 @@ curl -X POST https://burnrateai-production.up.railway.app/v1/agent/usage \
 | Usage dashboard | ✅ Live |
 | Team management (invite / suspend / remove) | ✅ Live |
 | API key management | ✅ Live |
+| Per-tenant API key limit (default 5, owner-configurable) | ✅ Live |
 | Server-side cost computation (PricingEngine) | ✅ Live |
 | Versioned model pricing catalog | ✅ Live |
 | Immutable cost ledger | ✅ Live |
