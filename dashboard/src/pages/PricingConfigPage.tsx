@@ -69,6 +69,9 @@ export default function PricingConfigPage() {
     setTimeout(() => setFlash(null), 4000)
   }
 
+  // ── Selected model (top-right detail panel) ───────────────────────────────
+  const [selectedModel, setSelectedModel] = useState<CatalogEntry | null>(null)
+
   // ── Expanded config ───────────────────────────────────────────────────────
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
@@ -110,7 +113,8 @@ export default function PricingConfigPage() {
 
   function openAddRate(cfg: PricingConfigView) {
     setAddRateFor(cfg)
-    setRateModelId(catalog[0]?.model_id ?? 0)
+    // Pre-fill with currently selected catalog model if available
+    setRateModelId(selectedModel?.model_id ?? catalog[0]?.model_id ?? 0)
     setRatePriceType('input')
     setRatePrice('')
   }
@@ -199,53 +203,96 @@ export default function PricingConfigPage() {
           <div className={`flash flash-${flash.type}`}>{flash.msg}</div>
         )}
 
-        {loading && <div className="loading-spinner" />}
+        {loading && <div className="pc-spinner" />}
         {error && <div className="flash flash-error">{error}</div>}
 
         {!loading && !error && (
           <>
-            {/* ── Section 1: Default Pricing Catalog ─────────────────────── */}
-            <section className="pc-section">
-              <div className="pc-section-header">
-                <h2>Default Model Pricing</h2>
-                <span className="pc-section-note">per 1M tokens · read-only</span>
+            {/* ── Top: two-panel catalog + detail ────────────────────────── */}
+            <div className="pc-top-grid">
+
+              {/* Left: model list */}
+              <div className="pc-catalog-panel">
+                <div className="pc-panel-header">
+                  <h2>Default Model Pricing</h2>
+                  <span className="pc-section-note">per 1M tokens · read-only</span>
+                </div>
+                <div className="pc-model-list">
+                  {Object.entries(grouped).map(([providerDisplay, entries]) => (
+                    <div key={providerDisplay} className="pc-model-group">
+                      <div className="pc-model-group-label">
+                        <ProviderBadge name={entries[0].provider} />
+                        <span>{providerDisplay}</span>
+                      </div>
+                      {entries.map(entry => (
+                        <div
+                          key={entry.model_id}
+                          className={`pc-model-row${selectedModel?.model_id === entry.model_id ? ' selected' : ''}`}
+                          onClick={() => setSelectedModel(entry)}
+                        >
+                          <code className="model-name">{entry.model_name}</code>
+                          <span className="pc-model-price-hint">
+                            {entry.prices['input'] ? fmt(entry.prices['input'].price_per_unit) : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {Object.entries(grouped).map(([providerDisplay, entries]) => (
-                <div key={providerDisplay} className="pc-provider-block">
-                  <div className="pc-provider-label">
-                    <ProviderBadge name={entries[0].provider} />
-                    <span>{providerDisplay}</span>
-                  </div>
-                  <div className="pc-table-wrap">
-                    <table className="pc-table">
-                      <thead>
-                        <tr>
-                          <th>Model</th>
-                          {PRICE_TYPES.map(pt => (
-                            <th key={pt}>{PRICE_TYPE_LABELS[pt]}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {entries.map(entry => (
-                          <tr key={entry.model_id}>
-                            <td><code className="model-name">{entry.model_name}</code></td>
-                            {PRICE_TYPES.map(pt => (
-                              <td key={pt} className={entry.prices[pt] ? '' : 'pc-na'}>
-                                {entry.prices[pt] ? fmt(entry.prices[pt].price_per_unit) : '—'}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </section>
+              {/* Right: model detail */}
+              <div className="pc-detail-panel">
+                {selectedModel ? (
+                  <div className="pc-model-detail">
+                    <div className="pc-detail-header">
+                      <ProviderBadge name={selectedModel.provider} />
+                      <h2 className="pc-detail-model-name">{selectedModel.model_name}</h2>
+                    </div>
+                    <p className="pc-detail-note">Official list prices · per 1,000,000 tokens</p>
 
-            {/* ── Section 2: Pricing Configs ────────────────────────────── */}
+                    <div className="pc-detail-prices">
+                      {PRICE_TYPES.map(pt => {
+                        const price = selectedModel.prices[pt]
+                        return (
+                          <div key={pt} className={`pc-detail-price-row${!price ? ' pc-detail-na' : ''}`}>
+                            <span className="pc-detail-price-label">{PRICE_TYPE_LABELS[pt]}</span>
+                            <span className="pc-detail-price-value">
+                              {price ? fmt(price.price_per_unit) : '—'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="pc-detail-actions">
+                      <button
+                        className="btn btn-secondary pc-btn-sm"
+                        onClick={() => {
+                          if (configs.length === 0) {
+                            setShowCreate(true)
+                          } else {
+                            // Open override modal for first config as shortcut
+                            openAddRate(configs[0])
+                          }
+                        }}
+                        title={configs.length === 0 ? 'Create a config first' : `Add override to "${configs[0].name}"`}
+                      >
+                        + Override this model
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pc-no-selection">
+                    <div className="pc-no-selection-icon">↖</div>
+                    <h3>Select a model</h3>
+                    <p>Click any model from the list to view its pricing details.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Bottom: My Pricing Configs ──────────────────────────────── */}
             <section className="pc-section">
               <div className="pc-section-header">
                 <h2>My Pricing Configs</h2>
