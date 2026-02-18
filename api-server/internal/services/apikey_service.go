@@ -88,7 +88,7 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 	mac.Write([]byte(secret))
 	hash := mac.Sum(nil)
 
-	kid := uuid.New().String()
+	kid := "br_" + uuid.New().String()
 	ak := models.APIKey{
 		TenantID:   tenantID,
 		KeyID:      kid,

@@ -70,7 +70,7 @@ func (u *User) IsActive() bool {
 type APIKey struct {
 	ID         uint           `gorm:"primaryKey"`
 	TenantID   uint           `gorm:"index"`
-	KeyID      string         `gorm:"uniqueIndex;size:36"`
+	KeyID      string         `gorm:"uniqueIndex;size:64"`
 	Label      string
 	Salt       []byte
 	SecretHash []byte
