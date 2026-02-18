@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
 )
 
 type PostgresDB struct {
@@ -56,15 +57,26 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	sqlDB.SetConnMaxLifetime(60 * time.Minute)
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
-	// Auto-migrate schema
+	// Auto-migrate schema (in dependency order)
 	if err := db.AutoMigrate(
 		&models.Tenant{},
 		&models.User{},
 		&models.APIKey{},
 		&models.ProviderKey{},
 		&models.UsageLog{},
+		&models.Provider{},
+		&models.ModelDef{},
+		&models.ModelPricing{},
+		&models.ContractPricing{},
+		&models.PricingMarkup{},
+		&models.CostLedger{},
+		&models.BudgetLimit{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
+	}
+
+	if err := pricing.SeedInitialData(db); err != nil {
+		return nil, fmt.Errorf("seed pricing data: %w", err)
 	}
 
 	return &PostgresDB{db: db}, nil

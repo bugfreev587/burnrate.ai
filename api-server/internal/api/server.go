@@ -11,17 +11,19 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/config"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
 type Server struct {
-	cfg        *config.Config
-	postgresDB *db.PostgresDB
-	apiKeySvc  *services.APIKeyService
-	usageSvc   *services.UsageLogService
-	rbac       *middleware.RBACMiddleware
-	router     *gin.Engine
-	httpServer *http.Server
+	cfg           *config.Config
+	postgresDB    *db.PostgresDB
+	apiKeySvc     *services.APIKeyService
+	usageSvc      *services.UsageLogService
+	pricingEngine *pricing.PricingEngine
+	rbac          *middleware.RBACMiddleware
+	router        *gin.Engine
+	httpServer    *http.Server
 }
 
 func NewServer(
@@ -29,6 +31,7 @@ func NewServer(
 	postgresDB *db.PostgresDB,
 	apiKeySvc *services.APIKeyService,
 	usageSvc *services.UsageLogService,
+	pricingEngine *pricing.PricingEngine,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -38,12 +41,13 @@ func NewServer(
 	rbac := middleware.NewRBACMiddleware(postgresDB.GetDB())
 
 	s := &Server{
-		cfg:        cfg,
-		postgresDB: postgresDB,
-		apiKeySvc:  apiKeySvc,
-		usageSvc:   usageSvc,
-		rbac:       rbac,
-		router:     router,
+		cfg:           cfg,
+		postgresDB:    postgresDB,
+		apiKeySvc:     apiKeySvc,
+		usageSvc:      usageSvc,
+		pricingEngine: pricingEngine,
+		rbac:          rbac,
+		router:        router,
 	}
 
 	s.setupMiddleware()
@@ -78,6 +82,8 @@ func (s *Server) setupRoutes() {
 	{
 		viewer.GET("/usage", s.handleListUsage)
 		viewer.GET("/usage/summary", s.handleUsageSummary)
+		viewer.GET("/cost-ledger", s.handleListCostLedger)
+		viewer.GET("/usage/forecast", s.handleUsageForecast)
 	}
 
 	// ─── Admin+ ──────────────────────────────────────────────────────────────
@@ -101,6 +107,26 @@ func (s *Server) setupRoutes() {
 		admin.POST("/provider_keys", s.handleCreateProviderKey)
 		admin.GET("/provider_keys", s.handleListProviderKeys)
 		admin.DELETE("/provider_keys/:key_id", s.handleRevokeProviderKey)
+
+		// Pricing administration
+		pricingGroup := admin.Group("/pricing")
+		{
+			pricingGroup.GET("/providers", s.handleListProviders)
+			pricingGroup.POST("/providers", s.handleCreateProvider)
+			pricingGroup.GET("/models", s.handleListModels)
+			pricingGroup.POST("/models", s.handleCreateModel)
+			pricingGroup.GET("/model-pricing", s.handleListModelPricing)
+			pricingGroup.POST("/model-pricing", s.handleCreateModelPricing)
+			pricingGroup.GET("/markups", s.handleListMarkups)
+			pricingGroup.POST("/markups", s.handleCreateMarkup)
+			pricingGroup.DELETE("/markups/:markup_id", s.handleDeleteMarkup)
+			pricingGroup.GET("/contracts", s.handleListContracts)
+			pricingGroup.POST("/contracts", s.handleCreateContract)
+		}
+
+		// Budget management
+		admin.GET("/budget", s.handleGetBudget)
+		admin.PUT("/budget", s.handleUpsertBudget)
 	}
 
 	// ─── Owner only ──────────────────────────────────────────────────────────

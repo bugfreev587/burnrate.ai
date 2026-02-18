@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/shopspring/decimal"
 )
 
 // Tenant is the top-level multi-tenant boundary.
@@ -93,13 +94,17 @@ type ProviderKey struct {
 // UsageLog records one LLM request reported by the claude-code agent.
 // request_id is an idempotency key; duplicate submissions are ignored.
 type UsageLog struct {
-	ID               uint      `gorm:"primaryKey"`
-	TenantID         uint      `gorm:"index"`
-	Provider         string
-	Model            string
-	PromptTokens     int64     `gorm:"column:prompt_tokens"`
-	CompletionTokens int64     `gorm:"column:completion_tokens"`
-	Cost             float64   `gorm:"type:numeric(14,8)"`
-	RequestID        string    `gorm:"column:request_id;uniqueIndex"`
-	CreatedAt        time.Time `gorm:"index"`
+	ID                  uint            `gorm:"primaryKey"`
+	TenantID            uint            `gorm:"index"`
+	UserID              string          `gorm:"index"`
+	Provider            string
+	Model               string
+	PromptTokens        int64           `gorm:"column:prompt_tokens"`
+	CompletionTokens    int64           `gorm:"column:completion_tokens"`
+	CacheCreationTokens int64           `gorm:"column:cache_creation_tokens"`
+	CacheReadTokens     int64           `gorm:"column:cache_read_tokens"`
+	ReasoningTokens     int64           `gorm:"column:reasoning_tokens"`
+	Cost                decimal.Decimal `gorm:"type:numeric(20,8)"`
+	RequestID           string          `gorm:"column:request_id;uniqueIndex"`
+	CreatedAt           time.Time       `gorm:"index"`
 }

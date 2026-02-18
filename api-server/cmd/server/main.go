@@ -14,6 +14,7 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/api"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/config"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
@@ -73,8 +74,11 @@ func main() {
 	)
 	usageSvc := services.NewUsageLogService(postgresDB.GetDB())
 
+	// Pricing engine
+	pricingEngine := pricing.NewPricingEngine(postgresDB.GetDB(), rdb)
+
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)
