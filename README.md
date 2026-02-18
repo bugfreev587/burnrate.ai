@@ -10,7 +10,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
 - **Cost ledger** – Every priced request is written to an immutable ledger for financial auditing and forecasting.
 - **Spend forecasting** – Daily-average extrapolation gives a projected monthly spend based on actual usage so far.
-- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert or block requests when exceeded.
+- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert or block requests when exceeded. Limits apply at the account scope or per API key. Blocking limits are checked **before** forwarding to Anthropic (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with a per-request history table.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
@@ -39,12 +39,13 @@ export ANTHROPIC_API_KEY=<key_id>:<secret>   # your burnrate br_xxx key
 ```
 
 The gateway will:
-1. Validate the `br_xxx` key and resolve the tenant.
-2. Fetch the tenant's active Anthropic provider key from the encrypted vault.
-3. Forward the request to `api.anthropic.com` with the real key.
-4. Stream the SSE response directly to the client with no buffering.
-5. Parse token usage from `message_start` / `message_delta` SSE events on-the-fly.
-6. Publish a usage event to Redis Streams for async processing (usage log + cost ledger).
+1. Validate the `br_xxx` key and resolve the tenant (and the key's own ID for per-key budget tracking).
+2. **Pre-check budget** — if the tenant's current spend already equals or exceeds a blocking budget limit, return HTTP 402 immediately (no upstream call made). If spend is above the alert threshold, response headers are set (see below).
+3. Fetch the tenant's active Anthropic provider key from the encrypted vault.
+4. Forward the request to `api.anthropic.com` with the real key.
+5. Stream the SSE response directly to the client with no buffering.
+6. Parse token usage from `message_start` / `message_delta` SSE events on-the-fly.
+7. Publish a usage event (including the originating `key_id`) to Redis Streams for async processing (usage log + cost ledger + budget counter increments).
 
 ### Proxy endpoints
 
@@ -52,6 +53,26 @@ The gateway will:
 |---|---|---|
 | POST | `/v1/messages` | Full Anthropic Messages API proxy (streaming + non-streaming) |
 | GET | `/v1/models` | Anthropic models list passthrough |
+
+### Budget response headers
+
+When the tenant's spend is at or above the configured `alert_threshold` percentage of any applicable limit, the proxy sets these headers on the response:
+
+| Header | Example | Description |
+|---|---|---|
+| `X-Burnrate-Budget-Warning` | `true` | Present when at or above alert threshold |
+| `X-Burnrate-Budget-Limit` | `100.0000` | The configured limit amount |
+| `X-Burnrate-Budget-Used` | `83.4200` | Current spend in the period |
+| `X-Burnrate-Budget-Period` | `monthly` | Budget period: `monthly`, `weekly`, or `daily` |
+| `X-Burnrate-Budget-Scope` | `account` | `account` or `api_key` |
+
+If a **blocking** limit is exceeded, the proxy returns HTTP **402** with:
+```json
+{
+  "error": "budget_exceeded",
+  "message": "Budget limit exceeded for period=monthly. Limit: 100.0000, Current: 105.2300"
+}
+```
 
 ### SSE streaming implementation
 
@@ -164,7 +185,8 @@ api-server/
 | `ContractPricing` | `id`, `tenant_id`, `model_id`, `price_type`, `price_override` (decimal), `effective_from`, `effective_to` |
 | `PricingMarkup` | `id`, `tenant_id`, `provider_id?`, `model_id?`, `percentage` (decimal), `priority`, `effective_from` |
 | `CostLedger` | `id`, `tenant_id`, `idempotency_key`, `base_cost`, `markup_amount`, `final_cost`, `pricing_snapshot` (jsonb) |
-| `BudgetLimit` | `id`, `tenant_id`, `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block) |
+| `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block) |
+| `APIKeyConfig` | `id`, `tenant_id`, `key_id` (varchar 64), `config_id` |
 
 ### Provider key encryption
 
@@ -205,12 +227,16 @@ POST /v1/agent/usage   (or via proxy → Redis Streams → worker)
         ├─ 3. Apply markups
         │      SUM(markup.percentage) → base × (1 + total% / 100)
         │
-        ├─ 4. Budget check (blocking limits only)
-        │      Redis counter → fallback DB SUM → ErrBudgetExceeded → HTTP 402
+        ├─ 4. Budget check (blocking limits, scope-aware)
+        │      Checks account-level AND api_key-level limits
+        │      Redis counter → fallback DB SUM (account) → ErrBudgetExceeded
+        │      Note: proxy pre-checks BEFORE forwarding (step 2 above);
+        │            worker re-checks on final cost after the fact
         │
         ├─ 5. Write CostLedger  (idempotent on request_id / message_id)
         │
         └─ 6. Increment Redis budget counters (INCRBYFLOAT, ExpireAt end-of-period)
+               Increments both account-level and api_key-level counters per period
 ```
 
 ### Seeded pricing (effective 2024-01-01, per 1M tokens)
@@ -304,10 +330,23 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | GET / POST | `/v1/admin/pricing/markups` | List / create markup rules |
 | DELETE | `/v1/admin/pricing/markups/:id` | Delete a markup rule |
 | GET / POST | `/v1/admin/pricing/contracts` | List / create contract pricing overrides |
-| GET | `/v1/admin/budget` | Get tenant budget limits |
-| PUT | `/v1/admin/budget` | Upsert a budget limit |
+| GET | `/v1/admin/budget` | List all budget limits for the tenant |
+| PUT | `/v1/admin/budget` | Upsert a budget limit (scope: `account` or `api_key`) |
+| DELETE | `/v1/admin/budget/:budget_id` | Delete a budget limit by ID |
 
 > Price fields in admin requests use JSON strings (e.g. `"price_per_unit": "3.00"`) to avoid float precision loss.
+
+**Budget upsert request body:**
+```json
+{
+  "scope_type": "account",   // "account" (default) | "api_key"
+  "scope_id": "",            // "" for account scope; key_id for api_key scope
+  "period_type": "monthly",  // "monthly" | "weekly" | "daily"
+  "limit_amount": "100.00",  // decimal string
+  "alert_threshold": "80",   // percentage to trigger warning headers (default: 80)
+  "action": "block"          // "alert" (headers only) | "block" (HTTP 402)
+}
+```
 
 #### Owner only
 
