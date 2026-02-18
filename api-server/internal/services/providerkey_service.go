@@ -20,7 +20,7 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
 
-const providerKeyCacheTTL = 5 * time.Minute
+const providerKeyCacheTTL = 1 * time.Minute
 
 // tpsCacheTTL is the Redis TTL for the TenantProviderSettings cache entry.
 // Short enough that a missed invalidation self-heals quickly.
