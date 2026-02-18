@@ -22,9 +22,9 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		log.New(log.Writer(), "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold:             500 * time.Millisecond,
-			LogLevel:                  logger.Info,
+			LogLevel:                  logger.Warn,
 			IgnoreRecordNotFoundError: true,
-			Colorful:                  true,
+			Colorful:                  false,
 		},
 	)
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -9,9 +10,24 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// LoggerMiddleware logs request method, path, status, and latency.
+// LoggerMiddleware logs requests that are slow (>1s) or returned an error (5xx).
 func LoggerMiddleware() gin.HandlerFunc {
-	return gin.Logger()
+	return gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{"/v1/health"},
+		Formatter: func(param gin.LogFormatterParams) string {
+			// Only log slow requests or server errors to keep log volume low.
+			if param.Latency < time.Second && param.StatusCode < 500 {
+				return ""
+			}
+			return fmt.Sprintf("[GIN] %v | %3d | %13v | %s %s\n",
+				param.TimeStamp.Format("2006/01/02 15:04:05"),
+				param.StatusCode,
+				param.Latency,
+				param.Method,
+				param.Path,
+			)
+		},
+	})
 }
 
 // CORSMiddleware sets permissive CORS headers for allowed origins.
