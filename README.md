@@ -4,7 +4,12 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 
 ## What it does
 
-- **Usage tracking** – Agents call a simple HTTP endpoint to report token consumption and cost after each LLM request.
+- **Usage tracking** – Agents call a simple HTTP endpoint to report token consumption after each LLM request.
+- **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
+- **Cost ledger** – Every priced request is written to an immutable ledger for financial auditing and forecasting.
+- **Spend forecasting** – Daily-average extrapolation gives a projected monthly spend based on actual usage so far.
+- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert or block requests when exceeded.
+- **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with a per-request history table.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
 - **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once.
@@ -25,7 +30,7 @@ The frontend is hosted on **Vercel**. The backend runs in a **Docker container o
 
 ## API Server
 
-**Stack:** Go 1.24 · Gin · GORM · PostgreSQL · Redis
+**Stack:** Go 1.24 · Gin · GORM · PostgreSQL · Redis · shopspring/decimal
 
 ### Directory layout
 
@@ -39,18 +44,28 @@ api-server/
     │   ├── server.go                 # Route registration
     │   ├── auth.go                   # POST /v1/auth/sync
     │   ├── usage.go                  # Usage report & list
+    │   ├── pricing.go                # Pricing admin + cost ledger + forecast
     │   ├── apikeys.go                # API key CRUD
     │   ├── users.go                  # User management
-    │   ├── provider_keys.go          # Provider key CRUD (TODO)
+    │   ├── provider_keys.go          # Provider key CRUD
     │   └── middleware.go             # CORS · logger · rate-limit
     ├── middleware/
     │   ├── auth.go                   # API key validation
     │   └── rbac.go                   # RBAC (user lookup + role gates)
-    ├── models/models.go              # Tenant · User · APIKey · ProviderKey · UsageLog
+    ├── models/
+    │   ├── models.go                 # Tenant · User · APIKey · ProviderKey · UsageLog
+    │   └── pricing.go                # Provider · ModelDef · ModelPricing · ContractPricing
+    │                                 # PricingMarkup · CostLedger · BudgetLimit
+    ├── pricing/
+    │   ├── types.go                  # UsageEvent · PricingResult · errors
+    │   ├── resolver.go               # Contract override → standard pricing (Redis-cached)
+    │   ├── calculator.go             # Decimal token math + markup application
+    │   ├── seeder.go                 # Seed providers, models, and pricing on startup
+    │   └── engine.go                 # Pipeline orchestrator
     ├── services/
     │   ├── apikey_service.go         # HMAC-SHA256 + Redis cache
     │   └── usage_service.go          # Usage log CRUD
-    ├── db/postgres.go                # GORM init + AutoMigrate
+    ├── db/postgres.go                # GORM init + AutoMigrate + seed
     └── config/config.go              # YAML config + env overrides
 ```
 
@@ -58,45 +73,156 @@ api-server/
 
 | Model | Key fields |
 |---|---|
-| `Tenant` | `id`, `name`, `created_at` |
-| `User` | `id` (Clerk ID), `tenant_id`, `email`, `name`, `role`, `status` |
+| `Tenant` | `id`, `name` |
+| `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
 | `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `encrypted_key` |
-| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cost`, `request_id` |
+| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id` |
+| `Provider` | `id`, `name`, `display_name`, `currency` |
+| `ModelDef` | `id`, `provider_id`, `model_name`, `billing_unit_type` |
+| `ModelPricing` | `id`, `model_id`, `price_type`, `price_per_unit` (decimal/1M tokens), `effective_from`, `effective_to` |
+| `ContractPricing` | `id`, `tenant_id`, `model_id`, `price_type`, `price_override` (decimal), `effective_from`, `effective_to` |
+| `PricingMarkup` | `id`, `tenant_id`, `provider_id?`, `model_id?`, `percentage` (decimal), `priority`, `effective_from` |
+| `CostLedger` | `id`, `tenant_id`, `idempotency_key`, `base_cost`, `markup_amount`, `final_cost`, `pricing_snapshot` (jsonb) |
+| `BudgetLimit` | `id`, `tenant_id`, `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block) |
+
+### Pricing pipeline
+
+```
+POST /v1/agent/usage
+        │
+        ▼
+  PricingEngine.Process()
+        │
+        ├─ 1. Resolve prices
+        │      ContractPricing (tenant override) → ModelPricing (standard)
+        │      Provider + ModelDef lookups Redis-cached 5 min
+        │
+        ├─ 2. Calculate base cost  (decimal arithmetic, never float64)
+        │      Σ (tokens / unit_size × price_per_unit) per dimension
+        │      Dimensions: input · output · cache_creation · cache_read · reasoning
+        │
+        ├─ 3. Apply markups
+        │      SUM(markup.percentage) → base × (1 + total% / 100)
+        │
+        ├─ 4. Budget check (blocking limits only)
+        │      Redis counter → fallback DB SUM → ErrBudgetExceeded → HTTP 402
+        │
+        ├─ 5. Write CostLedger  (idempotent on request_id)
+        │
+        └─ 6. Increment Redis budget counters (INCRBYFLOAT, ExpireAt end-of-period)
+```
+
+### Seeded pricing (effective 2024-01-01, per 1M tokens)
+
+| Provider | Model | Input | Output | Cache Create | Cache Read |
+|---|---|---|---|---|---|
+| anthropic | claude-3-5-sonnet-20241022 | $3.00 | $15.00 | $3.75 | $0.30 |
+| anthropic | claude-3-5-haiku-20241022 | $0.80 | $4.00 | $1.00 | $0.08 |
+| anthropic | claude-3-opus-20240229 | $15.00 | $75.00 | $18.75 | $1.50 |
+| anthropic | claude-sonnet-4-6 | $3.00 | $15.00 | $3.75 | $0.30 |
+| anthropic | claude-opus-4-6 | $15.00 | $75.00 | $18.75 | $1.50 |
+| openai | gpt-4o | $2.50 | $10.00 | — | — |
+| openai | gpt-4o-mini | $0.15 | $0.60 | — | — |
+| openai | gpt-4-turbo | $10.00 | $30.00 | — | — |
+| openai | o1 | $15.00 | $60.00 | — | — |
+| openai | o1-mini | $3.00 | $12.00 | — | — |
+| google | gemini-1.5-pro | $1.25 | $5.00 | — | — |
+| google | gemini-1.5-flash | $0.075 | $0.30 | — | — |
+| google | gemini-2.0-flash | $0.10 | $0.40 | — | — |
+| azure | gpt-4o | $2.50 | $10.00 | — | — |
+| mistral | mistral-large | $2.00 | $6.00 | — | — |
 
 ### API endpoints
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| GET | `/v1/health` | — | Health check |
-| POST | `/v1/auth/sync` | — | Sync Clerk user → DB (creates tenant for new users) |
-| POST | `/v1/agent/usage` | API key | Report LLM usage from an agent |
-| GET | `/v1/usage` | Viewer+ | List tenant usage logs |
-| GET | `/v1/usage/summary` | Viewer+ | Aggregated stats *(not yet implemented)* |
-| GET | `/v1/admin/users` | Admin+ | List tenant members |
-| POST | `/v1/admin/users/invite` | Admin+ | Invite user by email |
-| PATCH | `/v1/admin/users/:id/role` | Admin+ | Set role (viewer / editor) |
-| PATCH | `/v1/admin/users/:id/suspend` | Admin+ | Suspend user |
-| PATCH | `/v1/admin/users/:id/unsuspend` | Admin+ | Unsuspend user |
-| DELETE | `/v1/admin/users/:id` | Admin+ | Remove user |
-| POST | `/v1/admin/api_keys` | Admin+ | Create API key |
-| GET | `/v1/admin/api_keys` | Admin+ | List API keys |
-| DELETE | `/v1/admin/api_keys/:id` | Admin+ | Revoke API key |
-| POST | `/v1/admin/provider_keys` | Admin+ | Add provider key *(TODO)* |
-| GET | `/v1/admin/provider_keys` | Admin+ | List provider keys *(TODO)* |
-| DELETE | `/v1/admin/provider_keys/:id` | Admin+ | Revoke provider key *(TODO)* |
-| POST | `/v1/owner/users/:id/promote-admin` | Owner | Promote user to admin |
-| DELETE | `/v1/owner/users/:id/demote-admin` | Owner | Demote admin to editor |
-| POST | `/v1/owner/transfer-ownership` | Owner | Transfer workspace ownership |
+#### Public
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/health` | Health check |
+| POST | `/v1/auth/sync` | Sync Clerk user → DB (creates tenant for new users) |
+
+#### Agent (API key auth)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/agent/usage` | Report LLM usage; cost computed server-side |
+
+**Request:**
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
+  "input_tokens": 1200,
+  "output_tokens": 400,
+  "cache_creation_tokens": 0,
+  "cache_read_tokens": 0,
+  "reasoning_tokens": 0,
+  "request_id": "req_abc123"
+}
+```
+Legacy aliases `prompt_tokens` / `completion_tokens` are accepted.
+
+**Response:**
+```json
+{
+  "recorded": true,
+  "base_cost": "0.02400000",
+  "markup_amount": "0.00000000",
+  "final_cost": "0.02400000"
+}
+```
+Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200** with `"idempotent": true` on duplicate `request_id`.
+
+#### Viewer+
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/usage` | List tenant usage logs |
+| GET | `/v1/usage/summary` | Aggregated stats *(not yet implemented)* |
+| GET | `/v1/cost-ledger` | Paginated cost ledger (`?page=1&limit=50&from=&to=`) |
+| GET | `/v1/usage/forecast` | Projected monthly spend based on daily average |
+
+#### Admin+
+
+| Method | Path | Description |
+|---|---|---|
+| GET / POST | `/v1/admin/users` | List / invite users |
+| PATCH | `/v1/admin/users/:id/role` | Set role |
+| PATCH | `/v1/admin/users/:id/suspend` | Suspend user |
+| PATCH | `/v1/admin/users/:id/unsuspend` | Unsuspend user |
+| DELETE | `/v1/admin/users/:id` | Remove user |
+| GET / POST | `/v1/admin/api_keys` | List / create API keys |
+| DELETE | `/v1/admin/api_keys/:id` | Revoke API key |
+| GET / POST | `/v1/admin/provider_keys` | List / add provider keys |
+| DELETE | `/v1/admin/provider_keys/:id` | Revoke provider key |
+| GET / POST | `/v1/admin/pricing/providers` | List / add LLM providers |
+| GET / POST | `/v1/admin/pricing/models` | List / add model definitions |
+| GET / POST | `/v1/admin/pricing/model-pricing` | List / add versioned model pricing |
+| GET / POST | `/v1/admin/pricing/markups` | List / create markup rules |
+| DELETE | `/v1/admin/pricing/markups/:id` | Delete a markup rule |
+| GET / POST | `/v1/admin/pricing/contracts` | List / create contract pricing overrides |
+| GET | `/v1/admin/budget` | Get tenant budget limits |
+| PUT | `/v1/admin/budget` | Upsert a budget limit |
+
+> Price fields in admin requests use JSON strings (e.g. `"price_per_unit": "3.00"`) to avoid float precision loss.
+
+#### Owner only
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/owner/users/:id/promote-admin` | Promote user to admin |
+| DELETE | `/v1/owner/users/:id/demote-admin` | Demote admin to editor |
+| POST | `/v1/owner/transfer-ownership` | Transfer workspace ownership |
 
 ### RBAC roles
 
 | Role | Level | Permissions |
 |---|---|---|
 | `owner` | 4 | Everything + promote/demote admins, transfer ownership |
-| `admin` | 3 | Invite/suspend/remove users, manage API & provider keys |
+| `admin` | 3 | Invite/suspend/remove users, manage keys, manage pricing & budgets |
 | `editor` | 2 | View usage, manage API keys |
-| `viewer` | 1 | View usage |
+| `viewer` | 1 | View usage, cost ledger, forecast |
 
 ### Auth
 
@@ -170,7 +296,6 @@ VITE_API_SERVER_URL=https://burnrateai-production.up.railway.app
 The API server is deployed as a Docker container on Railway.
 
 ```bash
-# Dockerfile builds a minimal Alpine image
 docker build -t burnrate-ai-api ./api-server
 ```
 
@@ -224,9 +349,8 @@ curl -X POST https://burnrateai-production.up.railway.app/v1/agent/usage \
   -d '{
     "provider": "anthropic",
     "model": "claude-sonnet-4-6",
-    "prompt_tokens": 1200,
-    "completion_tokens": 400,
-    "cost": 0.0048,
+    "input_tokens": 1200,
+    "output_tokens": 400,
     "request_id": "req_abc123"
   }'
 ```
@@ -243,5 +367,12 @@ curl -X POST https://burnrateai-production.up.railway.app/v1/agent/usage \
 | Usage dashboard | ✅ Live |
 | Team management (invite / suspend / remove) | ✅ Live |
 | API key management | ✅ Live |
+| Server-side cost computation (PricingEngine) | ✅ Live |
+| Versioned model pricing catalog | ✅ Live |
+| Immutable cost ledger | ✅ Live |
+| Per-tenant markups | ✅ Live |
+| Contract pricing overrides | ✅ Live |
+| Budget enforcement (alert / block) | ✅ Live |
+| Monthly spend forecast | ✅ Live |
 | Usage summary / aggregation | 🚧 Not implemented |
 | Provider key vault (Anthropic / OpenAI) | 🚧 Not implemented |
