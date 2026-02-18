@@ -139,7 +139,7 @@ api-server/
     │   ├── pricing.go                # Pricing admin + cost ledger + forecast
     │   ├── apikeys.go                # API key CRUD
     │   ├── users.go                  # User management
-    │   ├── provider_keys.go          # Provider key CRUD + activate
+    │   ├── provider_keys.go          # Provider key CRUD + activate + rotate
     │   └── middleware.go             # CORS · logger (errors + slow only) · rate-limit
     ├── middleware/
     │   ├── auth.go                   # API key validation
@@ -158,7 +158,8 @@ api-server/
     ├── services/
     │   ├── apikey_service.go         # HMAC-SHA256 + Redis cache
     │   ├── usage_service.go          # Usage log CRUD
-    │   └── providerkey_service.go    # AES-256-GCM envelope encryption + in-process cache
+    │   └── providerkey_service.go    # AES-256-GCM envelope encryption + in-process cache (1 min TTL)
+    │                                 # + Redis TPS cache (60 s) + atomic Rotate + policy_version
     ├── events/
     │   ├── queue.go                  # Redis Streams producer (XADD)
     │   └── worker.go                 # Redis Streams consumer (XREADGROUP + XACK)
@@ -177,7 +178,7 @@ api-server/
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
 | `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
-| `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id` |
+| `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id`, `policy_version` (bumped on every activate/rotate) |
 | `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id` |
 | `Provider` | `id`, `name`, `display_name`, `currency` |
 | `ModelDef` | `id`, `provider_id`, `model_name`, `billing_unit_type` |
@@ -205,8 +206,32 @@ encrypted_key + key_nonce
 
 - A fresh 32-byte DEK and 12-byte nonce are generated per key using `crypto/rand`. Nonces are never reused.
 - The master key is a 32-byte value decoded from `PROVIDER_KEY_ENCRYPTION_KEY` (64-char hex). The server refuses to start if this variable is unset.
-- Decrypted keys are cached in-process with a 5-minute TTL (`sync.RWMutex` map). Redis never stores plaintext keys.
-- Revoking a key evicts it from cache and clears `TenantProviderSettings` if it was active.
+- Decrypted plaintexts are cached **in-process** with a **1-minute TTL** (`sync.RWMutex` map keyed by `ProviderKey.ID`). Redis never stores plaintext keys.
+- `TenantProviderSettings` (the active key pointer) is cached in Redis under `tps:{tenantID}:{provider}` with a **60-second TTL**, eliminating a Postgres round trip on every proxy request.
+- Both caches are invalidated immediately on `Activate` and `Rotate` — the in-process entry is evicted by key ID, the Redis TPS entry is DEL'd — so every pod picks up the new key on its very next request.
+- `policy_version` on `TenantProviderSettings` is a monotonically-increasing counter bumped atomically (SQL `+ 1`) on every `Activate` or `Rotate`. It is stored in the Redis TPS cache entry and serves as a staleness signal: if the TTL-based self-heal fires, the version mismatch is observable in the cache entry.
+- Revoking a key evicts it from the in-process cache and clears `TenantProviderSettings` if it was the active key.
+
+### Provider key rotation
+
+A single atomic endpoint replaces the old 3-step manual flow:
+
+```bash
+# Atomic rotate: store new key + activate + revoke old key in one DB transaction
+curl -X POST https://your-gateway/v1/admin/provider_keys/<old_key_id>/rotate \
+  -H "X-User-ID: <clerk_user_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "prod-key-v2", "api_key": "sk-ant-new..."}'
+```
+
+The gateway will:
+1. Verify the old key belongs to the tenant and is not already revoked.
+2. Encrypt the new key (fresh DEK + nonces).
+3. In a single DB transaction: INSERT new key → UPDATE `TenantProviderSettings` (`active_key_id` = new, `policy_version + 1`) → SET `old_key.revoked = true`.
+4. Evict the old key from the in-process plaintext cache.
+5. DEL the Redis TPS cache entry so every pod re-fetches from DB on the next request.
+
+Returns the new key's metadata (`id`, `provider`, `label`, `is_active: true`, `created_at`).
 
 ### Pricing pipeline
 
@@ -323,7 +348,8 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | DELETE | `/v1/admin/api_keys/:id` | Revoke API key |
 | GET / POST | `/v1/admin/provider_keys` | List / add provider keys |
 | DELETE | `/v1/admin/provider_keys/:id` | Revoke provider key |
-| PUT | `/v1/admin/provider_keys/:id/activate` | Set as active key for its provider |
+| PUT | `/v1/admin/provider_keys/:id/activate` | Set as active key for its provider (bumps `policy_version`) |
+| POST | `/v1/admin/provider_keys/:id/rotate` | Atomic rotate: store new key, activate, revoke old — one transaction |
 | GET / POST | `/v1/admin/pricing/providers` | List / add LLM providers |
 | GET / POST | `/v1/admin/pricing/models` | List / add model definitions |
 | GET / POST | `/v1/admin/pricing/model-pricing` | List / add versioned model pricing |
