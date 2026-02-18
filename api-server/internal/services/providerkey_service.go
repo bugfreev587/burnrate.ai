@@ -20,24 +20,35 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
 
-const providerKeyCacheTTL = 1 * time.Minute
+// In-process plaintext cache: sliding idle window + absolute hard ceiling.
+const (
+	providerKeyIdleTTL = 30 * time.Second // TTL resets on each cache hit
+	providerKeyHardTTL = 5 * time.Minute  // absolute ceiling regardless of hit rate
+)
 
-// tpsCacheTTL is the Redis TTL for the TenantProviderSettings cache entry.
-// Short enough that a missed invalidation self-heals quickly.
-const tpsCacheTTL = 60 * time.Second
+// Redis TPS cache: same sliding + hard pattern, hard_expiry stored in the value.
+const (
+	tpsIdleTTL = 30 * time.Second // Redis TTL reset on each cache hit via EXPIRE
+	tpsHardTTL = 5 * time.Minute  // stored in JSON; forces DB re-fetch when elapsed
+)
 
 var ErrProviderKeyNotFound = errors.New("provider key not found")
 var ErrNoActiveKey = errors.New("no active provider key configured")
 
 // tpsCacheEntry is the value stored under tpsCacheKey in Redis.
+// HardExpiry enforces an absolute max lifetime even for hot keys.
 type tpsCacheEntry struct {
-	ActiveKeyID   uint `json:"active_key_id"`
-	PolicyVersion int  `json:"policy_version"`
+	ActiveKeyID   uint      `json:"active_key_id"`
+	PolicyVersion int       `json:"policy_version"`
+	HardExpiry    time.Time `json:"hard_expiry"`
 }
 
+// cachedProviderKey holds a decrypted plaintext with a sliding idle window
+// and an absolute hard ceiling.
 type cachedProviderKey struct {
-	plaintext []byte
-	expiresAt time.Time
+	plaintext  []byte
+	idleExpiry time.Time // extended on each hit
+	hardExpiry time.Time // set once at write time, never extended
 }
 
 type ProviderKeyService struct {
@@ -74,7 +85,8 @@ func tpsCacheKey(tenantID uint, provider string) string {
 	return fmt.Sprintf("tps:%d:%s", tenantID, provider)
 }
 
-// cacheTPS writes a TenantProviderSettings entry to Redis.
+// cacheTPS writes a TenantProviderSettings entry to Redis with the idle TTL.
+// HardExpiry is embedded in the value so reads can enforce the absolute ceiling.
 func (s *ProviderKeyService) cacheTPS(ctx context.Context, settings *models.TenantProviderSettings) {
 	if s.rdb == nil {
 		return
@@ -82,9 +94,10 @@ func (s *ProviderKeyService) cacheTPS(ctx context.Context, settings *models.Tena
 	entry := tpsCacheEntry{
 		ActiveKeyID:   settings.ActiveKeyID,
 		PolicyVersion: settings.PolicyVersion,
+		HardExpiry:    time.Now().Add(tpsHardTTL),
 	}
 	if b, err := json.Marshal(entry); err == nil {
-		s.rdb.Set(ctx, tpsCacheKey(settings.TenantID, settings.Provider), b, tpsCacheTTL)
+		s.rdb.Set(ctx, tpsCacheKey(settings.TenantID, settings.Provider), b, tpsIdleTTL)
 	}
 }
 
@@ -133,17 +146,35 @@ func (s *ProviderKeyService) Store(ctx context.Context, tenantID uint, provider,
 }
 
 // GetPlaintext decrypts and returns a provider key's plaintext value.
-// Checks in-process cache first; caches result on miss.
+// Uses a sliding idle TTL (reset on each hit) bounded by a hard ceiling
+// (set once at write time, never extended). Both must be satisfied for a
+// cache hit to be valid.
 func (s *ProviderKeyService) GetPlaintext(ctx context.Context, keyID uint) ([]byte, error) {
-	// Check cache
+	now := time.Now()
+
+	// Fast path: in-process cache.
 	s.mu.RLock()
-	if cached, ok := s.cache[keyID]; ok && time.Now().Before(cached.expiresAt) {
-		s.mu.RUnlock()
-		return cached.plaintext, nil
-	}
+	cached, ok := s.cache[keyID]
 	s.mu.RUnlock()
 
-	// Load from DB
+	if ok {
+		if now.Before(cached.idleExpiry) && now.Before(cached.hardExpiry) {
+			// Valid hit — extend the idle window (hard ceiling is unchanged).
+			s.mu.Lock()
+			if c, still := s.cache[keyID]; still {
+				c.idleExpiry = time.Now().Add(providerKeyIdleTTL)
+				s.cache[keyID] = c
+			}
+			s.mu.Unlock()
+			return cached.plaintext, nil
+		}
+		// Either idle or hard expired — evict stale entry.
+		s.mu.Lock()
+		delete(s.cache, keyID)
+		s.mu.Unlock()
+	}
+
+	// Slow path: DB decrypt.
 	var pk models.ProviderKey
 	if err := s.db.WithContext(ctx).First(&pk, keyID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -155,23 +186,21 @@ func (s *ProviderKeyService) GetPlaintext(ctx context.Context, keyID uint) ([]by
 		return nil, ErrProviderKeyNotFound
 	}
 
-	// Decrypt DEK with master key
 	dek, err := aesGCMDecrypt(s.masterKey, pk.EncryptedDEK, pk.DEKNonce)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt DEK: %w", err)
 	}
-
-	// Decrypt key with DEK
 	plaintext, err := aesGCMDecrypt(dek, pk.EncryptedKey, pk.KeyNonce)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt key: %w", err)
 	}
 
-	// Store in cache
+	now = time.Now()
 	s.mu.Lock()
 	s.cache[keyID] = cachedProviderKey{
-		plaintext: plaintext,
-		expiresAt: time.Now().Add(providerKeyCacheTTL),
+		plaintext:  plaintext,
+		idleExpiry: now.Add(providerKeyIdleTTL),
+		hardExpiry: now.Add(providerKeyHardTTL),
 	}
 	s.mu.Unlock()
 
@@ -184,10 +213,17 @@ func (s *ProviderKeyService) GetPlaintext(ctx context.Context, keyID uint) ([]by
 func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, provider string) ([]byte, error) {
 	// Fast path: Redis TPS cache.
 	if s.rdb != nil {
-		if raw, err := s.rdb.Get(ctx, tpsCacheKey(tenantID, provider)).Result(); err == nil {
+		key := tpsCacheKey(tenantID, provider)
+		if raw, err := s.rdb.Get(ctx, key).Result(); err == nil {
 			var entry tpsCacheEntry
 			if json.Unmarshal([]byte(raw), &entry) == nil && entry.ActiveKeyID != 0 {
-				return s.GetPlaintext(ctx, entry.ActiveKeyID)
+				if time.Now().Before(entry.HardExpiry) {
+					// Valid hit — slide the idle TTL.
+					s.rdb.Expire(ctx, key, tpsIdleTTL)
+					return s.GetPlaintext(ctx, entry.ActiveKeyID)
+				}
+				// Hard expired — drop the stale entry and fall through to DB.
+				s.rdb.Del(ctx, key)
 			}
 		}
 	}
