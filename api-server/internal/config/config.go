@@ -26,8 +26,9 @@ type RedisCfg struct {
 }
 
 type SecurityCfg struct {
-	APIKeyPepper          string `yaml:"api_key_pepper"`
-	APIKeyCacheTTLSeconds int    `yaml:"api_key_cache_ttl_seconds"`
+	APIKeyPepper            string `yaml:"api_key_pepper"`
+	APIKeyCacheTTLSeconds   int    `yaml:"api_key_cache_ttl_seconds"`
+	ProviderKeyEncryptionKey string `yaml:"provider_key_encryption_key"`
 }
 
 type Config struct {
@@ -61,6 +62,9 @@ func applyEnvOverrides(cfg *Config) {
 	// CORS_ORIGINS accepts a comma-separated list of allowed origins,
 	// e.g. "https://app.vercel.app,https://burnrate.ai"
 	// Setting it to "*" allows all origins (useful during development).
+	if v := os.Getenv("PROVIDER_KEY_ENCRYPTION_KEY"); v != "" {
+		cfg.Security.ProviderKeyEncryptionKey = v
+	}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		if v == "*" {
 			cfg.Server.CORSOrigins = []string{"*"}

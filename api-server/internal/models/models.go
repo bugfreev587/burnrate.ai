@@ -80,16 +80,28 @@ type APIKey struct {
 	CreatedAt  time.Time
 }
 
-// ProviderKey stores an upstream LLM provider API key encrypted at the
-// application layer (AES-256-GCM) before being written to the database.
+// ProviderKey stores an upstream LLM provider API key using envelope encryption.
+// The key is encrypted with a per-record DEK; the DEK is encrypted with the master key.
 type ProviderKey struct {
-	ID              uint      `gorm:"primaryKey"`
-	TenantID        uint      `gorm:"index"`
-	Provider        string    // "anthropic" | "openai"
-	EncryptedAPIKey []byte    `gorm:"column:encrypted_api_key"`
-	Label           string
-	Revoked         bool
-	CreatedAt       time.Time
+	ID           uint      `gorm:"primaryKey"`
+	TenantID     uint      `gorm:"index"`
+	Provider     string    // "anthropic" | "openai"
+	Label        string
+	EncryptedKey []byte    `gorm:"column:encrypted_key"`
+	KeyNonce     []byte    `gorm:"column:key_nonce"`
+	EncryptedDEK []byte    `gorm:"column:encrypted_dek"`
+	DEKNonce     []byte    `gorm:"column:dek_nonce"`
+	Revoked      bool
+	CreatedAt    time.Time
+}
+
+// TenantProviderSettings records which ProviderKey is active for a given tenant+provider pair.
+type TenantProviderSettings struct {
+	ID          uint      `gorm:"primaryKey"`
+	TenantID    uint      `gorm:"uniqueIndex:idx_tenant_provider"`
+	Provider    string    `gorm:"uniqueIndex:idx_tenant_provider"`
+	ActiveKeyID uint
+	UpdatedAt   time.Time
 }
 
 // UsageLog records one LLM request reported by the claude-code agent.

@@ -63,6 +63,7 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.User{},
 		&models.APIKey{},
 		&models.ProviderKey{},
+		&models.TenantProviderSettings{},
 		&models.UsageLog{},
 		&models.Provider{},
 		&models.ModelDef{},

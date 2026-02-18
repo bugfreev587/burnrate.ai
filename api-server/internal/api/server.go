@@ -12,18 +12,21 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/proxy"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
 type Server struct {
-	cfg           *config.Config
-	postgresDB    *db.PostgresDB
-	apiKeySvc     *services.APIKeyService
-	usageSvc      *services.UsageLogService
-	pricingEngine *pricing.PricingEngine
-	rbac          *middleware.RBACMiddleware
-	router        *gin.Engine
-	httpServer    *http.Server
+	cfg            *config.Config
+	postgresDB     *db.PostgresDB
+	apiKeySvc      *services.APIKeyService
+	usageSvc       *services.UsageLogService
+	pricingEngine  *pricing.PricingEngine
+	providerKeySvc *services.ProviderKeyService
+	proxyHandler   *proxy.ProxyHandler
+	rbac           *middleware.RBACMiddleware
+	router         *gin.Engine
+	httpServer     *http.Server
 }
 
 func NewServer(
@@ -32,6 +35,8 @@ func NewServer(
 	apiKeySvc *services.APIKeyService,
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
+	providerKeySvc *services.ProviderKeyService,
+	proxyHandler *proxy.ProxyHandler,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -41,13 +46,15 @@ func NewServer(
 	rbac := middleware.NewRBACMiddleware(postgresDB.GetDB())
 
 	s := &Server{
-		cfg:           cfg,
-		postgresDB:    postgresDB,
-		apiKeySvc:     apiKeySvc,
-		usageSvc:      usageSvc,
-		pricingEngine: pricingEngine,
-		rbac:          rbac,
-		router:        router,
+		cfg:            cfg,
+		postgresDB:     postgresDB,
+		apiKeySvc:      apiKeySvc,
+		usageSvc:       usageSvc,
+		pricingEngine:  pricingEngine,
+		providerKeySvc: providerKeySvc,
+		proxyHandler:   proxyHandler,
+		rbac:           rbac,
+		router:         router,
 	}
 
 	s.setupMiddleware()
@@ -68,6 +75,10 @@ func (s *Server) setupRoutes() {
 	// ─── Public ────────────────────────────────────────────────────────────────
 	s.router.GET("/v1/health", s.handleHealth)
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
+
+	// ─── API-key authenticated: Anthropic proxy (for Claude Code agents) ────
+	s.router.POST("/v1/messages", apiKeyAuth, s.proxyHandler.HandleMessages)
+	s.router.GET("/v1/models", apiKeyAuth, s.proxyHandler.HandleModels)
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
 	agent := s.router.Group("/v1/agent")
@@ -107,6 +118,7 @@ func (s *Server) setupRoutes() {
 		admin.POST("/provider_keys", s.handleCreateProviderKey)
 		admin.GET("/provider_keys", s.handleListProviderKeys)
 		admin.DELETE("/provider_keys/:key_id", s.handleRevokeProviderKey)
+		admin.PUT("/provider_keys/:key_id/activate", s.handleActivateProviderKey)
 
 		// Pricing administration
 		pricingGroup := admin.Group("/pricing")
@@ -157,7 +169,7 @@ func (s *Server) Run() error {
 		Addr:         addr,
 		Handler:      s.router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 300 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 	return s.httpServer.ListenAndServe()

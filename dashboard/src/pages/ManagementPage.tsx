@@ -24,15 +24,31 @@ interface APIKey {
   created_at: string
 }
 
+interface ProviderKey {
+  id: number
+  provider: string
+  label: string
+  is_active: boolean
+  created_at: string
+}
+
 export default function ManagementPage() {
   const navigate = useNavigate()
   const { role, userId, isSynced } = useUserSync()
 
   const [users, setUsers] = useState<User[]>([])
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
+  const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Add provider key modal
+  const [showAddKeyModal, setShowAddKeyModal] = useState(false)
+  const [addKeyProvider, setAddKeyProvider] = useState<'anthropic' | 'openai'>('anthropic')
+  const [addKeyLabel, setAddKeyLabel] = useState('')
+  const [addKeyValue, setAddKeyValue] = useState('')
+  const [addingKey, setAddingKey] = useState(false)
 
   // Create API key modal
   const [showCreateKeyModal, setShowCreateKeyModal] = useState(false)
@@ -90,6 +106,18 @@ export default function ManagementPage() {
     }
   }, [headers])
 
+  const fetchProviderKeys = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys`, { headers: headers() })
+      if (res.ok) {
+        const data = await res.json()
+        setProviderKeys(data.provider_keys ?? [])
+      }
+    } catch (err) {
+      console.error('fetch provider keys:', err)
+    }
+  }, [headers])
+
   useEffect(() => {
     if (!isSynced) return
     if (!isAdmin) {
@@ -98,11 +126,11 @@ export default function ManagementPage() {
     }
     const load = async () => {
       setLoading(true)
-      await Promise.all([fetchUsers(), fetchAPIKeys()])
+      await Promise.all([fetchUsers(), fetchAPIKeys(), fetchProviderKeys()])
       setLoading(false)
     }
     load()
-  }, [isSynced, isAdmin, navigate, fetchUsers, fetchAPIKeys])
+  }, [isSynced, isAdmin, navigate, fetchUsers, fetchAPIKeys, fetchProviderKeys])
 
   // ── Invite user ──────────────────────────────────────────────────────────
 
@@ -290,6 +318,70 @@ export default function ManagementPage() {
       fetchAPIKeys()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to revoke API key')
+    }
+  }
+
+  // ── Provider Key actions ─────────────────────────────────────────────────
+
+  const handleAddProviderKey = async () => {
+    if (!addKeyLabel.trim() || !addKeyValue.trim()) {
+      showError('Label and API key are required')
+      return
+    }
+    setAddingKey(true)
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ provider: addKeyProvider, label: addKeyLabel.trim(), api_key: addKeyValue.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to add provider key')
+      showSuccess(`Provider key "${addKeyLabel}" added successfully`)
+      setShowAddKeyModal(false)
+      setAddKeyLabel('')
+      setAddKeyValue('')
+      setAddKeyProvider('anthropic')
+      fetchProviderKeys()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to add provider key')
+    } finally {
+      setAddingKey(false)
+    }
+  }
+
+  const handleActivateKey = async (id: number) => {
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys/${id}/activate`, {
+        method: 'PUT',
+        headers: headers(),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error ?? 'Failed to activate key')
+      }
+      showSuccess('Provider key activated')
+      fetchProviderKeys()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to activate provider key')
+    }
+  }
+
+  const handleRevokeProviderKey = async (id: number) => {
+    if (!confirm('Revoke this provider key? Any proxied requests using it will fail.')) return
+    try {
+      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys/${id}`, {
+        method: 'DELETE',
+        headers: headers(),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error ?? 'Failed to revoke key')
+      }
+      showSuccess('Provider key revoked')
+      fetchProviderKeys()
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to revoke provider key')
     }
   }
 
@@ -494,16 +586,69 @@ export default function ManagementPage() {
               <div>
                 <h2>Provider Keys</h2>
                 <p className="section-desc">
-                  Upstream LLM provider API keys (Anthropic, OpenAI) managed centrally by the gateway.
+                  Upstream LLM provider API keys (Anthropic, OpenAI) stored and rotated centrally.
+                  Set one as active and agents will use it automatically via the gateway proxy.
                 </p>
               </div>
-              <button className="btn btn-secondary" disabled title="Coming soon">
+              <button className="btn btn-primary" onClick={() => {
+                setAddKeyLabel(''); setAddKeyValue(''); setAddKeyProvider('anthropic')
+                setShowAddKeyModal(true)
+              }}>
                 Add Key
               </button>
             </div>
-            <div className="coming-soon-box">
-              <p>Provider key management is coming soon. You'll be able to store and rotate your
-                Anthropic API keys here so they never need to be distributed to developers.</p>
+            <div className="table-scroll">
+              <table className="mgmt-table">
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Label</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providerKeys.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="empty-cell">
+                        <div className="empty-cta">
+                          <p>No provider keys yet. Add your Anthropic API key to enable the gateway proxy.</p>
+                          <button className="btn btn-primary" onClick={() => {
+                            setAddKeyLabel(''); setAddKeyValue(''); setAddKeyProvider('anthropic')
+                            setShowAddKeyModal(true)
+                          }}>
+                            Add Your First Key
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : providerKeys.map(k => (
+                    <tr key={k.id}>
+                      <td><span className="provider-badge">{k.provider}</span></td>
+                      <td>{k.label}</td>
+                      <td>
+                        <span className={`status-badge ${k.is_active ? 'status-active' : 'status-suspended'}`}>
+                          {k.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
+                      <td>
+                        {!k.is_active && (
+                          <button className="btn btn-small btn-secondary"
+                            onClick={() => handleActivateKey(k.id)}>
+                            Activate
+                          </button>
+                        )}
+                        <button className="btn btn-small btn-danger"
+                          onClick={() => handleRevokeProviderKey(k.id)}>
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -609,6 +754,72 @@ export default function ManagementPage() {
               <button className="btn btn-primary" onClick={handleCreateAPIKey}
                 disabled={!newKeyLabel.trim()}>
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Provider Key Modal ───────────────────────────────────────── */}
+      {showAddKeyModal && (
+        <div className="modal-overlay" onClick={() => setShowAddKeyModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Add Provider Key</h2>
+            </div>
+            <div className="modal-body">
+              <p className="modal-hint">
+                Store your LLM provider API key securely. It will be encrypted at rest and never
+                exposed to developers. Agents route through the gateway automatically.
+              </p>
+              <div className="form-group">
+                <label>Provider</label>
+                <div className="role-select">
+                  {(['anthropic', 'openai'] as const).map(p => (
+                    <label key={p} className={`role-option ${addKeyProvider === p ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="provider"
+                        value={p}
+                        checked={addKeyProvider === p}
+                        onChange={() => setAddKeyProvider(p)}
+                      />
+                      <div>
+                        <strong>{p.charAt(0).toUpperCase() + p.slice(1)}</strong>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Label <span className="required">*</span></label>
+                <input
+                  type="text"
+                  value={addKeyLabel}
+                  onChange={e => setAddKeyLabel(e.target.value)}
+                  placeholder="e.g. prod-anthropic-key"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label>API Key <span className="required">*</span></label>
+                <input
+                  type="password"
+                  value={addKeyValue}
+                  onChange={e => setAddKeyValue(e.target.value)}
+                  placeholder="sk-ant-… or sk-…"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setShowAddKeyModal(false)}
+                disabled={addingKey}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleAddProviderKey}
+                disabled={!addKeyLabel.trim() || !addKeyValue.trim() || addingKey}>
+                {addingKey ? 'Adding…' : 'Add Key'}
               </button>
             </div>
           </div>

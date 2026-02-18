@@ -1,28 +1,135 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
 // handleCreateProviderKey stores an upstream LLM provider API key.
 // POST /v1/admin/provider_keys
 func (s *Server) handleCreateProviderKey(c *gin.Context) {
-	// TODO: implement
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	tenantID := c.GetUint("tenant_id")
+
+	var req struct {
+		Provider string `json:"provider" binding:"required"`
+		Label    string `json:"label"    binding:"required"`
+		APIKey   string `json:"api_key"  binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pk, err := s.providerKeySvc.Store(c.Request.Context(), tenantID, req.Provider, req.Label, req.APIKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store provider key"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         pk.ID,
+		"provider":   pk.Provider,
+		"label":      pk.Label,
+		"created_at": pk.CreatedAt,
+	})
 }
 
-// handleListProviderKeys lists stored provider keys (masked).
+// handleListProviderKeys lists stored provider keys (masked, no plaintext).
 // GET /v1/admin/provider_keys
 func (s *Server) handleListProviderKeys(c *gin.Context) {
-	// TODO: implement
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	tenantID := c.GetUint("tenant_id")
+
+	keys, err := s.providerKeySvc.List(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list provider keys"})
+		return
+	}
+
+	type keyResp struct {
+		ID        uint      `json:"id"`
+		Provider  string    `json:"provider"`
+		Label     string    `json:"label"`
+		IsActive  bool      `json:"is_active"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	// Collect active key IDs per provider
+	activeKeyIDs := map[string]uint{}
+	providers := map[string]bool{}
+	for _, k := range keys {
+		providers[k.Provider] = true
+	}
+	for provider := range providers {
+		settings, _ := s.providerKeySvc.GetActiveSettings(c.Request.Context(), tenantID, provider)
+		if settings != nil {
+			activeKeyIDs[provider] = settings.ActiveKeyID
+		}
+	}
+
+	resp := make([]keyResp, 0, len(keys))
+	for _, k := range keys {
+		resp = append(resp, keyResp{
+			ID:        k.ID,
+			Provider:  k.Provider,
+			Label:     k.Label,
+			IsActive:  activeKeyIDs[k.Provider] == k.ID,
+			CreatedAt: k.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"provider_keys": resp})
 }
 
 // handleRevokeProviderKey revokes a provider key.
 // DELETE /v1/admin/provider_keys/:key_id
 func (s *Server) handleRevokeProviderKey(c *gin.Context) {
-	// TODO: implement
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	tenantID := c.GetUint("tenant_id")
+	keyIDStr := c.Param("key_id")
+	keyID64, err := strconv.ParseUint(keyIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid key_id"})
+		return
+	}
+	keyID := uint(keyID64)
+
+	if err := s.providerKeySvc.Revoke(c.Request.Context(), tenantID, keyID); err != nil {
+		if errors.Is(err, services.ErrProviderKeyNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "provider key not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke provider key"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "provider key revoked"})
+}
+
+// handleActivateProviderKey sets a provider key as the active key for its provider.
+// PUT /v1/admin/provider_keys/:key_id/activate
+func (s *Server) handleActivateProviderKey(c *gin.Context) {
+	tenantID := c.GetUint("tenant_id")
+	keyIDStr := c.Param("key_id")
+	keyID64, err := strconv.ParseUint(keyIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid key_id"})
+		return
+	}
+	keyID := uint(keyID64)
+
+	if err := s.providerKeySvc.Activate(c.Request.Context(), tenantID, keyID); err != nil {
+		if errors.Is(err, services.ErrProviderKeyNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "provider key not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate provider key"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "provider key activated"})
 }

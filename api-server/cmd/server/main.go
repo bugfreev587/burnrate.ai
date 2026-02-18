@@ -14,7 +14,9 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/api"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/config"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/events"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
+	"github.com/xiaoboyu/burnrate-ai/api-server/internal/proxy"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
 )
 
@@ -77,8 +79,26 @@ func main() {
 	// Pricing engine
 	pricingEngine := pricing.NewPricingEngine(postgresDB.GetDB(), rdb)
 
+	// Provider key service (requires PROVIDER_KEY_ENCRYPTION_KEY)
+	providerKeySvc, err := services.NewProviderKeyService(postgresDB.GetDB(), cfg.Security.ProviderKeyEncryptionKey)
+	if err != nil {
+		log.Fatalf("provider key service init err: %v", err)
+	}
+	log.Println("✓ Provider key service initialized")
+
+	// Event queue (Redis Streams producer)
+	eventQueue := events.NewEventQueue(rdb)
+
+	// Usage worker (Redis Streams consumer)
+	usageWorker := events.NewUsageWorker(rdb, pricingEngine, usageSvc)
+	go usageWorker.Run(context.Background())
+	log.Println("✓ Usage worker started")
+
+	// Proxy handler
+	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue)
+
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)
