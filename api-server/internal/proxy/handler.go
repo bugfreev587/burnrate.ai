@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,8 +29,16 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 	return &ProxyHandler{
 		providerKeySvc: providerKeySvc,
 		eventQueue:     eventQueue,
+		// No overall Timeout: streaming responses can run arbitrarily long.
+		// Client disconnect is handled via context cancellation on the upstream request.
+		// ResponseHeaderTimeout ensures we fail fast if Anthropic is unresponsive.
 		httpClient: &http.Client{
-			Timeout: 300 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 30 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+			},
 		},
 	}
 }
@@ -38,7 +47,7 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 
-	// Fetch the active Anthropic key for this tenant
+	// Fetch the active Anthropic key for this tenant.
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
 	if err != nil {
 		if errors.Is(err, services.ErrNoActiveKey) {
@@ -53,16 +62,15 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 		return
 	}
 
-	// Read the request body (we need it to detect streaming and forward it)
+	// Read the request body to detect streaming intent and forward it.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
 
-	streaming := isStreamingRequest(bodyBytes)
-
-	// Build upstream request
+	// Build upstream request, bound to the client's context so that if the
+	// client disconnects, the upstream request is cancelled automatically.
 	upstreamURL := anthropicBaseURL + "/v1/messages"
 	upstreamReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstreamURL, newBodyReader(bodyBytes))
 	if err != nil {
@@ -70,40 +78,53 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 		return
 	}
 
-	// Copy relevant headers from the client request
-	copyHeaders(c.Request, upstreamReq)
-
-	// Override Authorization with the tenant's Anthropic key
+	copyClientHeaders(c.Request, upstreamReq)
 	upstreamReq.Header.Set("Authorization", "Bearer "+string(plaintextKey))
 	upstreamReq.Header.Set("x-api-key", string(plaintextKey))
 	upstreamReq.Header.Set("Content-Type", "application/json")
-
-	// Forward anthropic-version; default if not set
 	if upstreamReq.Header.Get("anthropic-version") == "" {
 		upstreamReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	}
 
-	// Execute upstream request
 	resp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
 		if c.Request.Context().Err() != nil {
-			return // client disconnected
+			return // client disconnected; nothing to write
 		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "upstream request failed"})
 		return
 	}
 	defer resp.Body.Close()
 
-	// Copy response headers to client
+	// Determine from the upstream response whether this is an SSE stream.
+	// This is the authoritative signal — more reliable than reading the request body.
+	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+
+	// Copy upstream response headers.
+	// Use Add (not Set) to preserve multi-value headers (e.g. Set-Cookie).
+	// Skip Content-Length: for SSE it is absent; for errors forwarding a wrong
+	// Content-Length alongside a modified body confuses clients.
 	for key, vals := range resp.Header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
 		for _, v := range vals {
-			c.Header(key, v)
+			c.Writer.Header().Add(key, v)
 		}
 	}
-	c.Status(resp.StatusCode)
+
+	// For SSE responses, override headers that matter for streaming to work
+	// correctly through proxies (Railway/Nginx) and browsers.
+	if isSSE {
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("X-Accel-Buffering", "no") // prevents Nginx/Railway buffering
+		c.Writer.Header().Del("Content-Length")
+	}
+
+	c.Writer.WriteHeader(resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
-		// Forward error response verbatim
 		io.Copy(c.Writer, resp.Body)
 		return
 	}
@@ -111,14 +132,12 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 	now := time.Now()
 	var counts TokenCounts
 
-	if streaming {
-		// Pipe SSE stream to client while parsing token counts
+	if isSSE {
 		counts, err = ParseSSE(c.Request.Context(), resp.Body, c.Writer)
 		if err != nil {
 			log.Printf("proxy: SSE parse error (tenant=%d): %v", tenantID, err)
 		}
 	} else {
-		// Read full JSON response, forward it, then extract usage
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
 			log.Printf("proxy: read response body (tenant=%d): %v", tenantID, readErr)
@@ -128,7 +147,7 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 		counts = extractTokensFromJSON(respBody)
 	}
 
-	// Publish usage event to Redis Streams (fire-and-forget)
+	// Publish usage event to Redis Streams (fire-and-forget).
 	if counts.MessageID != "" || counts.InputTokens > 0 || counts.OutputTokens > 0 {
 		msg := events.UsageEventMsg{
 			TenantID:            tenantID,
@@ -182,23 +201,21 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	defer resp.Body.Close()
 
 	for key, vals := range resp.Header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
 		for _, v := range vals {
-			c.Header(key, v)
+			c.Writer.Header().Add(key, v)
 		}
 	}
-	c.Status(resp.StatusCode)
+	c.Writer.WriteHeader(resp.StatusCode)
 	io.Copy(c.Writer, resp.Body)
 }
 
-// copyHeaders copies safe request headers from the client to the upstream request.
-func copyHeaders(src *http.Request, dst *http.Request) {
-	safe := []string{
-		"anthropic-version",
-		"anthropic-beta",
-		"content-type",
-		"accept",
-	}
-	for _, h := range safe {
+// copyClientHeaders copies safe Anthropic-specific headers from the client request
+// to the upstream request.
+func copyClientHeaders(src *http.Request, dst *http.Request) {
+	for _, h := range []string{"anthropic-version", "anthropic-beta", "accept"} {
 		if v := src.Header.Get(h); v != "" {
 			dst.Header.Set(h, v)
 		}
