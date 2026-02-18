@@ -186,6 +186,90 @@ func (s *ProviderKeyService) Activate(ctx context.Context, tenantID uint, keyID 
 	return result.Error
 }
 
+// Rotate atomically stores a new provider key, activates it, and revokes the old key
+// — all inside a single DB transaction. The old key's plaintext is evicted from cache
+// after the transaction commits.
+func (s *ProviderKeyService) Rotate(ctx context.Context, tenantID uint, oldKeyID uint, label, plaintextKey string) (*models.ProviderKey, error) {
+	// Verify old key belongs to this tenant and is not already revoked.
+	var oldKey models.ProviderKey
+	if err := s.db.WithContext(ctx).First(&oldKey, oldKeyID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrProviderKeyNotFound
+		}
+		return nil, fmt.Errorf("load old provider key: %w", err)
+	}
+	if oldKey.TenantID != tenantID {
+		return nil, ErrProviderKeyNotFound
+	}
+	if oldKey.Revoked {
+		return nil, fmt.Errorf("cannot rotate an already-revoked key")
+	}
+
+	// Encrypt the new key outside the transaction (no I/O inside tx).
+	dek := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
+		return nil, fmt.Errorf("generate DEK: %w", err)
+	}
+	encKey, keyNonce, err := aesGCMEncrypt(dek, []byte(plaintextKey))
+	if err != nil {
+		return nil, fmt.Errorf("encrypt key with DEK: %w", err)
+	}
+	encDEK, dekNonce, err := aesGCMEncrypt(s.masterKey, dek)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt DEK with master key: %w", err)
+	}
+
+	var newKey models.ProviderKey
+
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Store the new key.
+		newKey = models.ProviderKey{
+			TenantID:     tenantID,
+			Provider:     oldKey.Provider,
+			Label:        label,
+			EncryptedKey: encKey,
+			KeyNonce:     keyNonce,
+			EncryptedDEK: encDEK,
+			DEKNonce:     dekNonce,
+			Revoked:      false,
+		}
+		if err := tx.Create(&newKey).Error; err != nil {
+			return fmt.Errorf("store new provider key: %w", err)
+		}
+
+		// 2. Atomically point TenantProviderSettings at the new key.
+		settings := models.TenantProviderSettings{
+			TenantID:    tenantID,
+			Provider:    oldKey.Provider,
+			ActiveKeyID: newKey.ID,
+			UpdatedAt:   time.Now(),
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "provider"}},
+			DoUpdates: clause.AssignmentColumns([]string{"active_key_id", "updated_at"}),
+		}).Create(&settings).Error; err != nil {
+			return fmt.Errorf("activate new provider key: %w", err)
+		}
+
+		// 3. Revoke the old key.
+		if err := tx.Model(&oldKey).Update("revoked", true).Error; err != nil {
+			return fmt.Errorf("revoke old provider key: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Evict old key from in-process cache after the transaction commits.
+	s.mu.Lock()
+	delete(s.cache, oldKeyID)
+	s.mu.Unlock()
+
+	return &newKey, nil
+}
+
 // Revoke marks a provider key as revoked, evicts it from cache, and clears TenantProviderSettings
 // if it was the active key.
 func (s *ProviderKeyService) Revoke(ctx context.Context, tenantID uint, keyID uint) error {

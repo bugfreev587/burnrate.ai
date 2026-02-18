@@ -110,6 +110,46 @@ func (s *Server) handleRevokeProviderKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "provider key revoked"})
 }
 
+// handleRotateProviderKey atomically stores a new key, activates it, and revokes the old one.
+// POST /v1/admin/provider_keys/:key_id/rotate
+func (s *Server) handleRotateProviderKey(c *gin.Context) {
+	tenantID := c.GetUint("tenant_id")
+	keyIDStr := c.Param("key_id")
+	keyID64, err := strconv.ParseUint(keyIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid key_id"})
+		return
+	}
+	oldKeyID := uint(keyID64)
+
+	var req struct {
+		Label  string `json:"label"   binding:"required"`
+		APIKey string `json:"api_key" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	newKey, err := s.providerKeySvc.Rotate(c.Request.Context(), tenantID, oldKeyID, req.Label, req.APIKey)
+	if err != nil {
+		if errors.Is(err, services.ErrProviderKeyNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "provider key not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         newKey.ID,
+		"provider":   newKey.Provider,
+		"label":      newKey.Label,
+		"is_active":  true,
+		"created_at": newKey.CreatedAt,
+	})
+}
+
 // handleActivateProviderKey sets a provider key as the active key for its provider.
 // PUT /v1/admin/provider_keys/:key_id/activate
 func (s *Server) handleActivateProviderKey(c *gin.Context) {

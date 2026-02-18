@@ -119,6 +119,7 @@ func (s *Server) setupRoutes() {
 		admin.GET("/provider_keys", s.handleListProviderKeys)
 		admin.DELETE("/provider_keys/:key_id", s.handleRevokeProviderKey)
 		admin.PUT("/provider_keys/:key_id/activate", s.handleActivateProviderKey)
+		admin.POST("/provider_keys/:key_id/rotate", s.handleRotateProviderKey)
 
 		// Pricing administration
 		pricingGroup := admin.Group("/pricing")
