@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
 
 function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('userId') || ''
+  const userId = localStorage.getItem('user_id') || ''
   return { 'Content-Type': 'application/json', 'X-User-ID': userId }
 }
 
