@@ -6,12 +6,14 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -20,8 +22,18 @@ import (
 
 const providerKeyCacheTTL = 5 * time.Minute
 
+// tpsCacheTTL is the Redis TTL for the TenantProviderSettings cache entry.
+// Short enough that a missed invalidation self-heals quickly.
+const tpsCacheTTL = 60 * time.Second
+
 var ErrProviderKeyNotFound = errors.New("provider key not found")
 var ErrNoActiveKey = errors.New("no active provider key configured")
+
+// tpsCacheEntry is the value stored under tpsCacheKey in Redis.
+type tpsCacheEntry struct {
+	ActiveKeyID   uint `json:"active_key_id"`
+	PolicyVersion int  `json:"policy_version"`
+}
 
 type cachedProviderKey struct {
 	plaintext []byte
@@ -31,12 +43,14 @@ type cachedProviderKey struct {
 type ProviderKeyService struct {
 	db        *gorm.DB
 	masterKey []byte // 32 bytes decoded from hex env var
+	rdb       *redis.Client
 	mu        sync.RWMutex
 	cache     map[uint]cachedProviderKey // key_id → cachedProviderKey
 }
 
 // NewProviderKeyService decodes PROVIDER_KEY_ENCRYPTION_KEY (32-byte hex) and creates the service.
-func NewProviderKeyService(db *gorm.DB, masterKeyHex string) (*ProviderKeyService, error) {
+// rdb may be nil; caching is skipped when Redis is unavailable.
+func NewProviderKeyService(db *gorm.DB, masterKeyHex string, rdb *redis.Client) (*ProviderKeyService, error) {
 	if masterKeyHex == "" {
 		return nil, fmt.Errorf("PROVIDER_KEY_ENCRYPTION_KEY is not set; refusing to start without encryption key")
 	}
@@ -50,8 +64,36 @@ func NewProviderKeyService(db *gorm.DB, masterKeyHex string) (*ProviderKeyServic
 	return &ProviderKeyService{
 		db:        db,
 		masterKey: key,
+		rdb:       rdb,
 		cache:     make(map[uint]cachedProviderKey),
 	}, nil
+}
+
+// tpsCacheKey returns the Redis key for a tenant+provider TPS cache entry.
+func tpsCacheKey(tenantID uint, provider string) string {
+	return fmt.Sprintf("tps:%d:%s", tenantID, provider)
+}
+
+// cacheTPS writes a TenantProviderSettings entry to Redis.
+func (s *ProviderKeyService) cacheTPS(ctx context.Context, settings *models.TenantProviderSettings) {
+	if s.rdb == nil {
+		return
+	}
+	entry := tpsCacheEntry{
+		ActiveKeyID:   settings.ActiveKeyID,
+		PolicyVersion: settings.PolicyVersion,
+	}
+	if b, err := json.Marshal(entry); err == nil {
+		s.rdb.Set(ctx, tpsCacheKey(settings.TenantID, settings.Provider), b, tpsCacheTTL)
+	}
+}
+
+// invalidateTPS removes the Redis TPS cache entry for a tenant+provider pair,
+// forcing the next GetActiveKey call to re-fetch from DB.
+func (s *ProviderKeyService) invalidateTPS(ctx context.Context, tenantID uint, provider string) {
+	if s.rdb != nil {
+		s.rdb.Del(ctx, tpsCacheKey(tenantID, provider))
+	}
 }
 
 // Store encrypts the plaintext key with envelope encryption and persists it.
@@ -137,7 +179,20 @@ func (s *ProviderKeyService) GetPlaintext(ctx context.Context, keyID uint) ([]by
 }
 
 // GetActiveKey looks up the active key for a tenant+provider pair and returns its plaintext.
+// It checks the Redis TPS cache first to avoid a DB round trip on every proxy request.
+// The TPS cache is invalidated on every Activate or Rotate call.
 func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, provider string) ([]byte, error) {
+	// Fast path: Redis TPS cache.
+	if s.rdb != nil {
+		if raw, err := s.rdb.Get(ctx, tpsCacheKey(tenantID, provider)).Result(); err == nil {
+			var entry tpsCacheEntry
+			if json.Unmarshal([]byte(raw), &entry) == nil && entry.ActiveKeyID != 0 {
+				return s.GetPlaintext(ctx, entry.ActiveKeyID)
+			}
+		}
+	}
+
+	// Slow path: DB.
 	var settings models.TenantProviderSettings
 	err := s.db.WithContext(ctx).
 		Where("tenant_id = ? AND provider = ?", tenantID, provider).
@@ -151,12 +206,16 @@ func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, pr
 	if settings.ActiveKeyID == 0 {
 		return nil, ErrNoActiveKey
 	}
+
+	// Populate cache for next request.
+	s.cacheTPS(ctx, &settings)
+
 	return s.GetPlaintext(ctx, settings.ActiveKeyID)
 }
 
-// Activate upserts TenantProviderSettings to point to the given key.
+// Activate upserts TenantProviderSettings to point to the given key and bumps policy_version.
 func (s *ProviderKeyService) Activate(ctx context.Context, tenantID uint, keyID uint) error {
-	// Verify the key belongs to the tenant and is not revoked
+	// Verify the key belongs to the tenant and is not revoked.
 	var pk models.ProviderKey
 	if err := s.db.WithContext(ctx).First(&pk, keyID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -171,19 +230,30 @@ func (s *ProviderKeyService) Activate(ctx context.Context, tenantID uint, keyID 
 		return fmt.Errorf("cannot activate a revoked key")
 	}
 
-	settings := models.TenantProviderSettings{
-		TenantID:    tenantID,
-		Provider:    pk.Provider,
-		ActiveKeyID: keyID,
-		UpdatedAt:   time.Now(),
-	}
+	// Upsert: INSERT with policy_version=1; on conflict bump policy_version atomically.
 	result := s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "provider"}},
-			DoUpdates: clause.AssignmentColumns([]string{"active_key_id", "updated_at"}),
+			Columns: []clause.Column{{Name: "tenant_id"}, {Name: "provider"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"active_key_id":  keyID,
+				"updated_at":     time.Now(),
+				"policy_version": gorm.Expr("tenant_provider_settings.policy_version + 1"),
+			}),
 		}).
-		Create(&settings)
-	return result.Error
+		Create(&models.TenantProviderSettings{
+			TenantID:      tenantID,
+			Provider:      pk.Provider,
+			ActiveKeyID:   keyID,
+			PolicyVersion: 1,
+			UpdatedAt:     time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// Invalidate TPS cache so the next request re-fetches the new policy_version from DB.
+	s.invalidateTPS(ctx, tenantID, pk.Provider)
+	return nil
 }
 
 // Rotate atomically stores a new provider key, activates it, and revokes the old key
@@ -237,17 +307,21 @@ func (s *ProviderKeyService) Rotate(ctx context.Context, tenantID uint, oldKeyID
 			return fmt.Errorf("store new provider key: %w", err)
 		}
 
-		// 2. Atomically point TenantProviderSettings at the new key.
-		settings := models.TenantProviderSettings{
-			TenantID:    tenantID,
-			Provider:    oldKey.Provider,
-			ActiveKeyID: newKey.ID,
-			UpdatedAt:   time.Now(),
-		}
+		// 2. Atomically point TenantProviderSettings at the new key and bump policy_version.
 		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "provider"}},
-			DoUpdates: clause.AssignmentColumns([]string{"active_key_id", "updated_at"}),
-		}).Create(&settings).Error; err != nil {
+			Columns: []clause.Column{{Name: "tenant_id"}, {Name: "provider"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"active_key_id":  newKey.ID,
+				"updated_at":     time.Now(),
+				"policy_version": gorm.Expr("tenant_provider_settings.policy_version + 1"),
+			}),
+		}).Create(&models.TenantProviderSettings{
+			TenantID:      tenantID,
+			Provider:      oldKey.Provider,
+			ActiveKeyID:   newKey.ID,
+			PolicyVersion: 1,
+			UpdatedAt:     time.Now(),
+		}).Error; err != nil {
 			return fmt.Errorf("activate new provider key: %w", err)
 		}
 
@@ -266,6 +340,10 @@ func (s *ProviderKeyService) Rotate(ctx context.Context, tenantID uint, oldKeyID
 	s.mu.Lock()
 	delete(s.cache, oldKeyID)
 	s.mu.Unlock()
+
+	// Invalidate Redis TPS cache so every pod picks up the new active_key_id
+	// and policy_version on the very next request (no wait for TTL expiry).
+	s.invalidateTPS(ctx, tenantID, oldKey.Provider)
 
 	return &newKey, nil
 }

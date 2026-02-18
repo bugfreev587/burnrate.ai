@@ -96,12 +96,16 @@ type ProviderKey struct {
 }
 
 // TenantProviderSettings records which ProviderKey is active for a given tenant+provider pair.
+// PolicyVersion is a monotonically-increasing counter bumped on every Activate or Rotate call.
+// It is stored in the Redis TPS cache entry so that after a rotation any pod can detect a
+// stale cached active_key_id without a DB round trip.
 type TenantProviderSettings struct {
-	ID          uint      `gorm:"primaryKey"`
-	TenantID    uint      `gorm:"uniqueIndex:idx_tenant_provider"`
-	Provider    string    `gorm:"uniqueIndex:idx_tenant_provider"`
-	ActiveKeyID uint
-	UpdatedAt   time.Time
+	ID            uint      `gorm:"primaryKey"`
+	TenantID      uint      `gorm:"uniqueIndex:idx_tenant_provider"`
+	Provider      string    `gorm:"uniqueIndex:idx_tenant_provider"`
+	ActiveKeyID   uint
+	PolicyVersion int       `gorm:"default:1"`
+	UpdatedAt     time.Time
 }
 
 // UsageLog records one LLM request reported by the claude-code agent.

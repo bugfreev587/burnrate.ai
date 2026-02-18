@@ -80,7 +80,7 @@ func main() {
 	pricingEngine := pricing.NewPricingEngine(postgresDB.GetDB(), rdb)
 
 	// Provider key service (requires PROVIDER_KEY_ENCRYPTION_KEY)
-	providerKeySvc, err := services.NewProviderKeyService(postgresDB.GetDB(), cfg.Security.ProviderKeyEncryptionKey)
+	providerKeySvc, err := services.NewProviderKeyService(postgresDB.GetDB(), cfg.Security.ProviderKeyEncryptionKey, rdb)
 	if err != nil {
 		log.Fatalf("provider key service init err: %v", err)
 	}
