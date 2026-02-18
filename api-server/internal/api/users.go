@@ -281,6 +281,74 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 
 // ── Owner-only endpoints ─────────────────────────────────────────────────────
 
+type tenantSettingsResponse struct {
+	TenantID   uint   `json:"tenant_id"`
+	Name       string `json:"name"`
+	MaxAPIKeys int    `json:"max_api_keys"`
+}
+
+// handleGetTenantSettings returns the current tenant settings.
+// GET /v1/owner/settings
+func (s *Server) handleGetTenantSettings(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+	c.JSON(http.StatusOK, tenantSettingsResponse{
+		TenantID:   tenant.ID,
+		Name:       tenant.Name,
+		MaxAPIKeys: tenant.MaxAPIKeys,
+	})
+}
+
+type updateTenantSettingsReq struct {
+	MaxAPIKeys *int `json:"max_api_keys"`
+}
+
+// handleUpdateTenantSettings updates owner-controlled tenant settings.
+// PATCH /v1/owner/settings
+func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req updateTenantSettingsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.MaxAPIKeys == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no settings provided"})
+		return
+	}
+	if *req.MaxAPIKeys < 1 || *req.MaxAPIKeys > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "max_api_keys must be between 1 and 100"})
+		return
+	}
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+	tenant.MaxAPIKeys = *req.MaxAPIKeys
+	if err := s.postgresDB.GetDB().Model(&tenant).Update("max_api_keys", *req.MaxAPIKeys).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update settings"})
+		return
+	}
+	c.JSON(http.StatusOK, tenantSettingsResponse{
+		TenantID:   tenant.ID,
+		Name:       tenant.Name,
+		MaxAPIKeys: tenant.MaxAPIKeys,
+	})
+}
+
 // handlePromoteAdmin promotes a viewer or editor to admin (owner only).
 // POST /v1/owner/users/:user_id/promote-admin
 func (s *Server) handlePromoteAdmin(c *gin.Context) {

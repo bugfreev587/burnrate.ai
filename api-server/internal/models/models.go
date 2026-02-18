@@ -10,9 +10,10 @@ import (
 // Tenant is the top-level multi-tenant boundary.
 // Every user, API key, provider key, and usage log belongs to exactly one tenant.
 type Tenant struct {
-	ID        uint      `gorm:"primaryKey"`
-	Name      string
-	CreatedAt time.Time
+	ID          uint      `gorm:"primaryKey"`
+	Name        string
+	MaxAPIKeys  int       `gorm:"default:5"` // max active (non-revoked, non-expired) keys allowed
+	CreatedAt   time.Time
 }
 
 // User represents a dashboard user synced from Clerk on first sign-in.

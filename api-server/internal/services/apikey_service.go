@@ -40,9 +40,38 @@ func NewAPIKeyService(db *gorm.DB, pepper []byte, cache *redis.Client, ttl time.
 	return &APIKeyService{db: db, pepper: pepper, cache: cache, cacheTTL: ttl}
 }
 
+// ErrAPIKeyLimitReached is returned when a tenant has reached their active key limit.
+type ErrAPIKeyLimitReached struct {
+	Limit   int
+	Current int64
+}
+
+func (e *ErrAPIKeyLimitReached) Error() string {
+	return fmt.Sprintf("api key limit reached: %d/%d active keys", e.Current, e.Limit)
+}
+
 // CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
 func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time) (string, string, error) {
+	// Fetch tenant to read the limit
+	var tenant models.Tenant
+	if err := s.db.WithContext(ctx).First(&tenant, tenantID).Error; err != nil {
+		return "", "", fmt.Errorf("tenant not found: %w", err)
+	}
+
+	// Count active keys: non-revoked and not yet expired
+	var activeCount int64
+	s.db.WithContext(ctx).Model(&models.APIKey{}).
+		Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", tenantID).
+		Count(&activeCount)
+
+	limit := tenant.MaxAPIKeys
+	if limit <= 0 {
+		limit = 5 // safety fallback
+	}
+	if activeCount >= int64(limit) {
+		return "", "", &ErrAPIKeyLimitReached{Limit: limit, Current: activeCount}
+	}
 	rawSecret := make([]byte, 32)
 	if _, err := rand.Read(rawSecret); err != nil {
 		return "", "", err

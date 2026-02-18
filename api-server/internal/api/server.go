@@ -136,6 +136,8 @@ func (s *Server) setupRoutes() {
 		owner.POST("/users/:user_id/promote-admin", s.handlePromoteAdmin)
 		owner.DELETE("/users/:user_id/demote-admin", s.handleDemoteAdmin)
 		owner.POST("/transfer-ownership", s.handleTransferOwnership)
+		owner.GET("/settings", s.handleGetTenantSettings)
+		owner.PATCH("/settings", s.handleUpdateTenantSettings)
 	}
 }
 
