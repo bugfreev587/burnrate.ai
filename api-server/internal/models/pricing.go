@@ -92,6 +92,36 @@ type BudgetLimit struct {
 	CreatedAt      time.Time
 }
 
+// PricingConfig is a named set of model pricing overrides scoped to a tenant.
+// A config is associated with at most one API key via APIKeyConfig.
+type PricingConfig struct {
+	ID          uint      `gorm:"primaryKey"`
+	TenantID    uint      `gorm:"index"`
+	Name        string    `gorm:"size:128"`
+	Description string
+	CreatedAt   time.Time
+}
+
+// PricingConfigRate is a single price override belonging to a PricingConfig.
+type PricingConfigRate struct {
+	ID           uint            `gorm:"primaryKey"`
+	ConfigID     uint            `gorm:"index"`
+	ModelID      uint
+	PriceType    string          // input|output|cache_creation|cache_read|reasoning
+	PricePerUnit decimal.Decimal `gorm:"type:numeric(20,8)"`
+	UnitSize     int64           `gorm:"default:1000000"`
+}
+
+// APIKeyConfig associates one PricingConfig with one API key (by key_id UUID).
+// Deleted automatically when the key is revoked.
+type APIKeyConfig struct {
+	ID        uint      `gorm:"primaryKey"`
+	TenantID  uint      `gorm:"index"`
+	KeyID     string    `gorm:"uniqueIndex;size:36"` // references api_keys.key_id
+	ConfigID  uint      `gorm:"index"`
+	CreatedAt time.Time
+}
+
 // Price type constants
 const (
 	PriceTypeInput         = "input"

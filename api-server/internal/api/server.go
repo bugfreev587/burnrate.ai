@@ -122,7 +122,17 @@ func (s *Server) setupRoutes() {
 			pricingGroup.DELETE("/markups/:markup_id", s.handleDeleteMarkup)
 			pricingGroup.GET("/contracts", s.handleListContracts)
 			pricingGroup.POST("/contracts", s.handleCreateContract)
+			pricingGroup.GET("/catalog", s.handleGetPricingCatalog)
 		}
+
+		// Pricing configs (per-key overrides)
+		admin.GET("/pricing-configs", s.handleListPricingConfigs)
+		admin.POST("/pricing-configs", s.handleCreatePricingConfig)
+		admin.DELETE("/pricing-configs/:config_id", s.handleDeletePricingConfig)
+		admin.POST("/pricing-configs/:config_id/rates", s.handleAddConfigRate)
+		admin.DELETE("/pricing-configs/:config_id/rates/:rate_id", s.handleDeleteConfigRate)
+		admin.PUT("/pricing-configs/:config_id/assign", s.handleAssignPricingConfig)
+		admin.DELETE("/pricing-configs/:config_id/assign", s.handleUnassignPricingConfig)
 
 		// Budget management
 		admin.GET("/budget", s.handleGetBudget)

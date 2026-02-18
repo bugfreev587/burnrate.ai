@@ -1,0 +1,517 @@
+/* ── Page layout ─────────────────────────────────────────────────────────── */
+.pc-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.pc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.pc-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+
+.pc-subtitle {
+  color: var(--text-muted);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* ── Flash messages ──────────────────────────────────────────────────────── */
+.flash {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+}
+.flash-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+.flash-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+.pc-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.pc-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.pc-section-header h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.pc-section-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Provider blocks (in catalog) ────────────────────────────────────────── */
+.pc-provider-block {
+  margin-bottom: 1.5rem;
+}
+
+.pc-provider-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Provider badge ──────────────────────────────────────────────────────── */
+.provider-badge {
+  display: inline-block;
+  padding: 0.2em 0.55em;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.pc-table-wrap {
+  overflow-x: auto;
+}
+
+.pc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.pc-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+
+.pc-table td {
+  padding: 0.55rem 0.75rem;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  white-space: nowrap;
+}
+
+.pc-table tr:last-child td {
+  border-bottom: none;
+}
+
+.pc-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pc-na {
+  color: var(--text-muted) !important;
+}
+
+.model-name {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: rgba(255,255,255,0.06);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+/* ── Empty states ────────────────────────────────────────────────────────── */
+.pc-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+/* ── Config cards ────────────────────────────────────────────────────────── */
+.pc-configs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pc-config-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+  transition: border-color 0.15s;
+}
+
+.pc-config-card:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.pc-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pc-config-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.pc-chevron {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.pc-config-name {
+  font-size: 0.95rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pc-config-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pc-config-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.pc-key-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+  padding: 0.25em 0.5em;
+  font-size: 0.78rem;
+  color: #a5b4fc;
+}
+
+.pc-key-badge code {
+  font-family: monospace;
+  opacity: 0.7;
+}
+
+.pc-unassign {
+  background: none;
+  border: none;
+  color: #a5b4fc;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.pc-unassign:hover { opacity: 1; }
+
+.pc-no-key {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.pc-config-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pc-btn-sm {
+  font-size: 0.78rem !important;
+  padding: 0.3rem 0.65rem !important;
+}
+
+/* ── Rates body ──────────────────────────────────────────────────────────── */
+.pc-rates-body {
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  background: rgba(0,0,0,0.15);
+}
+
+.pc-rates-empty {
+  color: var(--text-muted);
+  font-size: 0.87rem;
+  margin: 0;
+  text-align: center;
+  padding: 0.75rem 0;
+}
+
+.pc-rates-table {
+  margin-top: 0;
+}
+
+.pc-ptype-badge {
+  display: inline-block;
+  padding: 0.15em 0.45em;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+  text-transform: capitalize;
+}
+
+.pc-price-cell {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.pc-delete-rate {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0 0.25rem;
+  transition: color 0.15s;
+}
+.pc-delete-rate:hover { color: var(--danger); }
+
+/* ── Modals ──────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-wide {
+  max-width: 560px;
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem 0;
+}
+
+.modal-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0.3rem 0 0;
+}
+
+.modal-body {
+  padding: 1.25rem 1.5rem;
+}
+
+.modal-footer {
+  padding: 0 1.5rem 1.25rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ── Form elements ───────────────────────────────────────────────────────── */
+.form-group {
+  margin-bottom: 1.1rem;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  border-color: var(--primary);
+}
+
+.form-input option {
+  background: var(--surface);
+}
+
+.form-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.required {
+  color: var(--danger);
+}
+
+/* ── Price type radio buttons ────────────────────────────────────────────── */
+.pc-ptype-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pc-ptype-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-size: 0.87rem;
+  color: var(--text);
+}
+
+.pc-ptype-radio:hover {
+  border-color: var(--primary);
+  background: rgba(99,102,241,0.06);
+}
+
+.pc-ptype-radio.selected {
+  border-color: var(--primary);
+  background: rgba(99,102,241,0.1);
+}
+
+.pc-ptype-radio.unavailable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pc-ptype-radio input[type="radio"] {
+  accent-color: var(--primary);
+}
+
+.pc-default-hint {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.pc-use-default {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--primary);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0.1em 0.4em;
+  transition: background 0.15s;
+}
+
+.pc-use-default:hover {
+  background: rgba(99,102,241,0.1);
+}
+
+/* ── Warning box ─────────────────────────────────────────────────────────── */
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.warning-box p {
+  margin: 0;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .pc-header {
+    flex-direction: column;
+  }
+
+  .pc-config-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pc-config-meta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

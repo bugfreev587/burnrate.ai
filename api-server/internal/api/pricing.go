@@ -535,3 +535,439 @@ func (s *Server) handleUsageForecast(c *gin.Context) {
 		Month:         monthStart.Format("2006-01"),
 	})
 }
+
+// ─── Pricing Catalog ──────────────────────────────────────────────────────────
+
+type catalogPriceEntry struct {
+	PricePerUnit string `json:"price_per_unit"`
+	UnitSize     int64  `json:"unit_size"`
+	PricingID    uint   `json:"pricing_id"`
+}
+
+type catalogEntry struct {
+	ProviderID      uint                         `json:"provider_id"`
+	Provider        string                       `json:"provider"`
+	ProviderDisplay string                       `json:"provider_display"`
+	ModelID         uint                         `json:"model_id"`
+	ModelName       string                       `json:"model_name"`
+	Prices          map[string]catalogPriceEntry `json:"prices"`
+}
+
+// GET /v1/admin/pricing/catalog
+// Returns all models with their current effective pricing, pre-joined for the UI.
+func (s *Server) handleGetPricingCatalog(c *gin.Context) {
+	db := s.postgresDB.GetDB()
+	now := time.Now()
+
+	var providers []models.Provider
+	db.Find(&providers)
+	providerByID := make(map[uint]models.Provider, len(providers))
+	for _, p := range providers {
+		providerByID[p.ID] = p
+	}
+
+	var modelDefs []models.ModelDef
+	db.Find(&modelDefs)
+
+	var pricings []models.ModelPricing
+	db.Where("effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)", now, now).Find(&pricings)
+
+	// Group prices by model_id
+	pricesByModel := make(map[uint][]models.ModelPricing)
+	for _, mp := range pricings {
+		pricesByModel[mp.ModelID] = append(pricesByModel[mp.ModelID], mp)
+	}
+
+	catalog := make([]catalogEntry, 0, len(modelDefs))
+	for _, m := range modelDefs {
+		prov := providerByID[m.ProviderID]
+		entry := catalogEntry{
+			ProviderID:      prov.ID,
+			Provider:        prov.Name,
+			ProviderDisplay: prov.DisplayName,
+			ModelID:         m.ID,
+			ModelName:       m.ModelName,
+			Prices:          make(map[string]catalogPriceEntry),
+		}
+		for _, mp := range pricesByModel[m.ID] {
+			entry.Prices[mp.PriceType] = catalogPriceEntry{
+				PricePerUnit: mp.PricePerUnit.String(),
+				UnitSize:     mp.UnitSize,
+				PricingID:    mp.ID,
+			}
+		}
+		catalog = append(catalog, entry)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"catalog": catalog})
+}
+
+// ─── Pricing Configs ─────────────────────────────────────────────────────────
+
+type configRateView struct {
+	ID           uint   `json:"id"`
+	ModelID      uint   `json:"model_id"`
+	ModelName    string `json:"model_name"`
+	Provider     string `json:"provider"`
+	PriceType    string `json:"price_type"`
+	PricePerUnit string `json:"price_per_unit"`
+	UnitSize     int64  `json:"unit_size"`
+}
+
+type pricingConfigView struct {
+	ID          uint             `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Rates       []configRateView `json:"rates"`
+	AssignedKey *assignedKeyView `json:"assigned_key"`
+	CreatedAt   time.Time        `json:"created_at"`
+}
+
+type assignedKeyView struct {
+	KeyID string `json:"key_id"`
+	Label string `json:"label"`
+}
+
+// GET /v1/admin/pricing-configs
+func (s *Server) handleListPricingConfigs(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	db := s.postgresDB.GetDB()
+
+	var configs []models.PricingConfig
+	db.Where("tenant_id = ?", tenantID).Order("created_at DESC").Find(&configs)
+
+	// Preload all rates + model info in bulk
+	configIDs := make([]uint, len(configs))
+	for i, cfg := range configs {
+		configIDs[i] = cfg.ID
+	}
+	var rates []models.PricingConfigRate
+	db.Where("config_id IN ?", configIDs).Find(&rates)
+
+	// Preload model+provider info
+	modelIDs := make([]uint, 0, len(rates))
+	seen := map[uint]bool{}
+	for _, r := range rates {
+		if !seen[r.ModelID] {
+			modelIDs = append(modelIDs, r.ModelID)
+			seen[r.ModelID] = true
+		}
+	}
+	var modelDefs []models.ModelDef
+	db.Where("id IN ?", modelIDs).Find(&modelDefs)
+	var providers []models.Provider
+	db.Find(&providers)
+
+	modelByID := make(map[uint]models.ModelDef)
+	for _, m := range modelDefs {
+		modelByID[m.ID] = m
+	}
+	provByID := make(map[uint]models.Provider)
+	for _, p := range providers {
+		provByID[p.ID] = p
+	}
+
+	// Preload assignments
+	var assignments []models.APIKeyConfig
+	db.Where("config_id IN ?", configIDs).Find(&assignments)
+
+	// Preload API keys for assignments
+	keyIDs := make([]string, 0, len(assignments))
+	for _, a := range assignments {
+		keyIDs = append(keyIDs, a.KeyID)
+	}
+	var apiKeys []models.APIKey
+	if len(keyIDs) > 0 {
+		db.Where("key_id IN ?", keyIDs).Find(&apiKeys)
+	}
+	keyByID := make(map[string]models.APIKey)
+	for _, k := range apiKeys {
+		keyByID[k.KeyID] = k
+	}
+	assignByConfig := make(map[uint]models.APIKeyConfig)
+	for _, a := range assignments {
+		assignByConfig[a.ConfigID] = a
+	}
+	ratesByConfig := make(map[uint][]models.PricingConfigRate)
+	for _, r := range rates {
+		ratesByConfig[r.ConfigID] = append(ratesByConfig[r.ConfigID], r)
+	}
+
+	out := make([]pricingConfigView, 0, len(configs))
+	for _, cfg := range configs {
+		view := pricingConfigView{
+			ID:          cfg.ID,
+			Name:        cfg.Name,
+			Description: cfg.Description,
+			CreatedAt:   cfg.CreatedAt,
+			Rates:       []configRateView{},
+		}
+		for _, r := range ratesByConfig[cfg.ID] {
+			m := modelByID[r.ModelID]
+			p := provByID[m.ProviderID]
+			view.Rates = append(view.Rates, configRateView{
+				ID:           r.ID,
+				ModelID:      r.ModelID,
+				ModelName:    m.ModelName,
+				Provider:     p.Name,
+				PriceType:    r.PriceType,
+				PricePerUnit: r.PricePerUnit.String(),
+				UnitSize:     r.UnitSize,
+			})
+		}
+		if a, hasAssign := assignByConfig[cfg.ID]; hasAssign {
+			if k, hasKey := keyByID[a.KeyID]; hasKey {
+				view.AssignedKey = &assignedKeyView{KeyID: k.KeyID, Label: k.Label}
+			}
+		}
+		out = append(out, view)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"configs": out})
+}
+
+type createPricingConfigReq struct {
+	Name        string `json:"name"        binding:"required"`
+	Description string `json:"description"`
+}
+
+// POST /v1/admin/pricing-configs
+func (s *Server) handleCreatePricingConfig(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req createPricingConfigReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cfg := &models.PricingConfig{TenantID: tenantID, Name: req.Name, Description: req.Description}
+	if err := s.postgresDB.GetDB().Create(cfg).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id": cfg.ID, "name": cfg.Name, "description": cfg.Description,
+		"rates": []configRateView{}, "assigned_key": nil, "created_at": cfg.CreatedAt,
+	})
+}
+
+// DELETE /v1/admin/pricing-configs/:config_id
+func (s *Server) handleDeletePricingConfig(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("config_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config_id"})
+		return
+	}
+	db := s.postgresDB.GetDB()
+	// Verify ownership
+	var cfg models.PricingConfig
+	if err := db.Where("id = ? AND tenant_id = ?", id, tenantID).First(&cfg).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	db.Where("config_id = ?", id).Delete(&models.PricingConfigRate{})
+	db.Where("config_id = ?", id).Delete(&models.APIKeyConfig{})
+	db.Delete(&cfg)
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+// ─── Pricing Config Rates ────────────────────────────────────────────────────
+
+type addConfigRateReq struct {
+	ModelID      uint   `json:"model_id"      binding:"required"`
+	PriceType    string `json:"price_type"    binding:"required"`
+	PricePerUnit string `json:"price_per_unit" binding:"required"`
+	UnitSize     int64  `json:"unit_size"`
+}
+
+// POST /v1/admin/pricing-configs/:config_id/rates
+func (s *Server) handleAddConfigRate(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	configID, err := strconv.ParseUint(c.Param("config_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config_id"})
+		return
+	}
+	var req addConfigRateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	price, err := decimal.NewFromString(req.PricePerUnit)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid price_per_unit"})
+		return
+	}
+	db := s.postgresDB.GetDB()
+	var cfg models.PricingConfig
+	if err := db.Where("id = ? AND tenant_id = ?", configID, tenantID).First(&cfg).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	unitSize := req.UnitSize
+	if unitSize == 0 {
+		unitSize = 1_000_000
+	}
+	// Upsert: one row per (config_id, model_id, price_type)
+	var existing models.PricingConfigRate
+	result := db.Where("config_id = ? AND model_id = ? AND price_type = ?", configID, req.ModelID, req.PriceType).First(&existing)
+	if result.Error == nil {
+		db.Model(&existing).Updates(map[string]interface{}{
+			"price_per_unit": price,
+			"unit_size":      unitSize,
+		})
+		existing.PricePerUnit = price
+		existing.UnitSize = unitSize
+
+		var m models.ModelDef
+		db.First(&m, existing.ModelID)
+		var prov models.Provider
+		db.First(&prov, m.ProviderID)
+		c.JSON(http.StatusOK, configRateView{
+			ID: existing.ID, ModelID: existing.ModelID, ModelName: m.ModelName,
+			Provider: prov.Name, PriceType: existing.PriceType,
+			PricePerUnit: existing.PricePerUnit.String(), UnitSize: existing.UnitSize,
+		})
+		return
+	}
+	rate := &models.PricingConfigRate{
+		ConfigID: uint(configID), ModelID: req.ModelID,
+		PriceType: req.PriceType, PricePerUnit: price, UnitSize: unitSize,
+	}
+	if err := db.Create(rate).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var m models.ModelDef
+	db.First(&m, rate.ModelID)
+	var prov models.Provider
+	db.First(&prov, m.ProviderID)
+	c.JSON(http.StatusCreated, configRateView{
+		ID: rate.ID, ModelID: rate.ModelID, ModelName: m.ModelName,
+		Provider: prov.Name, PriceType: rate.PriceType,
+		PricePerUnit: rate.PricePerUnit.String(), UnitSize: rate.UnitSize,
+	})
+}
+
+// DELETE /v1/admin/pricing-configs/:config_id/rates/:rate_id
+func (s *Server) handleDeleteConfigRate(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	configID, err := strconv.ParseUint(c.Param("config_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config_id"})
+		return
+	}
+	rateID, err := strconv.ParseUint(c.Param("rate_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rate_id"})
+		return
+	}
+	db := s.postgresDB.GetDB()
+	var cfg models.PricingConfig
+	if err := db.Where("id = ? AND tenant_id = ?", configID, tenantID).First(&cfg).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	res := db.Where("id = ? AND config_id = ?", rateID, configID).Delete(&models.PricingConfigRate{})
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "rate not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+// ─── Pricing Config Assignment ────────────────────────────────────────────────
+
+type assignConfigReq struct {
+	KeyID string `json:"key_id" binding:"required"`
+}
+
+// PUT /v1/admin/pricing-configs/:config_id/assign
+func (s *Server) handleAssignPricingConfig(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	configID, err := strconv.ParseUint(c.Param("config_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config_id"})
+		return
+	}
+	var req assignConfigReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	db := s.postgresDB.GetDB()
+	// Verify config belongs to tenant
+	var cfg models.PricingConfig
+	if err := db.Where("id = ? AND tenant_id = ?", configID, tenantID).First(&cfg).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	// Verify API key belongs to tenant and is active
+	var apiKey models.APIKey
+	if err := db.Where("key_id = ? AND tenant_id = ? AND revoked = false", req.KeyID, tenantID).First(&apiKey).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "active API key not found"})
+		return
+	}
+	// Upsert: remove any existing assignment for this key, then create
+	db.Where("key_id = ?", req.KeyID).Delete(&models.APIKeyConfig{})
+	assignment := &models.APIKeyConfig{
+		TenantID: tenantID,
+		KeyID:    req.KeyID,
+		ConfigID: uint(configID),
+	}
+	if err := db.Create(assignment).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"config_id": configID,
+		"key_id":    req.KeyID,
+		"label":     apiKey.Label,
+	})
+}
+
+// DELETE /v1/admin/pricing-configs/:config_id/assign
+func (s *Server) handleUnassignPricingConfig(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	configID, err := strconv.ParseUint(c.Param("config_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config_id"})
+		return
+	}
+	db := s.postgresDB.GetDB()
+	var cfg models.PricingConfig
+	if err := db.Where("id = ? AND tenant_id = ?", configID, tenantID).First(&cfg).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	db.Where("config_id = ?", configID).Delete(&models.APIKeyConfig{})
+	c.JSON(http.StatusOK, gin.H{"unassigned": true})
+}

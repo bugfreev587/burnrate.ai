@@ -71,6 +71,11 @@ export default function Navbar() {
                         Management
                       </Link>
                     )}
+                    {canAccessAdmin && (
+                      <Link to="/pricing" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                        Pricing Config
+                      </Link>
+                    )}
                     <div className="dropdown-divider" />
                     <SignOutButton>
                       <button className="dropdown-item dropdown-signout">Sign Out</button>

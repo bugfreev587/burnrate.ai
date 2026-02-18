@@ -51,24 +51,43 @@ func (r *PricingResolver) Resolve(ctx context.Context, event UsageEvent) (*Resol
 		Prices:     make(map[string]resolvedPrice),
 	}
 
-	// 1. Load contract overrides (tenant-scoped)
+	// 1. Key-level pricing config (highest priority) — set by admin via PricingConfig
+	if event.APIKeyRef != "" {
+		var keyConfig models.APIKeyConfig
+		if r.db.WithContext(ctx).Where("key_id = ?", event.APIKeyRef).First(&keyConfig).Error == nil {
+			var rates []models.PricingConfigRate
+			r.db.WithContext(ctx).Where("config_id = ? AND model_id = ?", keyConfig.ConfigID, modelDef.ID).Find(&rates)
+			for _, rate := range rates {
+				unitSize := rate.UnitSize
+				if unitSize == 0 {
+					unitSize = 1_000_000
+				}
+				resolved.Prices[rate.PriceType] = resolvedPrice{
+					PricePerUnit: rate.PricePerUnit,
+					UnitSize:     unitSize,
+					PricingID:    rate.ID,
+					Source:       "key_config",
+				}
+			}
+		}
+	}
+
+	// 2. Load contract overrides (tenant-scoped) for price_types not already set
 	var contracts []models.ContractPricing
 	r.db.WithContext(ctx).
 		Where("tenant_id = ? AND model_id = ? AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)",
 			event.TenantID, modelDef.ID, ts, ts).
 		Find(&contracts)
 
-	contractByType := make(map[string]models.ContractPricing)
 	for _, cp := range contracts {
-		contractByType[cp.PriceType] = cp
-	}
-
-	for priceType, cp := range contractByType {
+		if _, alreadySet := resolved.Prices[cp.PriceType]; alreadySet {
+			continue // key_config wins
+		}
 		unitSize := cp.UnitSize
 		if unitSize == 0 {
 			unitSize = 1_000_000
 		}
-		resolved.Prices[priceType] = resolvedPrice{
+		resolved.Prices[cp.PriceType] = resolvedPrice{
 			PricePerUnit: cp.PriceOverride,
 			UnitSize:     unitSize,
 			PricingID:    cp.ID,
@@ -76,7 +95,7 @@ func (r *PricingResolver) Resolve(ctx context.Context, event UsageEvent) (*Resol
 		}
 	}
 
-	// 2. Load standard versioned pricing for any price_types not covered by contract
+	// 3. Load standard versioned pricing for any price_types not covered by contract
 	var standardPrices []models.ModelPricing
 	r.db.WithContext(ctx).
 		Where("model_id = ? AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)",

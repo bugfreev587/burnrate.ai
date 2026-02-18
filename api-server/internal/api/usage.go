@@ -67,6 +67,7 @@ func (s *Server) handleReportUsage(c *gin.Context) {
 		RequestCount:        1,
 		TenantID:            apiKey.TenantID,
 		IdempotencyKey:      req.RequestID,
+		APIKeyRef:           apiKey.KeyID,
 	}
 
 	result, err := s.pricingEngine.Process(ctx, event)

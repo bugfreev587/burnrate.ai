@@ -21,6 +21,7 @@ type UsageEvent struct {
 	TenantID            uint
 	UserID              string
 	IdempotencyKey      string
+	APIKeyRef           string // api_keys.key_id (UUID) — used for key-level pricing config lookup
 }
 
 // PricePoint is a snapshotted price for one dimension, serialised into the ledger.

@@ -181,6 +181,8 @@ func (s *APIKeyService) RevokeKey(ctx context.Context, tenantID uint, keyID stri
 	if s.cache != nil {
 		s.cache.Del(ctx, "apikey:"+keyID)
 	}
+	// Remove any pricing config association for this key
+	s.db.Where("key_id = ?", keyID).Delete(&models.APIKeyConfig{})
 	return nil
 }
 

@@ -9,6 +9,7 @@ import SignUpPage from './pages/SignUpPage'
 import Dashboard from './pages/Dashboard'
 import ProfilePage from './pages/ProfilePage'
 import ManagementPage from './pages/ManagementPage'
+import PricingConfigPage from './pages/PricingConfigPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/profile/*" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/management" element={<ProtectedRoute><ManagementPage /></ProtectedRoute>} />
+          <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
