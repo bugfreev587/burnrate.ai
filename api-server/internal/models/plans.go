@@ -70,3 +70,14 @@ func GetPlanLimits(plan string) PlanLimits {
 	}
 	return planLimitsMap[PlanFree]
 }
+
+// ValidPlan reports whether plan is one of the recognised tier names.
+func ValidPlan(plan string) bool {
+	_, ok := planLimitsMap[plan]
+	return ok
+}
+
+// AllPlans returns all plan keys in ascending tier order.
+func AllPlans() []string {
+	return []string{PlanFree, PlanPro, PlanTeam, PlanBusiness}
+}

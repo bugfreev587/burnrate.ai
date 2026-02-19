@@ -534,3 +534,152 @@ func (s *Server) handleTransferOwnership(c *gin.Context) {
 		"new_owner": newOwner.Email,
 	})
 }
+
+// ── Plan change ───────────────────────────────────────────────────────────────
+
+type changePlanReq struct {
+	Plan string `json:"plan" binding:"required"`
+}
+
+// applyPlanChange enforces downgrade limits and updates tenant.plan + tenant.max_api_keys.
+// Returns (http status, error body) on failure, or (0, nil) on success.
+func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
+	db := s.postgresDB.GetDB()
+
+	if !models.ValidPlan(newPlan) {
+		return http.StatusBadRequest, gin.H{
+			"error":   "invalid_plan",
+			"message": fmt.Sprintf("Unknown plan %q. Valid plans: free, pro, team, business.", newPlan),
+		}
+	}
+
+	var tenant models.Tenant
+	if err := db.First(&tenant, tenantID).Error; err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"}
+	}
+
+	if tenant.Plan == newPlan {
+		return http.StatusBadRequest, gin.H{
+			"error":   "no_change",
+			"message": fmt.Sprintf("Tenant is already on the %s plan.", newPlan),
+		}
+	}
+
+	newLimits := models.GetPlanLimits(newPlan)
+
+	// ── Downgrade enforcement ────────────────────────────────────────────────
+	// API key count
+	if newLimits.MaxAPIKeys != -1 {
+		var activeKeys int64
+		db.Model(&models.APIKey{}).
+			Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", tenantID).
+			Count(&activeKeys)
+		if int(activeKeys) > newLimits.MaxAPIKeys {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":        "downgrade_blocked",
+				"reason":       "api_keys_exceed_limit",
+				"message":      fmt.Sprintf("The %s plan allows %d API key(s), but this tenant has %d active key(s). Revoke %d key(s) before downgrading.", newPlan, newLimits.MaxAPIKeys, activeKeys, int(activeKeys)-newLimits.MaxAPIKeys),
+				"limit":        newLimits.MaxAPIKeys,
+				"active_count": activeKeys,
+			}
+		}
+	}
+
+	// Member count (all users regardless of status, matching invite enforcement)
+	if newLimits.MaxMembers != -1 {
+		var memberCount int64
+		db.Model(&models.User{}).Where("tenant_id = ?", tenantID).Count(&memberCount)
+		if int(memberCount) > newLimits.MaxMembers {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":        "downgrade_blocked",
+				"reason":       "members_exceed_limit",
+				"message":      fmt.Sprintf("The %s plan allows %d member(s), but this tenant has %d. Remove %d member(s) before downgrading.", newPlan, newLimits.MaxMembers, memberCount, int(memberCount)-newLimits.MaxMembers),
+				"limit":        newLimits.MaxMembers,
+				"member_count": memberCount,
+			}
+		}
+	}
+
+	// ── Apply ────────────────────────────────────────────────────────────────
+	// max_api_keys tracks the plan ceiling; reset it to the new plan's limit
+	// (-1 = unlimited stored as -1 in DB, which existing enforcement already handles).
+	newMaxAPIKeys := newLimits.MaxAPIKeys
+	if err := db.Model(&tenant).Updates(map[string]any{
+		"plan":         newPlan,
+		"max_api_keys": newMaxAPIKeys,
+	}).Error; err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "failed to update plan"}
+	}
+
+	log.Printf("tenant %d plan changed: %s → %s", tenantID, tenant.Plan, newPlan)
+	return 0, nil
+}
+
+// handleChangePlan lets the tenant owner change their own plan.
+// PATCH /v1/owner/plan
+func (s *Server) handleChangePlan(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req changePlanReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if status, body := s.applyPlanChange(caller.TenantID, req.Plan); status != 0 {
+		c.JSON(status, body)
+		return
+	}
+
+	// Return updated settings in the same shape as GET /v1/owner/settings.
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	c.JSON(http.StatusOK, tenantSettingsResponse{
+		TenantID:   tenant.ID,
+		Name:       tenant.Name,
+		Plan:       tenant.Plan,
+		MaxAPIKeys: tenant.MaxAPIKeys,
+		PlanLimits: models.GetPlanLimits(tenant.Plan),
+	})
+}
+
+// handleAdminChangeTenantPlan lets a platform operator change any tenant's plan.
+// PATCH /v1/internal/tenants/:tenant_id/plan
+func (s *Server) handleAdminChangeTenantPlan(c *gin.Context) {
+	var req changePlanReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var tenantID uint
+	if _, err := fmt.Sscanf(c.Param("tenant_id"), "%d", &tenantID); err != nil || tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+		return
+	}
+
+	// Verify tenant exists.
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "tenant not found"})
+		return
+	}
+
+	if status, body := s.applyPlanChange(tenantID, req.Plan); status != 0 {
+		c.JSON(status, body)
+		return
+	}
+
+	s.postgresDB.GetDB().First(&tenant, tenantID)
+	c.JSON(http.StatusOK, tenantSettingsResponse{
+		TenantID:   tenant.ID,
+		Name:       tenant.Name,
+		Plan:       tenant.Plan,
+		MaxAPIKeys: tenant.MaxAPIKeys,
+		PlanLimits: models.GetPlanLimits(tenant.Plan),
+	})
+}

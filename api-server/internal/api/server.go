@@ -18,17 +18,18 @@ import (
 )
 
 type Server struct {
-	cfg             *config.Config
-	postgresDB      *db.PostgresDB
-	apiKeySvc       *services.APIKeyService
-	usageSvc        *services.UsageLogService
-	pricingEngine   *pricing.PricingEngine
-	providerKeySvc  *services.ProviderKeyService
-	proxyHandler    *proxy.ProxyHandler
-	rbac            *middleware.RBACMiddleware
-	router          *gin.Engine
-	httpServer      *http.Server
-	clerkSecretKey  string
+	cfg              *config.Config
+	postgresDB       *db.PostgresDB
+	apiKeySvc        *services.APIKeyService
+	usageSvc         *services.UsageLogService
+	pricingEngine    *pricing.PricingEngine
+	providerKeySvc   *services.ProviderKeyService
+	proxyHandler     *proxy.ProxyHandler
+	rbac             *middleware.RBACMiddleware
+	router           *gin.Engine
+	httpServer       *http.Server
+	clerkSecretKey   string
+	internalSecret   string
 }
 
 func NewServer(
@@ -58,6 +59,7 @@ func NewServer(
 		rbac:           rbac,
 		router:         router,
 		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
+		internalSecret: os.Getenv("INTERNAL_ADMIN_SECRET"),
 	}
 
 	s.setupMiddleware()
@@ -165,6 +167,32 @@ func (s *Server) setupRoutes() {
 		owner.POST("/transfer-ownership", s.handleTransferOwnership)
 		owner.GET("/settings", s.handleGetTenantSettings)
 		owner.PATCH("/settings", s.handleUpdateTenantSettings)
+		owner.PATCH("/plan", s.handleChangePlan)
+	}
+
+	// ─── Internal / platform-admin ───────────────────────────────────────────
+	internal := s.router.Group("/v1/internal")
+	internal.Use(s.internalSecretMiddleware())
+	{
+		internal.PATCH("/tenants/:tenant_id/plan", s.handleAdminChangeTenantPlan)
+	}
+}
+
+// internalSecretMiddleware rejects requests that don't carry the correct
+// X-Internal-Secret header. Used to protect platform-operator endpoints.
+func (s *Server) internalSecretMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if s.internalSecret == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "internal API not configured"})
+			c.Abort()
+			return
+		}
+		if c.GetHeader("X-Internal-Secret") != s.internalSecret {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal secret"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }
 
