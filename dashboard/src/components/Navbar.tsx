@@ -12,6 +12,7 @@ export default function Navbar() {
   const menuRef = useRef<HTMLDivElement>(null)
 
   const canAccessAdmin = isSynced && hasPermission(role, 'admin')
+  const isOwner = isSynced && role === 'owner'
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -74,6 +75,11 @@ export default function Navbar() {
                     {canAccessAdmin && (
                       <Link to="/pricing" className="dropdown-item" onClick={() => setShowMenu(false)}>
                         Pricing Config
+                      </Link>
+                    )}
+                    {isOwner && (
+                      <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                        Plan
                       </Link>
                     )}
                     <div className="dropdown-divider" />

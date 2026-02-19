@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard'
 import ProfilePage from './pages/ProfilePage'
 import ManagementPage from './pages/ManagementPage'
 import PricingConfigPage from './pages/PricingConfigPage'
+import PlanPage from './pages/PlanPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="/profile/*" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/management" element={<ProtectedRoute><ManagementPage /></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
+          <Route path="/plan" element={<ProtectedRoute><PlanPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -1,0 +1,272 @@
+/* ─── Plan Badge ─────────────────────────────────────────────────────────── */
+
+.plan-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+}
+
+.plan-badge-free {
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.plan-badge-pro {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.plan-badge-team {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.plan-badge-business {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+/* ─── Page Header ────────────────────────────────────────────────────────── */
+
+.plan-page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.plan-page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ─── Current Plan Card ──────────────────────────────────────────────────── */
+
+.plan-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.plan-hero h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ─── Usage Meters ───────────────────────────────────────────────────────── */
+
+.usage-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  margin-bottom: 1.25rem;
+}
+
+.usage-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.usage-meter-label {
+  width: 6rem;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.usage-bar-track {
+  flex: 1;
+  height: 0.5rem;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  width: var(--fill-pct, 0%);
+  background: var(--color-primary);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.usage-bar-fill.at-limit {
+  background: var(--color-danger);
+}
+
+.usage-meter-count {
+  width: 5rem;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-unlimited {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ─── Feature Chips ──────────────────────────────────────────────────────── */
+
+.plan-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.plan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+}
+
+.plan-chip.chip-active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+}
+
+.plan-chip.chip-inactive {
+  background: transparent;
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* ─── Comparison Table ───────────────────────────────────────────────────── */
+
+.plan-table-wrapper {
+  overflow-x: auto;
+}
+
+.plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.plan-table th,
+.plan-table td {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plan-table th:first-child,
+.plan-table td:first-child {
+  text-align: left;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.plan-table thead th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.875rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.plan-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.plan-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Highlighted current plan column */
+.plan-col-current {
+  background: rgba(99, 102, 241, 0.07);
+  position: relative;
+}
+
+.plan-table thead .plan-col-current {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.plan-col-current-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.plan-col-price {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Check / Dash cells */
+.check {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.dash {
+  color: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+/* ─── Upgrade CTA ────────────────────────────────────────────────────────── */
+
+.upgrade-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+.upgrade-cta-text p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.upgrade-cta-text p:first-child {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* ─── Section spacing ────────────────────────────────────────────────────── */
+
+.plan-section {
+  margin-bottom: 1.5rem;
+}
+
+.plan-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 1rem 0;
+}
