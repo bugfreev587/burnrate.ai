@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,16 +18,17 @@ import (
 )
 
 type Server struct {
-	cfg            *config.Config
-	postgresDB     *db.PostgresDB
-	apiKeySvc      *services.APIKeyService
-	usageSvc       *services.UsageLogService
-	pricingEngine  *pricing.PricingEngine
-	providerKeySvc *services.ProviderKeyService
-	proxyHandler   *proxy.ProxyHandler
-	rbac           *middleware.RBACMiddleware
-	router         *gin.Engine
-	httpServer     *http.Server
+	cfg             *config.Config
+	postgresDB      *db.PostgresDB
+	apiKeySvc       *services.APIKeyService
+	usageSvc        *services.UsageLogService
+	pricingEngine   *pricing.PricingEngine
+	providerKeySvc  *services.ProviderKeyService
+	proxyHandler    *proxy.ProxyHandler
+	rbac            *middleware.RBACMiddleware
+	router          *gin.Engine
+	httpServer      *http.Server
+	clerkSecretKey  string
 }
 
 func NewServer(
@@ -55,6 +57,7 @@ func NewServer(
 		proxyHandler:   proxyHandler,
 		rbac:           rbac,
 		router:         router,
+		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
 	}
 
 	s.setupMiddleware()

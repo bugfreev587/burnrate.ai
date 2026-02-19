@@ -12,6 +12,27 @@ import (
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
 
+// deleteClerkUser calls the Clerk Backend API to permanently delete a user.
+func (s *Server) deleteClerkUser(clerkUserID string) error {
+	if s.clerkSecretKey == "" {
+		return fmt.Errorf("CLERK_SECRET_KEY not configured")
+	}
+	req, err := http.NewRequest(http.MethodDelete, "https://api.clerk.com/v1/users/"+clerkUserID, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.clerkSecretKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("clerk returned HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type userResponse struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
@@ -294,6 +315,11 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove user"})
 		return
 	}
+
+	if err := s.deleteClerkUser(target.ID); err != nil {
+		log.Printf("warning: user %s removed from DB but Clerk deletion failed: %v", target.Email, err)
+	}
+
 	log.Printf("user removed: %s by %s", target.Email, caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "User removed successfully"})
 }
