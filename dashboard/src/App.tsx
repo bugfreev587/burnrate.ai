@@ -62,13 +62,6 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function HomeRoute({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth()
-  if (!isLoaded) return null
-  if (isSignedIn) return <Navigate to="/dashboard" replace />
-  return <>{children}</>
-}
-
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -76,7 +69,7 @@ export default function App() {
     <UserSyncProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<HomeRoute><LandingPage /></HomeRoute>} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/sign-in/*" element={<PublicOnlyRoute><SignInPage /></PublicOnlyRoute>} />
           <Route path="/sign-up/*" element={<PublicOnlyRoute><SignUpPage /></PublicOnlyRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
