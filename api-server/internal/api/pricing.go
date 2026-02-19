@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -353,7 +354,58 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"budget_limits": limits})
+
+	// Compute current period spend for each limit.
+	now := time.Now().UTC()
+	out := make([]gin.H, len(limits))
+	for i, bl := range limits {
+		var periodStart time.Time
+		switch bl.PeriodType {
+		case models.PeriodWeekly:
+			weekday := int(now.Weekday())
+			if weekday == 0 {
+				weekday = 7 // Sunday → 7 so Monday = start
+			}
+			periodStart = time.Date(now.Year(), now.Month(), now.Day()-weekday+1, 0, 0, 0, 0, time.UTC)
+		case models.PeriodDaily:
+			periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		default: // monthly
+			periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		}
+
+		q := s.postgresDB.GetDB().Model(&models.UsageLog{}).
+			Where("tenant_id = ? AND created_at >= ?", tenantID, periodStart)
+		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
+			q = q.Where("request_id IN (SELECT request_id FROM usage_logs WHERE tenant_id = ?)", tenantID)
+			// scope to key: UsageLog doesn't store key_id, so account-level spend is the best proxy
+		}
+		var currentSpend decimal.Decimal
+		q.Select("COALESCE(SUM(cost), 0)").Scan(&currentSpend)
+
+		pct := 0.0
+		if bl.LimitAmount.IsPositive() {
+			pct, _ = currentSpend.Div(bl.LimitAmount).Mul(decimal.NewFromInt(100)).Float64()
+			if pct > 100 {
+				pct = 100
+			}
+		}
+
+		out[i] = gin.H{
+			"id":              bl.ID,
+			"scope_type":      bl.ScopeType,
+			"scope_id":        bl.ScopeID,
+			"period_type":     bl.PeriodType,
+			"limit_amount":    bl.LimitAmount.StringFixed(2),
+			"alert_threshold": bl.AlertThreshold.StringFixed(0),
+			"action":          bl.Action,
+			"current_spend":   currentSpend.StringFixed(4),
+			"pct_used":        math.Round(pct*10) / 10,
+			"period_start":    periodStart.Format("2006-01-02"),
+			"created_at":      bl.CreatedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"budget_limits": out})
 }
 
 type upsertBudgetReq struct {

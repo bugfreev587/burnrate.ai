@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
@@ -174,5 +175,137 @@ func (s *Server) handleListUsage(c *gin.Context) {
 // handleUsageSummary returns aggregated usage for the caller's tenant.
 // GET /v1/usage/summary
 func (s *Server) handleUsageSummary(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "not implemented"})
+	tenantID, ok := middleware.GetTenantIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+	now := time.Now().UTC()
+
+	// ── Time windows ────────────────────────────────────────────────────────
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	lastMonthStart := monthStart.AddDate(0, -1, 0)
+	trend30Start := todayStart.AddDate(0, 0, -29)
+
+	// ── Helper to query a single period ─────────────────────────────────────
+	type periodRow struct {
+		TotalCost decimal.Decimal
+		Requests  int64
+	}
+	periodStats := func(from, to *time.Time) periodRow {
+		q := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+		if from != nil {
+			q = q.Where("created_at >= ?", *from)
+		}
+		if to != nil {
+			q = q.Where("created_at < ?", *to)
+		}
+		var row periodRow
+		q.Select("COALESCE(SUM(cost), 0) as total_cost, COUNT(*) as requests").Scan(&row)
+		return row
+	}
+
+	today := periodStats(&todayStart, nil)
+	yesterday := periodStats(&yesterdayStart, &todayStart)
+	thisMonth := periodStats(&monthStart, nil)
+	lastMonth := periodStats(&lastMonthStart, &monthStart)
+	cumulative := periodStats(nil, nil)
+
+	// ── Token totals (cumulative) ────────────────────────────────────────────
+	type tokenRow struct {
+		InputTotal  int64
+		OutputTotal int64
+	}
+	var tokens tokenRow
+	db.Model(&models.UsageLog{}).
+		Where("tenant_id = ?", tenantID).
+		Select("COALESCE(SUM(prompt_tokens), 0) as input_total, COALESCE(SUM(completion_tokens), 0) as output_total").
+		Scan(&tokens)
+
+	totalTokens := tokens.InputTotal + tokens.OutputTotal
+	var avgTokensPerRequest int64
+	if cumulative.Requests > 0 {
+		avgTokensPerRequest = totalTokens / cumulative.Requests
+	}
+
+	// ── By-model breakdown (this month) ─────────────────────────────────────
+	type modelRow struct {
+		Model        string
+		Provider     string
+		TotalCost    decimal.Decimal
+		InputTokens  int64
+		OutputTokens int64
+		Requests     int64
+	}
+	var byModel []modelRow
+	db.Model(&models.UsageLog{}).
+		Where("tenant_id = ? AND created_at >= ?", tenantID, monthStart).
+		Select("model, provider, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as input_tokens, COALESCE(SUM(completion_tokens),0) as output_tokens, COUNT(*) as requests").
+		Group("model, provider").
+		Order("total_cost DESC").
+		Scan(&byModel)
+
+	byModelOut := make([]gin.H, len(byModel))
+	for i, m := range byModel {
+		byModelOut[i] = gin.H{
+			"model":         m.Model,
+			"provider":      m.Provider,
+			"cost":          m.TotalCost.StringFixed(4),
+			"input_tokens":  m.InputTokens,
+			"output_tokens": m.OutputTokens,
+			"requests":      m.Requests,
+		}
+	}
+
+	// ── Daily trend (last 30 days, UTC date) ────────────────────────────────
+	type dailyRow struct {
+		Date    string
+		Cost    decimal.Decimal
+		Tokens  int64
+	}
+	var daily []dailyRow
+	db.Model(&models.UsageLog{}).
+		Where("tenant_id = ? AND created_at >= ?", tenantID, trend30Start).
+		Select("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date, COALESCE(SUM(cost),0) as cost, COALESCE(SUM(prompt_tokens)+SUM(completion_tokens),0) as tokens").
+		Group("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')").
+		Order("date ASC").
+		Scan(&daily)
+
+	dailyOut := make([]gin.H, len(daily))
+	for i, d := range daily {
+		dailyOut[i] = gin.H{
+			"date":   d.Date,
+			"cost":   d.Cost.StringFixed(4),
+			"tokens": d.Tokens,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"cost": gin.H{
+			"today":       today.TotalCost.StringFixed(4),
+			"yesterday":   yesterday.TotalCost.StringFixed(4),
+			"this_month":  thisMonth.TotalCost.StringFixed(4),
+			"last_month":  lastMonth.TotalCost.StringFixed(4),
+			"cumulative":  cumulative.TotalCost.StringFixed(4),
+		},
+		"requests": gin.H{
+			"today":      today.Requests,
+			"yesterday":  yesterday.Requests,
+			"this_month": thisMonth.Requests,
+			"last_month": lastMonth.Requests,
+			"cumulative": cumulative.Requests,
+		},
+		"tokens": gin.H{
+			"input_total":       tokens.InputTotal,
+			"output_total":      tokens.OutputTotal,
+			"total":             totalTokens,
+			"avg_per_request":   avgTokensPerRequest,
+		},
+		"by_model":    byModelOut,
+		"daily_trend": dailyOut,
+	})
 }
