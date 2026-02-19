@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
 )
@@ -23,8 +24,10 @@ type authSyncReq struct {
 //
 // Flow:
 //  1. User exists by Clerk ID → return existing user + tenant
-//  2. Pending invitation found by email → activate with invited role + tenant
-//  3. Neither → create new tenant and make caller the owner
+//  2. User exists by email (different Clerk ID) → update ID and return
+//  3. Pending invitation found by email → activate with invited role + tenant
+//  4. Neither → create new tenant and make caller the owner (in a transaction
+//     so concurrent duplicate calls don't leave orphan tenants)
 func (s *Server) handleAuthSync(c *gin.Context) {
 	var req authSyncReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,21 +52,40 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 			return
 		}
-		var tenant models.Tenant
-		db.First(&tenant, user.TenantID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":    user.ID,
-			"tenant_id":  user.TenantID,
-			"email":      user.Email,
-			"name":       user.Name,
-			"role":       user.Role,
-			"status":     user.Status,
+			"user_id":     user.ID,
+			"tenant_id":   user.TenantID,
+			"email":       user.Email,
+			"name":        user.Name,
+			"role":        user.Role,
+			"status":      user.Status,
 			"is_new_user": false,
 		})
 		return
 	}
 
-	// ── 2. Pending invitation by email ──────────────────────────────────────
+	// ── 2. Existing active user by email (e.g. Clerk ID changed) ────────────
+	var byEmail models.User
+	if err := db.Where("email = ? AND status != ?", req.Email, models.StatusPending).First(&byEmail).Error; err == nil {
+		if byEmail.Status == models.StatusSuspended {
+			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
+			return
+		}
+		// Update the Clerk ID to the new one so future lookups hit step 1.
+		db.Model(&byEmail).Update("id", req.ClerkUserID)
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":     req.ClerkUserID,
+			"tenant_id":   byEmail.TenantID,
+			"email":       byEmail.Email,
+			"name":        byEmail.Name,
+			"role":        byEmail.Role,
+			"status":      byEmail.Status,
+			"is_new_user": false,
+		})
+		return
+	}
+
+	// ── 3. Pending invitation by email ──────────────────────────────────────
 	var pending models.User
 	if err := db.Where("email = ? AND status = ?", req.Email, models.StatusPending).First(&pending).Error; err == nil {
 		oldID := pending.ID
@@ -83,55 +105,86 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 		}
 		log.Printf("activated invited user: email=%s tenant_id=%d role=%s", pending.Email, pending.TenantID, pending.Role)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":    pending.ID,
-			"tenant_id":  pending.TenantID,
-			"email":      pending.Email,
-			"name":       pending.Name,
-			"role":       pending.Role,
-			"status":     pending.Status,
+			"user_id":     pending.ID,
+			"tenant_id":   pending.TenantID,
+			"email":       pending.Email,
+			"name":        pending.Name,
+			"role":        pending.Role,
+			"status":      pending.Status,
 			"is_new_user": true,
 		})
 		return
 	}
 
-	// ── 3. New user — create tenant + owner ─────────────────────────────────
-	freeLimits := models.GetPlanLimits(models.PlanFree)
-	tenant := models.Tenant{
-		Name:       fmt.Sprintf("%s's Workspace", name),
-		Plan:       models.PlanFree,
-		MaxAPIKeys: freeLimits.MaxAPIKeys,
-		CreatedAt:  time.Now(),
-	}
-	if err := db.Create(&tenant).Error; err != nil {
-		log.Printf("failed to create tenant: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tenant"})
-		return
-	}
+	// ── 4. Brand-new user — create tenant + owner in a transaction ───────────
+	// Wrapped in a transaction so that if a concurrent duplicate request also
+	// reaches this point, only one succeeds and the other rolls back cleanly
+	// instead of leaving an orphan tenant behind.
+	var newUser models.User
+	var newTenant models.Tenant
 
-	newUser := models.User{
-		ID:        req.ClerkUserID,
-		TenantID:  tenant.ID,
-		Email:     req.Email,
-		Name:      name,
-		Role:      models.RoleOwner,
-		Status:    models.StatusActive,
-		CreatedAt: time.Now(),
-	}
-	if err := db.Create(&newUser).Error; err != nil {
-		log.Printf("failed to create user: %v", err)
-		db.Delete(&tenant)
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		freeLimits := models.GetPlanLimits(models.PlanFree)
+		newTenant = models.Tenant{
+			Name:       fmt.Sprintf("%s's Workspace", name),
+			Plan:       models.PlanFree,
+			MaxAPIKeys: freeLimits.MaxAPIKeys,
+			CreatedAt:  time.Now(),
+		}
+		if err := tx.Create(&newTenant).Error; err != nil {
+			return fmt.Errorf("create tenant: %w", err)
+		}
+
+		newUser = models.User{
+			ID:        req.ClerkUserID,
+			TenantID:  newTenant.ID,
+			Email:     req.Email,
+			Name:      name,
+			Role:      models.RoleOwner,
+			Status:    models.StatusActive,
+			CreatedAt: time.Now(),
+		}
+		if err := tx.Create(&newUser).Error; err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		return nil
+	})
+
+	if txErr != nil {
+		log.Printf("handleAuthSync: transaction failed for %s (%s): %v", req.Email, req.ClerkUserID, txErr)
+
+		// The transaction rolled back. Another concurrent request may have
+		// succeeded. Look up the user one more time before giving up.
+		var recovered models.User
+		if err := db.Where("id = ? OR email = ?", req.ClerkUserID, req.Email).First(&recovered).Error; err == nil {
+			if recovered.Status == models.StatusSuspended {
+				c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"user_id":     recovered.ID,
+				"tenant_id":   recovered.TenantID,
+				"email":       recovered.Email,
+				"name":        recovered.Name,
+				"role":        recovered.Role,
+				"status":      recovered.Status,
+				"is_new_user": false,
+			})
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
 
-	log.Printf("new tenant+owner: email=%s tenant_id=%d user_id=%s", newUser.Email, tenant.ID, newUser.ID)
+	log.Printf("new tenant+owner: email=%s tenant_id=%d user_id=%s", newUser.Email, newTenant.ID, newUser.ID)
 	c.JSON(http.StatusCreated, gin.H{
-		"user_id":    newUser.ID,
-		"tenant_id":  tenant.ID,
-		"email":      newUser.Email,
-		"name":       newUser.Name,
-		"role":       newUser.Role,
-		"status":     newUser.Status,
+		"user_id":     newUser.ID,
+		"tenant_id":   newTenant.ID,
+		"email":       newUser.Email,
+		"name":        newUser.Name,
+		"role":        newUser.Role,
+		"status":      newUser.Status,
 		"is_new_user": true,
 	})
 }
