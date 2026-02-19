@@ -68,7 +68,23 @@ func (s *Server) handleListUsers(c *gin.Context) {
 	for i, u := range users {
 		out[i] = toUserResponse(u)
 	}
-	c.JSON(http.StatusOK, gin.H{"users": out, "total": len(out)})
+
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
+
+	// member_limit is null for unlimited plans (-1), matching the api_keys response convention.
+	var memberLimit *int
+	if planLim.MaxMembers != -1 {
+		memberLimit = &planLim.MaxMembers
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":        out,
+		"total":        len(out),
+		"plan":         tenant.Plan,
+		"member_limit": memberLimit,
+	})
 }
 
 // ── Invite ───────────────────────────────────────────────────────────────────

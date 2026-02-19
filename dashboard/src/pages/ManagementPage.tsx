@@ -39,6 +39,8 @@ export default function ManagementPage() {
   const [users, setUsers] = useState<User[]>([])
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
+  const [memberLimit, setMemberLimit] = useState<number | null>(null)
+  const [keyLimit, setKeyLimit] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -88,6 +90,7 @@ export default function ManagementPage() {
       if (res.ok) {
         const data = await res.json()
         setUsers(data.users ?? [])
+        setMemberLimit(data.member_limit ?? null)
       }
     } catch (err) {
       console.error('fetch users:', err)
@@ -100,6 +103,7 @@ export default function ManagementPage() {
       if (res.ok) {
         const data = await res.json()
         setApiKeys(data.api_keys ?? [])
+        setKeyLimit(data.limit ?? null)
       }
     } catch (err) {
       console.error('fetch api keys:', err)
@@ -430,7 +434,12 @@ export default function ManagementPage() {
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
-                <h2>Team Members</h2>
+                <h2>
+                  Team Members{' '}
+                  <span className="section-count">
+                    {users.length}/{memberLimit === null ? '∞' : memberLimit}
+                  </span>
+                </h2>
                 <p className="section-desc">Manage who has access to your workspace.</p>
               </div>
               <button className="btn btn-primary" onClick={() => {
@@ -526,7 +535,12 @@ export default function ManagementPage() {
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
-                <h2>Gateway API Keys</h2>
+                <h2>
+                  Gateway API Keys{' '}
+                  <span className="section-count">
+                    {apiKeys.length}/{keyLimit === null ? '∞' : keyLimit}
+                  </span>
+                </h2>
                 <p className="section-desc">
                   Keys used by the claude-code agent to report usage through the burnrate gateway.
                 </p>

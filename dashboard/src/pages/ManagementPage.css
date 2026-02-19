@@ -71,6 +71,14 @@
   margin: 0;
 }
 
+.section-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: 0.4rem;
+}
+
 /* ── Badges ──────────────────────────────────────────────────────────────── */
 
 .role-badge {
