@@ -103,8 +103,6 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
   const PAD = { top: 8, right: 4, bottom: 24, left: 4 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
-  const barW = Math.max(1, chartW / data.length - 2)
-
   // Build SVG polyline points for line chart
   const pts = data.map((d, i) => {
     const x = PAD.left + (i / (data.length - 1 || 1)) * chartW
