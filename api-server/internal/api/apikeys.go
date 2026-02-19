@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -33,13 +34,34 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		return
 	}
 
+	// Enforce plan-based API key limit before hitting the service.
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
+	if planLim.MaxAPIKeys != -1 {
+		var activeCount int64
+		s.postgresDB.GetDB().Model(&models.APIKey{}).
+			Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", user.TenantID).
+			Count(&activeCount)
+		if int(activeCount) >= planLim.MaxAPIKeys {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":       "plan_limit_reached",
+				"message":     fmt.Sprintf("Your %s plan allows up to %d API key(s). Upgrade to add more.", tenant.Plan, planLim.MaxAPIKeys),
+				"limit":       planLim.MaxAPIKeys,
+				"active_keys": activeCount,
+				"plan":        tenant.Plan,
+			})
+			return
+		}
+	}
+
 	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
 		if errors.As(err, &limitErr) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{
 				"error":       "api_key_limit_reached",
-				"message":     "You have reached your API key limit. Revoke an existing key or contact the owner to increase the limit.",
+				"message":     "You have reached your API key limit. Revoke an existing key or upgrade your plan.",
 				"limit":       limitErr.Limit,
 				"active_keys": limitErr.Current,
 			})
@@ -72,9 +94,10 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	// Fetch tenant limit for display
+	// Fetch tenant for plan-aware limit display.
 	var tenant models.Tenant
 	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
 
 	type keyView struct {
 		KeyID     string     `json:"key_id"`
@@ -93,11 +116,20 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 			CreatedAt: k.CreatedAt,
 		}
 	}
+
+	// For unlimited plans, limit and slots_left are null.
+	var limitResp, slotsLeft interface{}
+	if planLim.MaxAPIKeys != -1 {
+		limitResp = planLim.MaxAPIKeys
+		slotsLeft = planLim.MaxAPIKeys - len(out)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"api_keys":    out,
-		"count":       len(out),
-		"limit":       tenant.MaxAPIKeys,
-		"slots_left":  tenant.MaxAPIKeys - len(out),
+		"api_keys":   out,
+		"count":      len(out),
+		"limit":      limitResp,
+		"slots_left": slotsLeft,
+		"plan":       tenant.Plan,
 	})
 }
 

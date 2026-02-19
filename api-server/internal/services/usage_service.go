@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -21,8 +22,17 @@ func (s *UsageLogService) Create(ctx context.Context, log *models.UsageLog) erro
 }
 
 func (s *UsageLogService) ListByTenant(ctx context.Context, tenantID uint, limit int) ([]models.UsageLog, error) {
+	return s.ListByTenantSince(ctx, tenantID, limit, nil)
+}
+
+// ListByTenantSince lists usage logs for a tenant. If since is non-nil, only logs
+// created at or after that time are returned (used for plan-based data retention).
+func (s *UsageLogService) ListByTenantSince(ctx context.Context, tenantID uint, limit int, since *time.Time) ([]models.UsageLog, error) {
 	var logs []models.UsageLog
 	q := s.db.Where("tenant_id = ?", tenantID).Order("created_at DESC")
+	if since != nil {
+		q = q.Where("created_at >= ?", *since)
+	}
 	if limit > 0 {
 		q = q.Limit(limit)
 	}

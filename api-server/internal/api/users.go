@@ -87,6 +87,25 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 
 	db := s.postgresDB.GetDB()
 
+	// Enforce plan member limit.
+	var tenant models.Tenant
+	db.First(&tenant, caller.TenantID)
+	lim := models.GetPlanLimits(tenant.Plan)
+	if lim.MaxMembers != -1 {
+		var memberCount int64
+		db.Model(&models.User{}).Where("tenant_id = ?", caller.TenantID).Count(&memberCount)
+		if int(memberCount) >= lim.MaxMembers {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "plan_limit_reached",
+				"message": fmt.Sprintf("Your %s plan allows up to %d team member(s). Upgrade to add more.", tenant.Plan, lim.MaxMembers),
+				"limit":   lim.MaxMembers,
+				"current": memberCount,
+				"plan":    tenant.Plan,
+			})
+			return
+		}
+	}
+
 	var existing models.User
 	if err := db.Where("email = ?", req.Email).First(&existing).Error; err == nil {
 		c.JSON(http.StatusConflict, gin.H{
@@ -282,12 +301,14 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 // ── Owner-only endpoints ─────────────────────────────────────────────────────
 
 type tenantSettingsResponse struct {
-	TenantID   uint   `json:"tenant_id"`
-	Name       string `json:"name"`
-	MaxAPIKeys int    `json:"max_api_keys"`
+	TenantID   uint               `json:"tenant_id"`
+	Name       string             `json:"name"`
+	Plan       string             `json:"plan"`
+	MaxAPIKeys int                `json:"max_api_keys"`
+	PlanLimits models.PlanLimits  `json:"plan_limits"`
 }
 
-// handleGetTenantSettings returns the current tenant settings.
+// handleGetTenantSettings returns the current tenant settings including plan info.
 // GET /v1/owner/settings
 func (s *Server) handleGetTenantSettings(c *gin.Context) {
 	caller, ok := middleware.GetUserFromContext(c)
@@ -303,7 +324,9 @@ func (s *Server) handleGetTenantSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, tenantSettingsResponse{
 		TenantID:   tenant.ID,
 		Name:       tenant.Name,
+		Plan:       tenant.Plan,
 		MaxAPIKeys: tenant.MaxAPIKeys,
+		PlanLimits: models.GetPlanLimits(tenant.Plan),
 	})
 }
 
@@ -328,13 +351,24 @@ func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no settings provided"})
 		return
 	}
-	if *req.MaxAPIKeys < 1 || *req.MaxAPIKeys > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "max_api_keys must be between 1 and 100"})
+	if *req.MaxAPIKeys < 1 || *req.MaxAPIKeys > 1000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "max_api_keys must be between 1 and 1000"})
 		return
 	}
 	var tenant models.Tenant
 	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+	// Plans with a fixed limit (non -1) cannot be overridden.
+	planLim := models.GetPlanLimits(tenant.Plan)
+	if planLim.MaxAPIKeys != -1 && *req.MaxAPIKeys > planLim.MaxAPIKeys {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "plan_limit_exceeded",
+			"message":    fmt.Sprintf("Your %s plan allows a maximum of %d API key(s). Upgrade to set a higher limit.", tenant.Plan, planLim.MaxAPIKeys),
+			"plan_limit": planLim.MaxAPIKeys,
+			"plan":       tenant.Plan,
+		})
 		return
 	}
 	tenant.MaxAPIKeys = *req.MaxAPIKeys
@@ -345,7 +379,9 @@ func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, tenantSettingsResponse{
 		TenantID:   tenant.ID,
 		Name:       tenant.Name,
+		Plan:       tenant.Plan,
 		MaxAPIKeys: tenant.MaxAPIKeys,
+		PlanLimits: models.GetPlanLimits(tenant.Plan),
 	})
 }
 

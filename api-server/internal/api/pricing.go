@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -400,6 +401,47 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		}
 	}
 
+	// Enforce plan-based budget restrictions.
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+	planLim := models.GetPlanLimits(tenant.Plan)
+
+	periodAllowed := false
+	for _, p := range planLim.AllowedPeriods {
+		if p == req.PeriodType {
+			periodAllowed = true
+			break
+		}
+	}
+	if !periodAllowed {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":           "plan_restriction",
+			"message":         fmt.Sprintf("Your %s plan only supports these budget periods: %v. Upgrade for weekly/daily limits.", tenant.Plan, planLim.AllowedPeriods),
+			"allowed_periods": planLim.AllowedPeriods,
+			"plan":            tenant.Plan,
+		})
+		return
+	}
+	if action == models.BudgetActionBlock && !planLim.AllowBlockAction {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "plan_restriction",
+			"message": fmt.Sprintf("Your %s plan does not support automatic blocking. Upgrade to Pro or higher.", tenant.Plan),
+			"plan":    tenant.Plan,
+		})
+		return
+	}
+	if scopeType == models.BudgetScopeAPIKey && !planLim.AllowPerKeyBudget {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "plan_restriction",
+			"message": fmt.Sprintf("Your %s plan does not support per-API-key budget limits. Upgrade to Team or higher.", tenant.Plan),
+			"plan":    tenant.Plan,
+		})
+		return
+	}
+
 	budgetLimit := models.BudgetLimit{
 		TenantID:       tenantID,
 		ScopeType:      scopeType,
@@ -481,7 +523,16 @@ func (s *Server) handleListCostLedger(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
+	// Apply plan-based data retention as the floor for the time window.
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, tenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
+
 	q := s.postgresDB.GetDB().Where("tenant_id = ?", tenantID)
+	if planLim.DataRetentionDays > 0 {
+		retentionCutoff := time.Now().AddDate(0, 0, -planLim.DataRetentionDays)
+		q = q.Where("timestamp >= ?", retentionCutoff)
+	}
 	if from := c.Query("from"); from != "" {
 		if t, err := time.Parse(time.RFC3339, from); err == nil {
 			q = q.Where("timestamp >= ?", t)

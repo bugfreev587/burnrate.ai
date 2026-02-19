@@ -95,9 +95,12 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 	}
 
 	// ── 3. New user — create tenant + owner ─────────────────────────────────
+	freeLimits := models.GetPlanLimits(models.PlanFree)
 	tenant := models.Tenant{
-		Name:      fmt.Sprintf("%s's Workspace", name),
-		CreatedAt: time.Now(),
+		Name:       fmt.Sprintf("%s's Workspace", name),
+		Plan:       models.PlanFree,
+		MaxAPIKeys: freeLimits.MaxAPIKeys,
+		CreatedAt:  time.Now(),
 	}
 	if err := db.Create(&tenant).Error; err != nil {
 		log.Printf("failed to create tenant: %v", err)

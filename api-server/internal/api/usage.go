@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -142,6 +143,7 @@ func containsSubstr(s, sub string) bool {
 }
 
 // handleListUsage returns usage logs for the caller's tenant.
+// Results are bounded by the tenant's plan data retention window.
 // GET /v1/usage
 func (s *Server) handleListUsage(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantIDFromContext(c)
@@ -150,7 +152,17 @@ func (s *Server) handleListUsage(c *gin.Context) {
 		return
 	}
 
-	logs, err := s.usageSvc.ListByTenant(c.Request.Context(), tenantID, 500)
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, tenantID)
+	lim := models.GetPlanLimits(tenant.Plan)
+
+	var since *time.Time
+	if lim.DataRetentionDays > 0 {
+		t := time.Now().AddDate(0, 0, -lim.DataRetentionDays)
+		since = &t
+	}
+
+	logs, err := s.usageSvc.ListByTenantSince(c.Request.Context(), tenantID, 500, since)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
