@@ -14,7 +14,8 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with a per-request history table.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
-- **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once. Each tenant has a configurable limit (default 5, owner-adjustable up to 100).
+- **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
+- **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
 ## Architecture
@@ -147,6 +148,7 @@ api-server/
     ├── models/
     │   ├── models.go                 # Tenant · User · APIKey · ProviderKey
     │   │                             # TenantProviderSettings · UsageLog
+    │   ├── plans.go                  # Plan tier constants + PlanLimits struct + GetPlanLimits()
     │   └── pricing.go                # Provider · ModelDef · ModelPricing · ContractPricing
     │                                 # PricingMarkup · CostLedger · BudgetLimit
     ├── pricing/
@@ -174,7 +176,7 @@ api-server/
 
 | Model | Key fields |
 |---|---|
-| `Tenant` | `id`, `name`, `max_api_keys` (default 5) |
+| `Tenant` | `id`, `name`, `plan` (free\|pro\|team\|business, default free), `max_api_keys` (derived from plan) |
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
 | `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
@@ -232,6 +234,30 @@ The gateway will:
 5. DEL the Redis TPS cache entry so every pod re-fetches from DB on the next request.
 
 Returns the new key's metadata (`id`, `provider`, `label`, `is_active: true`, `created_at`).
+
+### Plan tiers
+
+Every tenant has a `plan` field that gates feature access. New tenants start on `free`.
+
+| | Free | Pro | Team | Business |
+|---|---|---|---|---|
+| **API keys** | 1 | 5 | Unlimited | Unlimited |
+| **Team members** | 1 | 1 | 10 | Unlimited |
+| **Budget periods** | Monthly only | Monthly · Weekly · Daily | Monthly · Weekly · Daily | Monthly · Weekly · Daily |
+| **Hard block** (`action: "block"`) | — | ✓ | ✓ | ✓ |
+| **Per-key budget scope** | — | — | ✓ | ✓ |
+| **Data retention** | 30 days | 90 days | 1 year | Unlimited |
+
+Plan limits are defined in `internal/models/plans.go` and enforced at the API layer:
+
+- `POST /v1/admin/api_keys` — returns HTTP 422 (`plan_limit_reached`) if active key count ≥ plan limit
+- `POST /v1/admin/users/invite` — returns HTTP 422 (`plan_limit_reached`) if member count ≥ plan limit
+- `PUT /v1/admin/budget` — returns HTTP 403 (`plan_restriction`) if the requested period type, `block` action, or `api_key` scope is not allowed on the current plan
+- `GET /v1/usage` and `GET /v1/cost-ledger` — results are silently bounded to the plan's data retention window
+
+Plan limits are returned in `GET /v1/owner/settings` under the `plan_limits` key.
+
+The plan field is updated directly in the database (no self-serve upgrade UI yet — intended for future billing integration).
 
 ### Pricing pipeline
 
@@ -344,7 +370,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | PATCH | `/v1/admin/users/:id/suspend` | Suspend user |
 | PATCH | `/v1/admin/users/:id/unsuspend` | Unsuspend user |
 | DELETE | `/v1/admin/users/:id` | Remove user |
-| GET / POST | `/v1/admin/api_keys` | List / create API keys (response includes `count`, `limit`, `slots_left`) |
+| GET / POST | `/v1/admin/api_keys` | List / create API keys (response includes `count`, `limit`, `slots_left`, `plan`; `limit`/`slots_left` are `null` for unlimited plans) |
 | DELETE | `/v1/admin/api_keys/:id` | Revoke API key |
 | GET / POST | `/v1/admin/provider_keys` | List / add provider keys |
 | DELETE | `/v1/admin/provider_keys/:id` | Revoke provider key |
@@ -365,14 +391,16 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 **Budget upsert request body:**
 ```json
 {
-  "scope_type": "account",   // "account" (default) | "api_key"
+  "scope_type": "account",   // "account" (default) | "api_key" (Team+ only)
   "scope_id": "",            // "" for account scope; key_id for api_key scope
-  "period_type": "monthly",  // "monthly" | "weekly" | "daily"
+  "period_type": "monthly",  // "monthly" | "weekly" | "daily" (weekly/daily require Pro+)
   "limit_amount": "100.00",  // decimal string
   "alert_threshold": "80",   // percentage to trigger warning headers (default: 80)
-  "action": "block"          // "alert" (headers only) | "block" (HTTP 402)
+  "action": "block"          // "alert" (headers only) | "block" (HTTP 402, requires Pro+)
 }
 ```
+
+Returns HTTP **403** with `"error": "plan_restriction"` if `period_type`, `action`, or `scope_type` is not permitted on the tenant's current plan.
 
 #### Owner only
 
@@ -381,8 +409,8 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | POST | `/v1/owner/users/:id/promote-admin` | Promote user to admin |
 | DELETE | `/v1/owner/users/:id/demote-admin` | Demote admin to editor |
 | POST | `/v1/owner/transfer-ownership` | Transfer workspace ownership |
-| GET | `/v1/owner/settings` | View tenant settings (`name`, `max_api_keys`) |
-| PATCH | `/v1/owner/settings` | Update tenant settings — `{ "max_api_keys": 25 }` (range: 1–100) |
+| GET | `/v1/owner/settings` | View tenant settings: `name`, `plan`, `max_api_keys`, `plan_limits` object |
+| PATCH | `/v1/owner/settings` | Update `max_api_keys` (range: 1–1000, capped at plan ceiling; only meaningful for unlimited plans) |
 
 ### RBAC roles
 
@@ -553,7 +581,7 @@ curl -X POST https://burnrateai-production.up.railway.app/v1/agent/usage \
 | Usage dashboard | ✅ Live |
 | Team management (invite / suspend / remove) | ✅ Live |
 | API key management | ✅ Live |
-| Per-tenant API key limit (default 5, owner-configurable) | ✅ Live |
+| Plan tier enforcement (free / pro / team / business) | ✅ Live |
 | Server-side cost computation (PricingEngine) | ✅ Live |
 | Versioned model pricing catalog | ✅ Live |
 | Immutable cost ledger | ✅ Live |
