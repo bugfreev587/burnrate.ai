@@ -8,9 +8,10 @@ export default function HomePage() {
       <Navbar />
       <div className="hero">
         <div className="hero-content">
+          <p className="hero-eyebrow">TokenGate</p>
           <h1 className="hero-title">
-            Monitor & Guard Your<br />
-            <span className="hero-accent">Claude Code Token Usage</span>
+            Meter, Control &amp; Govern<br />
+            <span className="hero-accent">LLM Usage</span>
           </h1>
           <p className="hero-description">
             BurnRate AI is a gateway that gives you visibility into every token consumed
