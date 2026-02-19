@@ -38,6 +38,7 @@ export default function Navbar() {
             <span className="navbar-text-muted">Loading...</span>
           ) : isSignedIn ? (
             <>
+              <Link to="/plans" className="navbar-link">Plans</Link>
               <Link to="/dashboard" className="navbar-link">Dashboard</Link>
               <div className="user-menu" ref={menuRef}>
                 <button
@@ -92,6 +93,7 @@ export default function Navbar() {
             </>
           ) : (
             <>
+              <Link to="/plans" className="navbar-link">Plans</Link>
               <Link to="/sign-in" className="navbar-link">Sign In</Link>
               <Link to="/sign-up" className="btn btn-primary">Sign Up</Link>
             </>

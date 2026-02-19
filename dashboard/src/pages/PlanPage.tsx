@@ -104,10 +104,34 @@ export default function PlanPage() {
   const [data, setData] = useState<PlanData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [switching, setSwitching] = useState<PlanKey | null>(null)
+  const [planFlash, setPlanFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
 
   // Auth guard: wait until synced, then redirect non-owners
   if (isSynced && role !== 'owner') {
     return <Navigate to="/dashboard" replace />
+  }
+
+  async function handleSwitchPlan(newPlan: PlanKey) {
+    if (!userId) return
+    setSwitching(newPlan)
+    setPlanFlash(null)
+    try {
+      const res = await fetch(`${API_BASE}/v1/owner/plan`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+        body: JSON.stringify({ plan: newPlan }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
+      setPlanFlash({ type: 'success', msg: `Switched to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
+      setRefreshTick(t => t + 1)
+    } catch (err) {
+      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to switch plan' })
+    } finally {
+      setSwitching(null)
+    }
   }
 
   useEffect(() => {
@@ -148,7 +172,7 @@ export default function PlanPage() {
     }
 
     load()
-  }, [isSynced, userId])
+  }, [isSynced, userId, refreshTick])
 
   const currentPlan = data?.settings.plan ?? 'free'
   const limits = data?.settings.plan_limits
@@ -179,6 +203,13 @@ export default function PlanPage() {
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {planFlash && (
+          <div className={`flash ${planFlash.type === 'success' ? 'flash-success' : 'flash-error'}`}
+               style={{ marginBottom: '1rem' }}>
+            {planFlash.msg}
           </div>
         )}
 
@@ -291,6 +322,32 @@ export default function PlanPage() {
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
                           {p.retention}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td></td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}
+                            style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
+                          {p.key === currentPlan ? (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current</span>
+                          ) : p.key === 'business' ? (
+                            <a href="mailto:sales@burnrate.ai"
+                               className="btn btn-secondary"
+                               style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'inline-block' }}>
+                              Contact Sales
+                            </a>
+                          ) : (
+                            <button
+                              className="btn btn-primary"
+                              style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                              disabled={switching !== null}
+                              onClick={() => handleSwitchPlan(p.key)}
+                            >
+                              {switching === p.key ? 'Switching…' : `Switch to ${p.label}`}
+                            </button>
+                          )}
                         </td>
                       ))}
                     </tr>
