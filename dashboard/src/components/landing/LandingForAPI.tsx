@@ -6,16 +6,12 @@ const guardrails = [
   { label: 'Alerts before things go wrong', icon: '🔔' },
 ]
 
-export default function ForAPI() {
+export default function LandingForAPI() {
   return (
     <section aria-labelledby="api-heading" className="py-20 sm:py-24 bg-gray-50">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid md:grid-cols-2 gap-12 items-center">
-          {/* Mock guardrails card */}
-          <div
-            aria-label="Example active guardrails"
-            className="rounded-2xl border border-gray-200 bg-white p-6 order-2 md:order-1"
-          >
+          <div aria-label="Example active guardrails" className="rounded-2xl border border-gray-200 bg-white p-6 order-2 md:order-1">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
               Active Guardrails
             </p>

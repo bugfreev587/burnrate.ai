@@ -1,19 +1,18 @@
-export default function Hero() {
+import { Link } from 'react-router-dom'
+
+export default function LandingHero() {
   return (
     <section aria-label="Hero" className="relative bg-gray-950 text-white overflow-hidden pt-14">
-      {/* Subtle grid */}
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff07_1px,transparent_1px),linear-gradient(to_bottom,#ffffff07_1px,transparent_1px)] bg-[size:72px_72px]"
       />
-      {/* Blue glow */}
       <div
         aria-hidden="true"
         className="absolute top-0 left-1/2 -translate-x-1/2 h-[500px] w-[700px] rounded-full bg-blue-600/10 blur-3xl pointer-events-none"
       />
 
       <div className="relative mx-auto max-w-4xl px-4 sm:px-6 pt-20 pb-28 text-center">
-        {/* Steps badge */}
         <div className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-white/10 bg-white/5 px-5 py-2 mb-10 text-xs sm:text-sm text-gray-400">
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-blue-500" />
           <span className="font-medium text-gray-300">Works in 30 seconds</span>
@@ -41,12 +40,12 @@ export default function Hero() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <a
-            href="https://app.tokengate.to/sign-up"
+          <Link
+            to="/sign-up"
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-7 py-3.5 text-base font-semibold text-white hover:bg-blue-700 transition-colors"
           >
             Start Free
-          </a>
+          </Link>
           <a
             href="#how-it-works"
             className="inline-flex items-center justify-center rounded-lg border border-white/15 bg-white/5 px-7 py-3.5 text-base font-semibold text-white hover:bg-white/10 transition-colors"
@@ -55,7 +54,6 @@ export default function Hero() {
           </a>
         </div>
 
-        {/* Compatibility row */}
         <div className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-gray-600">
           <span className="uppercase tracking-widest font-medium">Works with</span>
           {['Claude Code', 'Cursor', 'Claude CLI', 'Anthropic API', 'Any OpenAI-compatible client'].map(

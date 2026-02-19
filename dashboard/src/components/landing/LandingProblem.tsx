@@ -10,7 +10,7 @@ const apiPains = [
   "Teams can't enforce budgets consistently",
 ]
 
-export default function Problem() {
+export default function LandingProblem() {
   return (
     <section id="problem" aria-labelledby="problem-heading" className="py-20 sm:py-24 bg-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -23,7 +23,6 @@ export default function Problem() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Subscription */}
           <div className="rounded-2xl border border-gray-200 p-8">
             <span className="inline-block rounded-lg bg-purple-50 px-3 py-1 text-sm font-semibold text-purple-700 mb-4">
               Subscription Plans (Claude Pro, ChatGPT Plus)
@@ -39,7 +38,6 @@ export default function Problem() {
             </ul>
           </div>
 
-          {/* API */}
           <div className="rounded-2xl border border-gray-200 p-8">
             <span className="inline-block rounded-lg bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-700 mb-4">
               API Keys (OpenAI / Anthropic / Gemini)

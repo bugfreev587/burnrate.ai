@@ -12,7 +12,7 @@ const mockRows = [
   { label: 'Repository', sub: 'tracked', value: 'my-app / main' },
 ]
 
-export default function ForSubscription() {
+export default function LandingForSubscription() {
   return (
     <section aria-labelledby="sub-heading" className="py-20 sm:py-24 bg-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -43,11 +43,7 @@ export default function ForSubscription() {
             </div>
           </div>
 
-          {/* Mock dashboard card */}
-          <div
-            aria-label="Example session overview"
-            className="rounded-2xl border border-gray-200 bg-gray-50 p-6"
-          >
+          <div aria-label="Example session overview" className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
               Session Overview
             </p>

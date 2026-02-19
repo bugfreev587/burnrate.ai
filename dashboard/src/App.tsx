@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import { useUserSync } from './hooks/useUserSync'
 import APIKeyModal from './components/APIKeyModal'
-import HomePage from './pages/HomePage'
+import LandingPage from './pages/LandingPage'
 import SignInPage from './pages/SignInPage'
 import SignUpPage from './pages/SignUpPage'
 import Dashboard from './pages/Dashboard'
@@ -76,7 +76,7 @@ export default function App() {
     <UserSyncProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<HomeRoute><HomePage /></HomeRoute>} />
+          <Route path="/" element={<HomeRoute><LandingPage /></HomeRoute>} />
           <Route path="/sign-in/*" element={<PublicOnlyRoute><SignInPage /></PublicOnlyRoute>} />
           <Route path="/sign-up/*" element={<PublicOnlyRoute><SignUpPage /></PublicOnlyRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

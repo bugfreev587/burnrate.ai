@@ -46,7 +46,7 @@ const categories = [
   },
 ]
 
-export default function Features() {
+export default function LandingFeatures() {
   return (
     <section id="features" aria-labelledby="features-heading" className="py-20 sm:py-24 bg-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

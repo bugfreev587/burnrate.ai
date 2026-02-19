@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 const plans = [
   {
     name: 'Free',
@@ -10,7 +12,7 @@ const plans = [
       '7-day history',
       '1 API key',
     ],
-    href: 'https://app.tokengate.to/sign-up',
+    to: '/sign-up',
     highlight: false,
   },
   {
@@ -26,7 +28,7 @@ const plans = [
       '30-day history',
       '5 API keys',
     ],
-    href: 'https://app.tokengate.to/sign-up?plan=pro',
+    to: '/sign-up?plan=pro',
     highlight: true,
   },
   {
@@ -42,12 +44,12 @@ const plans = [
       'Webhooks + advanced analytics',
       'Unlimited API keys',
     ],
-    href: 'https://app.tokengate.to/sign-up?plan=power',
+    to: '/sign-up?plan=power',
     highlight: false,
   },
 ]
 
-export default function Pricing() {
+export default function LandingPricing() {
   return (
     <section id="pricing" aria-labelledby="pricing-heading" className="py-20 sm:py-24 bg-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -95,8 +97,8 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <a
-                href={plan.href}
+              <Link
+                to={plan.to}
                 className={`block w-full rounded-lg py-3 text-center text-sm font-semibold transition-colors ${
                   plan.highlight
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -104,7 +106,7 @@ export default function Pricing() {
                 }`}
               >
                 Start Free
-              </a>
+              </Link>
             </div>
           ))}
         </div>

@@ -119,3 +119,7 @@ button {
   justify-content: center;
   background: var(--color-bg);
 }
+
+/* ── Tailwind utilities (landing page) ──────────────────────────────────────── */
+@tailwind components;
+@tailwind utilities;

@@ -5,7 +5,7 @@ const pains = [
   'Unexpected API bills from a single bug',
 ]
 
-export default function SocialProof() {
+export default function LandingSocialProof() {
   return (
     <section aria-label="Pain points" className="border-b border-gray-100 bg-gray-50 py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

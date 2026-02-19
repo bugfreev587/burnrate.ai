@@ -6,7 +6,7 @@ const capabilities = [
   'Project-based tracking — repo / workspace / key',
 ]
 
-export default function Solution() {
+export default function LandingSolution() {
   return (
     <section aria-labelledby="solution-heading" className="py-20 sm:py-24 bg-gray-950 text-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

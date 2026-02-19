@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 
 const faqs = [
@@ -29,7 +27,7 @@ const faqs = [
   },
 ]
 
-export default function FAQ() {
+export default function LandingFAQ() {
   const [open, setOpen] = useState<number | null>(null)
 
   return (
@@ -61,7 +59,6 @@ export default function FAQ() {
                   +
                 </span>
               </button>
-
               {open === i && (
                 <div id={`faq-answer-${i}`} className="px-6 pb-5">
                   <p className="text-sm text-gray-600 leading-relaxed">{faq.a}</p>
