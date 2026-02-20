@@ -9,8 +9,10 @@ interface Props {
 export default function APIKeyModal({ apiKey, onClose }: Props) {
   const [copied, setCopied] = useState(false)
 
+  const envBlock = `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1\nexport ANTHROPIC_API_KEY=${apiKey}`
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(apiKey)
+    await navigator.clipboard.writeText(envBlock)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -31,8 +33,8 @@ export default function APIKeyModal({ apiKey, onClose }: Props) {
         </div>
 
         <div className="modal-usage">
-          <p className="usage-title">Usage example:</p>
-          <pre className="usage-code">{`export TOKENGATE_API_KEY="${apiKey}"`}</pre>
+          <p className="usage-title">Quick setup — copy both and paste in your terminal:</p>
+          <pre className="usage-code">{envBlock}</pre>
         </div>
 
         <button className="btn btn-primary modal-close-btn" onClick={onClose}>

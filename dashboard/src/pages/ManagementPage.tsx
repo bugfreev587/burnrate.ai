@@ -862,25 +862,25 @@ export default function ManagementPage() {
               <div className="install-box">
                 <h3>Quick Setup</h3>
                 <div className="install-step">
-                  <h4>Set environment variable</h4>
+                  <h4>Set environment variables</h4>
                   <div className="cmd-box">
-                    <pre>{`export TOKENGATE_API_KEY="${newKeySecret}"`}</pre>
+                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1\nexport ANTHROPIC_API_KEY=${newKeySecret}`}</pre>
                     <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(`export TOKENGATE_API_KEY="${newKeySecret}"`, 'env')}>
+                      onClick={() => copy(`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1\nexport ANTHROPIC_API_KEY=${newKeySecret}`, 'env')}>
                       {copiedID === 'env' ? 'Copied!' : 'Copy'}
                     </button>
                   </div>
                 </div>
                 <div className="install-step">
-                  <h4>Report usage (example curl)</h4>
+                  <h4>Test the gateway (example curl)</h4>
                   <div className="cmd-box">
-                    <pre>{`curl -X POST ${API_SERVER_URL}/v1/agent/usage \\
-  -H "Authorization: ApiKey ${newKeyID}:<secret>" \\
+                    <pre>{`curl https://gateway.tokengate.to/v1/messages \\
+  -H "Authorization: Bearer ${newKeySecret}" \\
   -H "Content-Type: application/json" \\
-  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","prompt_tokens":100,"completion_tokens":50,"cost":0.001,"request_id":"req_abc123"}'`}</pre>
+  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
                     <button className="btn btn-small btn-secondary"
                       onClick={() => copy(
-                        `curl -X POST ${API_SERVER_URL}/v1/agent/usage \\\n  -H "Authorization: ApiKey ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"provider":"anthropic","model":"claude-sonnet-4-6","prompt_tokens":100,"completion_tokens":50,"cost":0.001,"request_id":"req_abc123"}'`,
+                        `curl https://gateway.tokengate.to/v1/messages \\\n  -H "Authorization: Bearer ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
                         'curl'
                       )}>
                       {copiedID === 'curl' ? 'Copied!' : 'Copy'}
