@@ -903,7 +903,6 @@ export default function ManagementPage() {
               <button className="btn btn-primary" onClick={() => {
                 setShowNewKeyModal(false)
                 setNewKeySecret(null)
-                setNewKeyID('')
               }}>
                 I've saved my key
               </button>
