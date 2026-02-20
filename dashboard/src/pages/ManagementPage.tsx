@@ -59,6 +59,7 @@ export default function ManagementPage() {
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null)
   const [newKeyID, setNewKeyID] = useState('')
   const [copiedID, setCopiedID] = useState<string | null>(null)
+  const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
   // Invite modal
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -66,6 +67,7 @@ export default function ManagementPage() {
   const [inviteName, setInviteName] = useState('')
   const [inviteRole, setInviteRole] = useState<'viewer' | 'editor'>('viewer')
   const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
 
   const isAdmin = hasPermission(role, 'admin')
   const isOwner = role === 'owner'
@@ -140,10 +142,11 @@ export default function ManagementPage() {
 
   const handleInviteUser = async () => {
     if (!inviteEmail.trim()) {
-      showError('Email is required')
+      setInviteError('Email is required')
       return
     }
     setInviting(true)
+    setInviteError(null)
     try {
       const res = await fetch(`${API_SERVER_URL}/v1/admin/users/invite`, {
         method: 'POST',
@@ -161,9 +164,10 @@ export default function ManagementPage() {
       setInviteEmail('')
       setInviteName('')
       setInviteRole('viewer')
+      setInviteError(null)
       fetchUsers()
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to invite user')
+      setInviteError(err instanceof Error ? err.message : 'Failed to invite user')
     } finally {
       setInviting(false)
     }
@@ -282,9 +286,10 @@ export default function ManagementPage() {
 
   const handleCreateAPIKey = async () => {
     if (!newKeyLabel.trim()) {
-      showError('Please enter a label')
+      setCreateKeyError('Please enter a label')
       return
     }
+    setCreateKeyError(null)
     try {
       const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys`, {
         method: 'POST',
@@ -293,17 +298,18 @@ export default function ManagementPage() {
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? 'Failed to create API key')
+        throw new Error(d.message ?? d.error ?? 'Failed to create API key')
       }
       const data = await res.json()
       setNewKeyID(data.key_id)
       setNewKeySecret(`${data.key_id}:${data.secret}`)
       setShowCreateKeyModal(false)
+      setCreateKeyError(null)
       setShowNewKeyModal(true)
       setNewKeyLabel('')
       fetchAPIKeys()
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to create API key')
+      setCreateKeyError(err instanceof Error ? err.message : 'Failed to create API key')
     }
   }
 
@@ -444,7 +450,7 @@ export default function ManagementPage() {
               </div>
               <button className="btn btn-primary" onClick={() => {
                 setInviteEmail(''); setInviteName(''); setInviteRole('viewer')
-                setShowInviteModal(true)
+                setInviteError(null); setShowInviteModal(true)
               }}>
                 Invite Member
               </button>
@@ -542,10 +548,10 @@ export default function ManagementPage() {
                   </span>
                 </h2>
                 <p className="section-desc">
-                  Keys used by the claude-code agent to report usage through the TokenGate gateway.
+                  Keys used by the AI code agent to report usage through the TokenGate gateway.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setNewKeyLabel(''); setShowCreateKeyModal(true) }}>
+              <button className="btn btn-primary" onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true) }}>
                 Create Key
               </button>
             </div>
@@ -567,7 +573,7 @@ export default function ManagementPage() {
                         <div className="empty-cta">
                           <p>No API keys yet. Create one to start reporting usage.</p>
                           <button className="btn btn-primary"
-                            onClick={() => { setNewKeyLabel(''); setShowCreateKeyModal(true) }}>
+                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true) }}>
                             Create Your First Key
                           </button>
                         </div>
@@ -671,7 +677,7 @@ export default function ManagementPage() {
 
       {/* ── Invite Member Modal ───────────────────────────────────────────── */}
       {showInviteModal && (
-        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setInviteError(null) }}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>Invite Team Member</h2>
@@ -723,8 +729,11 @@ export default function ManagementPage() {
                 </div>
               </div>
             </div>
+            {inviteError && (
+              <div className="flash flash-error modal-flash">{inviteError}</div>
+            )}
             <div className="modal-ftr">
-              <button className="btn btn-secondary" onClick={() => setShowInviteModal(false)}
+              <button className="btn btn-secondary" onClick={() => { setShowInviteModal(false); setInviteError(null) }}
                 disabled={inviting}>
                 Cancel
               </button>
@@ -739,7 +748,7 @@ export default function ManagementPage() {
 
       {/* ── Create API Key Modal ─────────────────────────────────────────── */}
       {showCreateKeyModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateKeyModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowCreateKeyModal(false); setCreateKeyError(null) }}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>Create API Key</h2>
@@ -761,8 +770,11 @@ export default function ManagementPage() {
                 />
               </div>
             </div>
+            {createKeyError && (
+              <div className="flash flash-error modal-flash">{createKeyError}</div>
+            )}
             <div className="modal-ftr">
-              <button className="btn btn-secondary" onClick={() => setShowCreateKeyModal(false)}>
+              <button className="btn btn-secondary" onClick={() => { setShowCreateKeyModal(false); setCreateKeyError(null) }}>
                 Cancel
               </button>
               <button className="btn btn-primary" onClick={handleCreateAPIKey}
