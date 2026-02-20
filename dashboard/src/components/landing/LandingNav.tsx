@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom'
+import { useAuth, useUser } from '@clerk/clerk-react'
 
 export default function LandingNav() {
+  const { isSignedIn, isLoaded } = useAuth()
+  const { user } = useUser()
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -19,20 +23,49 @@ export default function LandingNav() {
             <a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a>
           </nav>
 
-          <div className="flex items-center gap-3">
-            <Link
-              to="/sign-in"
-              className="hidden md:inline-flex text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              Sign In
-            </Link>
-            <Link
-              to="/sign-up"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-            >
-              Start Free
-            </Link>
-          </div>
+          {/* Right-side actions — wait for Clerk to load before rendering */}
+          {isLoaded && (
+            <div className="flex items-center gap-3">
+              {isSignedIn ? (
+                <>
+                  <Link
+                    to="/dashboard"
+                    className="hidden md:inline-flex rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link to="/dashboard" aria-label="Go to dashboard">
+                    {user?.imageUrl ? (
+                      <img
+                        src={user.imageUrl}
+                        alt={user.fullName ?? 'Profile'}
+                        className="h-8 w-8 rounded-full object-cover ring-2 ring-gray-200 hover:ring-blue-500 transition-all"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold ring-2 ring-gray-200 hover:ring-blue-500 transition-all">
+                        {(user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0] ?? '?').toUpperCase()}
+                      </div>
+                    )}
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/sign-in"
+                    className="hidden md:inline-flex text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/sign-up"
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  >
+                    Start Free
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>
