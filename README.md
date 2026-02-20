@@ -84,6 +84,49 @@ If a **blocking** limit is exceeded, the proxy returns HTTP **402** with:
 - **Streaming detection**: from the upstream `Content-Type: text/event-stream` response header (not the request body).
 - **Token extraction**: parses `message_start` for input/cache tokens and message ID; `message_delta` for output tokens. Extraction is independent of forwarding — bytes are never delayed for parsing.
 
+### Usage log insertion: N SSE events → 1 row
+
+A single LLM request streams many SSE chunks, but always results in **exactly one `usage_logs` row**. The aggregation happens in layers:
+
+```
+Anthropic SSE stream (many events)
+  │
+  │  message_start  → captures input_tokens, cache_creation_tokens,
+  │                    cache_read_tokens, message_id, model
+  │  content_block_* → forwarded to client, no token data
+  │  message_delta  → captures output_tokens (final cumulative count)
+  │  message_stop   → end of stream
+  │
+  ▼
+ParseSSE()  (proxy/stream.go)
+  Reads every chunk, forwards each to the client in real-time via http.Flusher,
+  accumulates token fields into a single TokenCounts struct.
+  Returns ONE TokenCounts when the stream ends.
+  │
+  ▼
+handler.go  publishes ONE UsageEventMsg to Redis Streams
+  (message_id from message_start becomes the idempotency key)
+  │
+  ▼
+Redis Stream  "burnrate:usage:events"
+  │
+  ▼
+UsageWorker.process()  (events/worker.go)
+  Reads the single stream message, creates ONE UsageLog record,
+  inserts via UsageLogService.Create() (GORM db.Create).
+  request_id column has a UNIQUE constraint — duplicate delivery
+  from Redis is detected and silently skipped, not double-counted.
+  Also runs PricingEngine for cost ledger + budget counter updates.
+  ACKs the message on success; re-delivers on failure.
+  │
+  ▼
+PostgreSQL  usage_logs table  (1 row per request)
+```
+
+**Non-streaming** (regular JSON response): `extractTokensFromJSON()` reads the body once and returns the same `TokenCounts` shape — the rest of the pipeline is identical.
+
+**Idempotency**: `UsageLog.RequestID` maps to the Anthropic `message_id` (e.g. `msg_01XYZ…`). The unique index means even if the Redis consumer crashes mid-processing and re-delivers the same message, no duplicate row is inserted.
+
 ### Setting up provider keys
 
 ```bash
@@ -442,44 +485,68 @@ Production config is loaded from `conf/api-server-prod.yaml`. Sensitive values a
 
 ## Dashboard
 
-**Stack:** React 19 · TypeScript · Vite · Clerk · Recharts · React Router
+**Stack:** React 19 · TypeScript · Vite · Tailwind CSS v3 · Clerk · Recharts · React Router
 
 ### Directory layout
 
 ```
 dashboard/
+├── public/
+│   └── favicon.svg              # TokenGate shield icon (custom SVG)
 ├── src/
+│   ├── assets/
+│   │   ├── logo-light.svg       # Full logo for light backgrounds (gradient shield + wordmark)
+│   │   └── logo-dark.svg        # Full logo for dark backgrounds (brighter gradient)
 │   ├── main.tsx                 # Clerk provider setup
 │   ├── App.tsx                  # Routes + auth guards
 │   ├── pages/
-│   │   ├── HomePage.tsx         # Landing page
+│   │   ├── LandingPage.tsx      # Marketing landing page (/)
 │   │   ├── SignInPage.tsx       # Clerk sign-in embed
 │   │   ├── SignUpPage.tsx       # Clerk sign-up embed
 │   │   ├── Dashboard.tsx        # Usage summary + log table
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
 │   │   ├── ManagementPage.tsx   # Team, API key, and provider key management
-│   │   └── PricingConfigPage.tsx# Per-key pricing overrides
+│   │   ├── PricingConfigPage.tsx# Per-key pricing overrides
+│   │   └── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
 │   ├── components/
-│   │   ├── Navbar.tsx           # Top nav + user menu
-│   │   └── APIKeyModal.tsx      # One-time secret display
+│   │   ├── Navbar.tsx           # Dashboard top nav + user menu (dark theme, logo-dark.svg)
+│   │   ├── APIKeyModal.tsx      # One-time secret display
+│   │   └── landing/             # Landing page components (Tailwind-scoped)
+│   │       ├── LandingNav.tsx   # Auth-aware landing nav (logo-light.svg, Dashboard/avatar when signed in)
+│   │       ├── LandingHero.tsx
+│   │       ├── LandingProblem.tsx
+│   │       ├── LandingFeatures.tsx
+│   │       ├── LandingHowItWorks.tsx
+│   │       ├── LandingPricing.tsx
+│   │       └── LandingFooter.tsx
 │   └── hooks/
 │       ├── useUserSync.ts       # Clerk ↔ backend sync
 │       ├── useUsageData.ts      # Usage log fetcher
 │       └── usePricingConfig.ts  # Pricing config fetcher
+├── tailwind.config.ts           # Tailwind v3; preflight disabled; scoped to landing/** only
+├── postcss.config.js            # PostCSS (tailwindcss + autoprefixer)
 ├── vercel.json                  # SPA rewrite (all routes → index.html)
 └── .env.example
 ```
 
 ### Pages
 
+- **LandingPage** – Public marketing page at `/` with hero, problem, features, how-it-works, pricing, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **Dashboard** – Summary cards (requests / tokens / cost) and a paginated usage table.
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create, revoke, one-time secret display), Provider Keys table (add, activate, revoke).
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
+- **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
 
 ### Key hooks
 
 - **`useUserSync`** – Runs once after Clerk sign-in. Calls `POST /v1/auth/sync`, stores `userId`, `tenantId`, `role`, and `status` in state and `localStorage`. Handles three cases: existing user, pending email invitation, and brand-new user (creates tenant).
 - **`useUsageData`** – Calls `GET /v1/usage`, returns logs + refresh function.
+
+### Branding
+
+- `logo-light.svg` — used in the landing page nav (light white header background). Blue `#0A6BFF` → green `#14B86A` gradient shield with white keyhole.
+- `logo-dark.svg` — used in the dashboard nav (dark background). Brighter gradient `#2D7DFF` → `#23D17E` with full-opacity white strokes for contrast.
+- `favicon.svg` — simplified 32 × 32 shield + keyhole, same gradient. Referenced from `index.html` via `<link rel="icon" type="image/svg+xml" href="/favicon.svg">`.
 
 ### Environment variables
 
