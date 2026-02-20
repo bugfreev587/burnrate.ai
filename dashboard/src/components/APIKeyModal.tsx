@@ -9,7 +9,7 @@ interface Props {
 export default function APIKeyModal({ apiKey, onClose }: Props) {
   const [copied, setCopied] = useState(false)
 
-  const envBlock = `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1\nexport ANTHROPIC_API_KEY=${apiKey}`
+  const envBlock = `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_API_KEY=${apiKey}`
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(envBlock)
