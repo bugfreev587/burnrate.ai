@@ -17,15 +17,22 @@ export default function LandingNav() {
             <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-gray-900 transition-colors">Setup</a>
             <a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a>
-            <Link to="/sign-in" className="hover:text-gray-900 transition-colors">Sign In</Link>
           </nav>
 
-          <Link
-            to="/sign-up"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-          >
-            Start Free
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/sign-in"
+              className="hidden md:inline-flex text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              Sign In
+            </Link>
+            <Link
+              to="/sign-up"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            >
+              Start Free
+            </Link>
+          </div>
         </div>
       </div>
     </header>
