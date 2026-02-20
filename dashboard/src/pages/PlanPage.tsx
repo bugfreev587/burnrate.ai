@@ -44,10 +44,10 @@ const PLANS: Array<{
   perKey: boolean
   retention: string
 }> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '30 days'   },
+  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days'    },
   { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days'   },
-  { key: 'team',     label: 'Team',     price: '$29/mo',  maxKeys: '∞',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '1 year'    },
-  { key: 'business', label: 'Business', price: 'Custom',  maxKeys: '∞',  maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited' },
+  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days'  },
+  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
