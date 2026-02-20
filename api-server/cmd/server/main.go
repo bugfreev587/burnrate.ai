@@ -74,6 +74,7 @@ func main() {
 		rdb,
 		time.Duration(cfg.Security.APIKeyCacheTTLSeconds)*time.Second,
 	)
+	tenantSvc := services.NewTenantService(postgresDB.GetDB(), rdb)
 	usageSvc := services.NewUsageLogService(postgresDB.GetDB())
 
 	// Pricing engine
@@ -98,7 +99,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, tenantSvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)

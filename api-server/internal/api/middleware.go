@@ -1,8 +1,12 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,6 +105,95 @@ func RateLimitMiddleware(rpm int) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		c.Next()
+	}
+}
+
+// DebugHeadersMiddleware logs every incoming request's full header set.
+// Enable by setting DEBUG_HEADERS=true in the environment.
+// NEVER enable in production — token prefixes are logged.
+func DebugHeadersMiddleware() gin.HandlerFunc {
+	enabled := os.Getenv("DEBUG_HEADERS") == "true"
+	if !enabled {
+		return func(c *gin.Context) { c.Next() }
+	}
+	log.Println("[DEBUG_HEADERS] header debug logging is ENABLED")
+
+	return func(c *gin.Context) {
+		r := c.Request
+
+		// ── All headers as pretty JSON ────────────────────────────────────────
+		allHeaders := make(map[string][]string, len(r.Header))
+		for k, v := range r.Header {
+			allHeaders[k] = v
+		}
+		headersJSON, _ := json.MarshalIndent(allHeaders, "  ", "  ")
+
+		// ── Authorization: safe summary only ──────────────────────────────────
+		authSummary := "absent"
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			preview := auth
+			if len(preview) > 20 {
+				preview = preview[:20] + "..."
+			}
+			authSummary = fmt.Sprintf("present | len=%d | prefix=%q", len(auth), preview)
+		}
+
+		// ── Proxy / edge headers ──────────────────────────────────────────────
+		proxyHeaders := []string{
+			"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host",
+			"X-Real-IP", "Forwarded", "CF-Connecting-IP", "Fly-Client-IP",
+		}
+		var proxyLines strings.Builder
+		for _, h := range proxyHeaders {
+			v := r.Header.Get(h)
+			if v == "" {
+				v = "(absent)"
+			}
+			fmt.Fprintf(&proxyLines, "  %-22s %s\n", h+":", v)
+		}
+
+		// ── TokenGate custom headers ──────────────────────────────────────────
+		var tgLines strings.Builder
+		for k := range r.Header {
+			if strings.HasPrefix(strings.ToLower(k), "x-tokengate-") {
+				fmt.Fprintf(&tgLines, "  %-32s %s\n", k+":", r.Header.Get(k))
+			}
+		}
+		if tgLines.Len() == 0 {
+			tgLines.WriteString("  (none)\n")
+		}
+
+		log.Printf(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ INCOMING REQUEST ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Method:     %s
+  URL:        %s
+  Host:       %s
+  Proto:      %s
+  RemoteAddr: %s
+
+── Proxy / Edge Headers ──────────────────────────────────────────────────────
+%s
+── TokenGate Headers ─────────────────────────────────────────────────────────
+%s
+── Authorization ─────────────────────────────────────────────────────────────
+  %s
+
+── All Headers (JSON) ────────────────────────────────────────────────────────
+  %s
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`,
+			r.Method,
+			r.URL.String(),
+			r.Host,
+			r.Proto,
+			r.RemoteAddr,
+			proxyLines.String(),
+			tgLines.String(),
+			authSummary,
+			string(headersJSON),
+		)
+
 		c.Next()
 	}
 }

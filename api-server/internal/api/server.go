@@ -21,6 +21,7 @@ type Server struct {
 	cfg              *config.Config
 	postgresDB       *db.PostgresDB
 	apiKeySvc        *services.APIKeyService
+	tenantSvc        *services.TenantService
 	usageSvc         *services.UsageLogService
 	pricingEngine    *pricing.PricingEngine
 	providerKeySvc   *services.ProviderKeyService
@@ -36,6 +37,7 @@ func NewServer(
 	cfg *config.Config,
 	postgresDB *db.PostgresDB,
 	apiKeySvc *services.APIKeyService,
+	tenantSvc *services.TenantService,
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
 	providerKeySvc *services.ProviderKeyService,
@@ -52,6 +54,7 @@ func NewServer(
 		cfg:            cfg,
 		postgresDB:     postgresDB,
 		apiKeySvc:      apiKeySvc,
+		tenantSvc:      tenantSvc,
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
@@ -68,6 +71,7 @@ func NewServer(
 }
 
 func (s *Server) setupMiddleware() {
+	s.router.Use(DebugHeadersMiddleware()) // no-op unless DEBUG_HEADERS=true
 	s.router.Use(gin.Recovery())
 	s.router.Use(LoggerMiddleware())
 	s.router.Use(CORSMiddleware(s.cfg.Server.CORSOrigins))
@@ -75,21 +79,26 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	apiKeyAuth := middleware.APIKeyMiddleware(s.apiKeySvc)
+	apiKeyAuth     := middleware.APIKeyMiddleware(s.apiKeySvc)
+	tenantPathAuth := middleware.TenantPathMiddleware(s.tenantSvc)
 
-	// ─── Public ────────────────────────────────────────────────────────────────
+	// ─── Global health (Railway LB + backward compat) ────────────────────────
+	s.router.GET("/health", s.handleHealth)
 	s.router.GET("/v1/health", s.handleHealth)
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
 
-	// ─── API-key authenticated: Anthropic proxy (for Claude Code agents) ────
-	s.router.POST("/v1/messages", apiKeyAuth, s.proxyHandler.HandleProxy)
-	s.router.GET("/v1/models", apiKeyAuth, s.proxyHandler.HandleModels)
-
-	// ─── Multi-provider proxy routes (all HTTP methods) ──────────────────────
-	s.router.Any("/v1/openai/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
-	s.router.Any("/v1/gemini/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
-	s.router.Any("/v1/bedrock/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
-	s.router.Any("/v1/vertex/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
+	// ─── Tenant-scoped proxy routes ──────────────────────────────────────────
+	tenant := s.router.Group("/:tenant_slug")
+	tenant.Use(tenantPathAuth)
+	{
+		tenant.GET("/health", s.handleTenantHealth)
+		tenant.POST("/v1/messages", s.proxyHandler.HandleProxy)
+		tenant.GET("/v1/models", s.proxyHandler.HandleModels)
+		tenant.Any("/v1/openai/*path", s.proxyHandler.HandleProxy)
+		tenant.Any("/v1/gemini/*path", s.proxyHandler.HandleProxy)
+		tenant.Any("/v1/bedrock/*path", s.proxyHandler.HandleProxy)
+		tenant.Any("/v1/vertex/*path", s.proxyHandler.HandleProxy)
+	}
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
 	agent := s.router.Group("/v1/agent")
@@ -182,6 +191,9 @@ func (s *Server) setupRoutes() {
 	{
 		internal.PATCH("/tenants/:tenant_id/plan", s.handleAdminChangeTenantPlan)
 	}
+
+	// ─── NoRoute: helpful error for bare /v1/… without tenant prefix ─────────
+	s.router.NoRoute(s.handleNoRoute)
 }
 
 // internalSecretMiddleware rejects requests that don't carry the correct

@@ -12,6 +12,8 @@ import (
 type Tenant struct {
 	ID         uint      `gorm:"primaryKey"`
 	Name       string
+	Slug       string    `gorm:"uniqueIndex;size:40"`   // path slug e.g. "acme"; 3–40 chars, ^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$
+	Status     string    `gorm:"default:active"`        // active | suspended
 	Plan       string    `gorm:"default:free"` // free | pro | team | business
 	MaxAPIKeys int       `gorm:"default:1"`    // plan-derived; use GetPlanLimits for enforcement
 	CreatedAt  time.Time
