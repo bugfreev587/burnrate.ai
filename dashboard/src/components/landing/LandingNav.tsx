@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth, useUser } from '@clerk/clerk-react'
+import logoLight from '../../assets/logo-light.svg'
 
 export default function LandingNav() {
   const { isSignedIn, isLoaded } = useAuth()
@@ -10,6 +11,7 @@ export default function LandingNav() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex h-14 items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
+            <img src={logoLight} alt="TokenGate" className="h-8 w-8 shrink-0" />
             <span className="font-bold text-gray-900 text-lg tracking-tight">TokenGate</span>
             <span className="hidden sm:inline rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wide">
               Beta

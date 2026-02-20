@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="TokenGate">
+  <defs>
+    <linearGradient id="tgGradientDark" x1="14" y1="18" x2="114" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2D7DFF"/>
+      <stop offset="1" stop-color="#23D17E"/>
+    </linearGradient>
+    <filter id="softDark" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.6" result="blur"/>
+      <feComposite in="blur" in2="SourceAlpha" operator="out" result="shadow"/>
+      <feColorMatrix in="shadow" type="matrix"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 .35 0" />
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Shield -->
+  <path filter="url(#softDark)"
+    d="M64 10
+       C50 20 35 24 22 26
+       V60
+       C22 90 42 109 64 118
+       C86 109 106 90 106 60
+       V26
+       C93 24 78 20 64 10 Z"
+    fill="url(#tgGradientDark)" />
+
+  <!-- Inner Gate Frame -->
+  <path
+    d="M64 31
+       C55 38 45 41 37 42
+       V62
+       C37 79 49 92 64 98
+       C79 92 91 79 91 62
+       V42
+       C83 41 73 38 64 31 Z"
+    fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round" opacity="1"/>
+
+  <!-- Inner Panel (Gate opening) -->
+  <rect x="44" y="44" width="40" height="54" rx="18"
+    fill="none" stroke="#FFFFFF" stroke-width="6" opacity="1"/>
+
+  <!-- Keyhole -->
+  <circle cx="64" cy="66" r="8" fill="#FFFFFF"/>
+  <path d="M64 74
+           C60.5 74 58 76.5 58 80
+           V90
+           C58 93 60.5 95 64 95
+           C67.5 95 70 93 70 90
+           V80
+           C70 76.5 67.5 74 64 74 Z"
+        fill="#FFFFFF"/>
+</svg>

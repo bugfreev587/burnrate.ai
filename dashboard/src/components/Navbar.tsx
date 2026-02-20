@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useUser, useAuth, SignOutButton } from '@clerk/clerk-react'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import logoDark from '../assets/logo-dark.svg'
 import './Navbar.css'
 
 export default function Navbar() {
@@ -30,6 +31,7 @@ export default function Navbar() {
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
+          <img src={logoDark} alt="" className="navbar-logo-icon" aria-hidden="true" />
           TokenGate
         </Link>
 
