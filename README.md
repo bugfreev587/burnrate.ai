@@ -467,7 +467,7 @@ Returns HTTP **403** with `"error": "plan_restriction"` if `period_type`, `actio
 ### Auth
 
 - **Dashboard → API:** `X-User-ID: <clerk_user_id>` header. The RBAC middleware looks up the user in PostgreSQL, checks their status (`active` / `suspended`) and role.
-- **Agent → API:** `Authorization: ApiKey <key_id>:<secret>`. Validated via HMAC-SHA256; results are cached in Redis for 5 minutes.
+- **Agent → API:** `Authorization: ApiKey <key_id>:<secret>` or `Authorization: Bearer <key_id>:<secret>`. Both schemes are accepted — Bearer is the default used by the Anthropic SDK and Claude Code. Validated via HMAC-SHA256; results are cached in Redis for 5 minutes.
 
 ### Configuration
 
@@ -507,17 +507,27 @@ dashboard/
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
 │   │   ├── ManagementPage.tsx   # Team, API key, and provider key management
 │   │   ├── PricingConfigPage.tsx# Per-key pricing overrides
+│   │   ├── PublicPricingPage.tsx# Full pricing page at /pricing (monthly/annual toggle, 4-tier cards)
+│   │   ├── PublicPricingPage.css
 │   │   └── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
 │   ├── components/
 │   │   ├── Navbar.tsx           # Dashboard top nav + user menu (dark theme, logo-dark.svg)
 │   │   ├── APIKeyModal.tsx      # One-time secret display
+│   │   ├── InactivityGuard.tsx  # Auto sign-out after 10 min idle; 2-min warning modal
+│   │   ├── InactivityGuard.css
 │   │   └── landing/             # Landing page components (Tailwind-scoped)
 │   │       ├── LandingNav.tsx   # Auth-aware landing nav (logo-light.svg, Dashboard/avatar when signed in)
 │   │       ├── LandingHero.tsx
 │   │       ├── LandingProblem.tsx
+│   │       ├── LandingSolution.tsx
 │   │       ├── LandingFeatures.tsx
+│   │       ├── LandingForAPI.tsx
+│   │       ├── LandingForSubscription.tsx
 │   │       ├── LandingHowItWorks.tsx
+│   │       ├── LandingSocialProof.tsx
 │   │       ├── LandingPricing.tsx
+│   │       ├── LandingFAQ.tsx
+│   │       ├── LandingFinalCTA.tsx
 │   │       └── LandingFooter.tsx
 │   └── hooks/
 │       ├── useUserSync.ts       # Clerk ↔ backend sync
@@ -531,11 +541,13 @@ dashboard/
 
 ### Pages
 
-- **LandingPage** – Public marketing page at `/` with hero, problem, features, how-it-works, pricing, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
+- **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
+- **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
 - **Dashboard** – Summary cards (requests / tokens / cost) and a paginated usage table.
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create, revoke, one-time secret display), Provider Keys table (add, activate, revoke).
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
+- **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
 
 ### Key hooks
 
