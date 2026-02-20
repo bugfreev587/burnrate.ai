@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 )
 
 type PostgresDB struct {

@@ -9,12 +9,12 @@ import (
 
 	"github.com/go-redis/redis/v8"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
-const consumerGroup = "burnrate:usage:workers"
+const consumerGroup = "tokengate:usage:workers"
 const consumerName = "worker-1"
 
 // UsageWorker consumes from the Redis stream and processes usage events.

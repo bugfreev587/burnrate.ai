@@ -1,4 +1,4 @@
-module github.com/xiaoboyu/burnrate-ai/api-server
+module github.com/xiaoboyu/tokengate/api-server
 
 go 1.24.0
 

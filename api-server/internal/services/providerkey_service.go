@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
 // In-process plaintext cache: sliding idle window + absolute hard ceiling.

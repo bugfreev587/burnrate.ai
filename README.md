@@ -1,4 +1,4 @@
-# burnrate-ai
+# TokenGate
 
 A multi-tenant usage tracking and management gateway for Claude Code and other LLM agents. Teams use it to report, visualize, and control their LLM API spending — or route all requests through the built-in Anthropic reverse proxy so usage is captured automatically.
 
@@ -21,7 +21,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 ## Architecture
 
 ```
-burnrate-ai/
+tokengate/
 ├── api-server/   # Go 1.24 backend (Gin + PostgreSQL + Redis)
 └── dashboard/    # React 19 + TypeScript frontend (Vite + Clerk)
 ```
@@ -36,7 +36,7 @@ The gateway acts as a drop-in replacement for the Anthropic API. Configure Claud
 
 ```bash
 export ANTHROPIC_BASE_URL=https://your-gateway.railway.app/v1
-export ANTHROPIC_API_KEY=<key_id>:<secret>   # your burnrate br_xxx key
+export ANTHROPIC_API_KEY=<key_id>:<secret>   # your TokenGate tg_xxx key
 ```
 
 The gateway will:
@@ -61,11 +61,11 @@ When the tenant's spend is at or above the configured `alert_threshold` percenta
 
 | Header | Example | Description |
 |---|---|---|
-| `X-Burnrate-Budget-Warning` | `true` | Present when at or above alert threshold |
-| `X-Burnrate-Budget-Limit` | `100.0000` | The configured limit amount |
-| `X-Burnrate-Budget-Used` | `83.4200` | Current spend in the period |
-| `X-Burnrate-Budget-Period` | `monthly` | Budget period: `monthly`, `weekly`, or `daily` |
-| `X-Burnrate-Budget-Scope` | `account` | `account` or `api_key` |
+| `X-Tokengate-Budget-Warning` | `true` | Present when at or above alert threshold |
+| `X-Tokengate-Budget-Limit` | `100.0000` | The configured limit amount |
+| `X-Tokengate-Budget-Used` | `83.4200` | Current spend in the period |
+| `X-Tokengate-Budget-Period` | `monthly` | Budget period: `monthly`, `weekly`, or `daily` |
+| `X-Tokengate-Budget-Scope` | `account` | `account` or `api_key` |
 
 If a **blocking** limit is exceeded, the proxy returns HTTP **402** with:
 ```json
@@ -108,7 +108,7 @@ handler.go  publishes ONE UsageEventMsg to Redis Streams
   (message_id from message_start becomes the idempotency key)
   │
   ▼
-Redis Stream  "burnrate:usage:events"
+Redis Stream  "tokengate:usage:events"
   │
   ▼
 UsageWorker.process()  (events/worker.go)
@@ -148,10 +148,10 @@ curl -X PUT https://your-gateway/v1/admin/provider_keys/<id>/activate \
 
 ### Async usage processing (Redis Streams)
 
-After each proxied request completes, a `UsageEventMsg` is published to the Redis stream `burnrate:usage:events`. A background worker (`UsageWorker`) consumes from consumer group `burnrate:usage:workers`:
+After each proxied request completes, a `UsageEventMsg` is published to the Redis stream `tokengate:usage:events`. A background worker (`UsageWorker`) consumes from consumer group `tokengate:usage:workers`:
 
 ```
-proxy handler  ──XADD──▶  burnrate:usage:events  ──XREADGROUP──▶  UsageWorker
+proxy handler  ──XADD──▶  tokengate:usage:events  ──XREADGROUP──▶  UsageWorker
                                                                          │
                                                               ┌──────────┴──────────┐
                                                               ▼                     ▼
@@ -552,7 +552,7 @@ dashboard/
 
 ```
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_...
-VITE_API_SERVER_URL=https://burnrateai-production.up.railway.app
+VITE_API_SERVER_URL=https://gateway.tokengate.to
 ```
 
 ---
@@ -564,7 +564,7 @@ VITE_API_SERVER_URL=https://burnrateai-production.up.railway.app
 The API server is deployed as a Docker container on Railway.
 
 ```bash
-docker build -t burnrate-ai-api ./api-server
+docker build -t tokengate-api ./api-server
 ```
 
 Required Railway environment variables:
@@ -573,7 +573,7 @@ Required Railway environment variables:
 POSTGRES_DB_URL=postgresql://...
 REDIS_URL=redis://...
 API_KEY_PEPPER=<random-secret>
-CORS_ORIGINS=https://burnrate-ai-weld.vercel.app
+CORS_ORIGINS=https://app.tokengate.to
 PROVIDER_KEY_ENCRYPTION_KEY=<openssl rand -hex 32>
 ```
 
@@ -589,7 +589,7 @@ Required Vercel environment variables:
 
 ```
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_...
-VITE_API_SERVER_URL=https://burnrateai-production.up.railway.app
+VITE_API_SERVER_URL=https://gateway.tokengate.to
 ```
 
 ---
@@ -614,7 +614,7 @@ VITE_API_SERVER_URL=https://burnrateai-production.up.railway.app
 ```bash
 # One-time setup: add and activate a provider key via the Management dashboard.
 # Then configure Claude Code:
-export ANTHROPIC_BASE_URL=https://burnrateai-production.up.railway.app/v1
+export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1
 export ANTHROPIC_API_KEY=<key_id>:<secret>
 
 # All claude / SDK requests now route through the gateway automatically.
@@ -624,7 +624,7 @@ claude -p "Hello"
 ### Agent reporting usage (legacy direct path)
 
 ```bash
-curl -X POST https://burnrateai-production.up.railway.app/v1/agent/usage \
+curl -X POST https://gateway.tokengate.to/v1/agent/usage \
   -H "Authorization: ApiKey <key_id>:<secret>" \
   -H "Content-Type: application/json" \
   -d '{

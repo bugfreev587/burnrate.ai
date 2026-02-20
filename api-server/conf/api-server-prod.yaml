@@ -4,8 +4,8 @@ server:
   host: "0.0.0.0"
   port: "8080"
   cors_origins:
-    - "https://burnrate.ai"
-    - "https://burnrate-ai-weld.vercel.app"
+    - "https://tokengate.to"
+    - "https://app.tokengate.to"
   rate_limit_per_minute: 120
 
 postgres:

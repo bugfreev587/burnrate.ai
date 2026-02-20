@@ -67,7 +67,7 @@ func (u *User) IsActive() bool {
 }
 
 // APIKey is the machine-to-machine key used by the claude-code agent
-// to authenticate with the burnrate gateway. Scoped to a tenant.
+// to authenticate with the TokenGate gateway. Scoped to a tenant.
 type APIKey struct {
 	ID         uint           `gorm:"primaryKey"`
 	TenantID   uint           `gorm:"index"`

@@ -542,7 +542,7 @@ export default function ManagementPage() {
                   </span>
                 </h2>
                 <p className="section-desc">
-                  Keys used by the claude-code agent to report usage through the burnrate gateway.
+                  Keys used by the claude-code agent to report usage through the TokenGate gateway.
                 </p>
               </div>
               <button className="btn btn-primary" onClick={() => { setNewKeyLabel(''); setShowCreateKeyModal(true) }}>
@@ -864,9 +864,9 @@ export default function ManagementPage() {
                 <div className="install-step">
                   <h4>Set environment variable</h4>
                   <div className="cmd-box">
-                    <pre>{`export BURNRATE_API_KEY="${newKeySecret}"`}</pre>
+                    <pre>{`export TOKENGATE_API_KEY="${newKeySecret}"`}</pre>
                     <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(`export BURNRATE_API_KEY="${newKeySecret}"`, 'env')}>
+                      onClick={() => copy(`export TOKENGATE_API_KEY="${newKeySecret}"`, 'env')}>
                       {copiedID === 'env' ? 'Copied!' : 'Copy'}
                     </button>
                   </div>

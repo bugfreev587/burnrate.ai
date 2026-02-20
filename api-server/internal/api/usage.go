@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 )
 
 type reportUsageReq struct {

@@ -11,13 +11,13 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/api"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/config"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/events"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/proxy"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
+	"github.com/xiaoboyu/tokengate/api-server/internal/api"
+	"github.com/xiaoboyu/tokengate/api-server/internal/config"
+	"github.com/xiaoboyu/tokengate/api-server/internal/db"
+	"github.com/xiaoboyu/tokengate/api-server/internal/events"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 func main() {

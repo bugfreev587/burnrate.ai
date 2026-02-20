@@ -60,7 +60,7 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Postgres.DSN = v
 	}
 	// CORS_ORIGINS accepts a comma-separated list of allowed origins,
-	// e.g. "https://app.vercel.app,https://burnrate.ai"
+	// e.g. "https://app.tokengate.to,https://tokengate.to"
 	// Setting it to "*" allows all origins (useful during development).
 	if v := os.Getenv("PROVIDER_KEY_ENCRYPTION_KEY"); v != "" {
 		cfg.Security.ProviderKeyEncryptionKey = v

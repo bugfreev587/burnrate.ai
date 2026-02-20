@@ -32,7 +32,7 @@ export default function APIKeyModal({ apiKey, onClose }: Props) {
 
         <div className="modal-usage">
           <p className="usage-title">Usage example:</p>
-          <pre className="usage-code">{`export BURNRATE_API_KEY="${apiKey}"`}</pre>
+          <pre className="usage-code">{`export TOKENGATE_API_KEY="${apiKey}"`}</pre>
         </div>
 
         <button className="btn btn-primary modal-close-btn" onClick={onClose}>

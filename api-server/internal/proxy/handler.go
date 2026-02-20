@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/events"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
+	"github.com/xiaoboyu/tokengate/api-server/internal/events"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 const anthropicBaseURL = "https://api.anthropic.com"
@@ -68,11 +68,11 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 		}
 		// Set budget warning headers if approaching threshold
 		if status != nil && status.AtWarning {
-			c.Header("X-Burnrate-Budget-Warning", "true")
-			c.Header("X-Burnrate-Budget-Limit", status.LimitAmount.StringFixed(4))
-			c.Header("X-Burnrate-Budget-Used", status.CurrentSpend.StringFixed(4))
-			c.Header("X-Burnrate-Budget-Period", status.Period)
-			c.Header("X-Burnrate-Budget-Scope", status.Scope)
+			c.Header("X-Tokengate-Budget-Warning", "true")
+			c.Header("X-Tokengate-Budget-Limit", status.LimitAmount.StringFixed(4))
+			c.Header("X-Tokengate-Budget-Used", status.CurrentSpend.StringFixed(4))
+			c.Header("X-Tokengate-Budget-Period", status.Period)
+			c.Header("X-Tokengate-Budget-Scope", status.Scope)
 		}
 	}
 

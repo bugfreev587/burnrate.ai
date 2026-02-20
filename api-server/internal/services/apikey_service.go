@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
 type APIKeyService struct {
@@ -88,7 +88,7 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 	mac.Write([]byte(secret))
 	hash := mac.Sum(nil)
 
-	kid := "br_" + uuid.New().String()
+	kid := "tg_" + uuid.New().String()
 	ak := models.APIKey{
 		TenantID:   tenantID,
 		KeyID:      kid,

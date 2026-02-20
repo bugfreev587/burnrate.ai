@@ -9,7 +9,7 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-const streamName = "burnrate:usage:events"
+const streamName = "tokengate:usage:events"
 
 // EventQueue is a Redis Streams producer.
 type EventQueue struct {
@@ -35,7 +35,7 @@ type UsageEventMsg struct {
 	Timestamp           time.Time
 }
 
-// Publish XADD burnrate:usage:events * field value ...
+// Publish XADD tokengate:usage:events * field value ...
 // Fire-and-forget: errors are logged but not propagated to the caller.
 func (q *EventQueue) Publish(ctx context.Context, msg UsageEventMsg) error {
 	values := map[string]interface{}{

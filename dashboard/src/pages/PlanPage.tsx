@@ -333,7 +333,7 @@ export default function PlanPage() {
                           {p.key === currentPlan ? (
                             <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current</span>
                           ) : p.key === 'business' ? (
-                            <a href="mailto:sales@burnrate.ai"
+                            <a href="mailto:sales@tokengate.to"
                                className="btn btn-secondary"
                                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'inline-block' }}>
                               Contact Sales
@@ -364,7 +364,7 @@ export default function PlanPage() {
                   <p>Upgrade your plan to unlock more API keys, team members, and advanced features.</p>
                 </div>
                 <a
-                  href="mailto:sales@burnrate.ai"
+                  href="mailto:sales@tokengate.to"
                   className="btn btn-primary"
                 >
                   Contact Sales

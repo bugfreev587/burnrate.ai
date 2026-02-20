@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
 // deleteClerkUser calls the Clerk Backend API to permanently delete a user.
@@ -169,7 +169,7 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 	log.Printf("user invited: email=%s role=%s by=%s tenant_id=%d", req.Email, role, caller.Email, caller.TenantID)
 	c.JSON(http.StatusCreated, gin.H{
 		"message":        "User invited. They will join your tenant when they sign up.",
-		"signup_url":     "https://burnrate-ai-weld.vercel.app/sign-up",
+		"signup_url":     "https://app.tokengate.to/sign-up",
 		"user":           toUserResponse(invited),
 	})
 }

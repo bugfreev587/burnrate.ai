@@ -148,7 +148,7 @@ export default function PublicPricingPage() {
 
   function handleClick(card: PlanCard) {
     if (card.contactSales) {
-      window.location.href = 'mailto:sales@burnrate.ai'
+      window.location.href = 'mailto:sales@tokengate.to'
       return
     }
     if (!isSignedIn) {

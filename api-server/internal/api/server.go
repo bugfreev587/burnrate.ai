@@ -9,12 +9,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/config"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/db"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/middleware"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/pricing"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/proxy"
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
+	"github.com/xiaoboyu/tokengate/api-server/internal/config"
+	"github.com/xiaoboyu/tokengate/api-server/internal/db"
+	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 type Server struct {

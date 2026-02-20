@@ -10,7 +10,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
 const resolverCacheTTL = 5 * time.Minute

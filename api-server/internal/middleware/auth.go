@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/xiaoboyu/burnrate-ai/api-server/internal/services"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 const (

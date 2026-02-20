@@ -34,7 +34,7 @@ export default function LandingHowItWorks() {
                   <span className="text-purple-400">export </span>
                   <span className="text-blue-300">ANTHROPIC_API_KEY</span>
                   <span className="text-gray-500">=</span>
-                  <span className="text-green-400">br_xxxxx</span>
+                  <span className="text-green-400">tg_xxxxx</span>
                 </code>
               </div>
             </div>

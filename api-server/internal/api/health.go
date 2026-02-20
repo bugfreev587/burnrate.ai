@@ -9,6 +9,6 @@ import (
 func (s *Server) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
-		"service": "burnrate-ai-api",
+		"service": "tokengate-api",
 	})
 }
