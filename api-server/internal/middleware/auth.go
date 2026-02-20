@@ -35,7 +35,16 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 			return
 		}
 
-		token := strings.TrimSpace(strings.TrimPrefix(auth, "ApiKey"))
+		// Strip either "ApiKey " or "Bearer " scheme prefix so the gateway
+		// accepts both our native format (ApiKey) and the Anthropic SDK's
+		// default format (Bearer), which Claude Code uses automatically.
+		token := strings.TrimSpace(auth)
+		switch {
+		case strings.HasPrefix(token, "ApiKey "):
+			token = strings.TrimSpace(token[len("ApiKey "):])
+		case strings.HasPrefix(token, "Bearer "):
+			token = strings.TrimSpace(token[len("Bearer "):])
+		}
 
 		ak, err := svc.ValidateKey(c.Request.Context(), token)
 		if err != nil {
