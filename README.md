@@ -35,9 +35,11 @@ The frontend is hosted on **Vercel**. The backend runs in a **Docker container o
 The gateway acts as a drop-in replacement for the Anthropic API. Configure Claude Code (or any Anthropic SDK client) like this:
 
 ```bash
-export ANTHROPIC_BASE_URL=https://your-gateway.railway.app/v1
+export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
 export ANTHROPIC_API_KEY=<key_id>:<secret>   # your TokenGate tg_xxx key
 ```
+
+> **Important — do not include `/v1` in `ANTHROPIC_BASE_URL`.** The Anthropic SDK appends `/v1/messages` automatically; including `/v1` in the base URL results in `/v1/v1/messages` → 404.
 
 The gateway will:
 1. Validate the `br_xxx` key and resolve the tenant (and the key's own ID for per-key budget tracking).
@@ -623,15 +625,40 @@ VITE_API_SERVER_URL=https://gateway.tokengate.to
 
 ### Using the Anthropic gateway proxy
 
-```bash
-# One-time setup: add and activate a provider key via the Management dashboard.
-# Then configure Claude Code:
-export ANTHROPIC_BASE_URL=https://gateway.tokengate.to/v1
-export ANTHROPIC_API_KEY=<key_id>:<secret>
+**One-time setup:**
 
-# All claude / SDK requests now route through the gateway automatically.
-claude -p "Hello"
+1. Add and activate an Anthropic provider key via the Management dashboard (Management → Provider Keys → Add Key → Activate).
+2. Create a Gateway API Key (Management → Gateway API Keys → Create Key). Copy the full secret — it is shown only once.
+3. Add the following to `~/.zshrc` (or `~/.bashrc`):
+
+```bash
+export ANTHROPIC_BASE_URL="https://gateway.tokengate.to"
+export ANTHROPIC_API_KEY="<key_id>:<secret>"   # full tg_xxx:... value from step 2
 ```
+
+4. Open a **new terminal** (or run `source ~/.zshrc`) so the variables are loaded.
+5. Verify they are set:
+
+```bash
+echo $ANTHROPIC_BASE_URL   # should print: https://gateway.tokengate.to
+echo $ANTHROPIC_API_KEY    # should print: tg_xxx:...
+```
+
+6. Run Claude Code:
+
+```bash
+claude
+```
+
+> **Do not use `claude login` or select a browser-based login option.** Claude Code's browser OAuth flow stores an Anthropic session token that overrides `ANTHROPIC_API_KEY` and is not accepted by the gateway (you will get `401 Invalid API key format`).
+>
+> If you have previously run `claude login`, clear the stored session first:
+> ```bash
+> claude logout
+> ```
+> Then run `claude` again. With `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` set and no cached session, Claude Code uses the environment variables directly — no browser login is required.
+>
+> If Claude Code still prompts for a login method, select **"Anthropic API Console"**, enter your gateway key (`tg_xxx:...`) when asked for an API key, and do not proceed through any browser step.
 
 ### Agent reporting usage (legacy direct path)
 
