@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import { useUserSync } from './hooks/useUserSync'
 import APIKeyModal from './components/APIKeyModal'
+import InactivityGuard from './components/InactivityGuard'
 import LandingPage from './pages/LandingPage'
 import SignInPage from './pages/SignInPage'
 import SignUpPage from './pages/SignUpPage'
@@ -42,6 +43,7 @@ function UserSyncProvider({ children }: { children: React.ReactNode }) {
           }}
         />
       )}
+      <InactivityGuard />
     </>
   )
 }

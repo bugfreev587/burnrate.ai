@@ -1,0 +1,97 @@
+/* ── Inactivity warning overlay ───────────────────────────────────────────── */
+
+.ia-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* above navbar (100) and other modals (1000) */
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.ia-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.6);
+  padding: 2.25rem 2rem;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  animation: ia-slide-in 0.2s ease;
+}
+
+@keyframes ia-slide-in {
+  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+/* Header row: clock icon + title */
+.ia-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.ia-clock-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.ia-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.ia-body {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+}
+
+/* Large countdown display */
+.ia-countdown {
+  font-size: 3.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--color-primary);
+  line-height: 1;
+  margin-bottom: 0.75rem;
+  transition: color 0.3s;
+}
+
+/* Turn red in the last 30 seconds */
+.ia-countdown[data-urgent] {
+  color: #ef4444;
+}
+
+.ia-hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.75rem;
+  opacity: 0.7;
+}
+
+/* Action buttons */
+.ia-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.ia-btn {
+  flex: 1;
+  max-width: 160px;
+  justify-content: center;
+}
