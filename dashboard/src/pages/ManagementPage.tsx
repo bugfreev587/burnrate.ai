@@ -57,7 +57,6 @@ export default function ManagementPage() {
   const [showNewKeyModal, setShowNewKeyModal] = useState(false)
   const [newKeyLabel, setNewKeyLabel] = useState('')
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null)
-  const [newKeyID, setNewKeyID] = useState('')
   const [copiedID, setCopiedID] = useState<string | null>(null)
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
@@ -301,7 +300,6 @@ export default function ManagementPage() {
         throw new Error(d.message ?? d.error ?? 'Failed to create API key')
       }
       const data = await res.json()
-      setNewKeyID(data.key_id)
       setNewKeySecret(`${data.key_id}:${data.secret}`)
       setShowCreateKeyModal(false)
       setCreateKeyError(null)
