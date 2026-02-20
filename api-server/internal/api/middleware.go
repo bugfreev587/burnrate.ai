@@ -44,7 +44,10 @@ func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Origin", origin)
 		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Api-Key, X-User-ID")
+		c.Header("Access-Control-Allow-Headers",
+			"Authorization, Content-Type, X-Api-Key, X-User-ID, "+
+				"X-TokenGate-Key, X-TokenGate-Provider, X-TokenGate-User, "+
+				"X-TokenGate-Project, X-TokenGate-Session")
 		c.Header("Access-Control-Allow-Credentials", "true")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)

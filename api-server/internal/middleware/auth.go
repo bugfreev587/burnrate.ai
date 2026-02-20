@@ -11,40 +11,25 @@ import (
 )
 
 const (
-	ErrCodeMissingKey = "api_key_missing"
-	ErrCodeInvalidKey = "api_key_invalid"
-	ErrCodeExpiredKey = "api_key_expired"
-	ErrCodeRevokedKey = "api_key_revoked"
-	ErrCodeBadFormat  = "api_key_bad_format"
+	ErrCodeMissingKey = "tg_auth_missing"
+	ErrCodeInvalidKey = "tg_auth_invalid"
+	ErrCodeExpiredKey = "tg_auth_expired"
+	ErrCodeRevokedKey = "tg_auth_revoked"
 
 	ContextKeyAPIKey = "api_key"
 )
 
-// APIKeyMiddleware validates the API key from Authorization or X-Api-Key header.
+// APIKeyMiddleware validates the API key from the X-TokenGate-Key header.
 func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		auth := c.GetHeader("Authorization")
-		if auth == "" {
-			auth = c.GetHeader("X-Api-Key")
-		}
-		if auth == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   ErrCodeMissingKey,
-				"message": "API key required. Use 'Authorization: ApiKey <key>' or 'X-Api-Key' header.",
-			})
+		token := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{
+				"type":    ErrCodeMissingKey,
+				"message": "X-TokenGate-Key header is required.",
+			}})
 			c.Abort()
 			return
-		}
-
-		// Strip either "ApiKey " or "Bearer " scheme prefix so the gateway
-		// accepts both our native format (ApiKey) and the Anthropic SDK's
-		// default format (Bearer), which Claude Code uses automatically.
-		token := strings.TrimSpace(auth)
-		switch {
-		case strings.HasPrefix(token, "ApiKey "):
-			token = strings.TrimSpace(token[len("ApiKey "):])
-		case strings.HasPrefix(token, "Bearer "):
-			token = strings.TrimSpace(token[len("Bearer "):])
 		}
 
 		ak, err := svc.ValidateKey(c.Request.Context(), token)
@@ -59,13 +44,10 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 			case strings.Contains(errStr, "revoked"):
 				code = ErrCodeRevokedKey
 				msg = "API key has been revoked."
-			case strings.Contains(errStr, "bad key format"):
-				code = ErrCodeBadFormat
-				msg = "Invalid API key format. Expected 'keyid:secret'."
 			case strings.Contains(errStr, "not found"):
 				msg = "API key not found."
 			}
-			c.JSON(http.StatusUnauthorized, gin.H{"error": code, "message": msg})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"type": code, "message": msg}})
 			c.Abort()
 			return
 		}

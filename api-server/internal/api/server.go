@@ -82,8 +82,14 @@ func (s *Server) setupRoutes() {
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
 
 	// ─── API-key authenticated: Anthropic proxy (for Claude Code agents) ────
-	s.router.POST("/v1/messages", apiKeyAuth, s.proxyHandler.HandleMessages)
+	s.router.POST("/v1/messages", apiKeyAuth, s.proxyHandler.HandleProxy)
 	s.router.GET("/v1/models", apiKeyAuth, s.proxyHandler.HandleModels)
+
+	// ─── Multi-provider proxy routes (all HTTP methods) ──────────────────────
+	s.router.Any("/v1/openai/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
+	s.router.Any("/v1/gemini/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
+	s.router.Any("/v1/bedrock/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
+	s.router.Any("/v1/vertex/*path", apiKeyAuth, s.proxyHandler.HandleProxy)
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
 	agent := s.router.Group("/v1/agent")
