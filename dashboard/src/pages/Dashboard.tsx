@@ -356,8 +356,8 @@ export default function Dashboard() {
                           <td className="text-muted">{new Date(log.created_at).toLocaleString()}</td>
                           <td><code className="model-code">{log.model}</code></td>
                           <td className="text-muted">{log.provider}</td>
-                          <td className="num-cell">{log.prompt_tokens.toLocaleString()}</td>
-                          <td className="num-cell">{log.completion_tokens.toLocaleString()}</td>
+                          <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
+                          <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
                           <td className="num-cell">{fmt$(log.cost)}</td>
                         </tr>
                       ))}
