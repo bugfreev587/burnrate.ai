@@ -100,20 +100,22 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 	planLim := models.GetPlanLimits(tenant.Plan)
 
 	type keyView struct {
-		KeyID     string     `json:"key_id"`
-		Label     string     `json:"label"`
-		Scopes    []string   `json:"scopes"`
-		ExpiresAt *time.Time `json:"expires_at"`
-		CreatedAt time.Time  `json:"created_at"`
+		KeyID      string     `json:"key_id"`
+		Label      string     `json:"label"`
+		Scopes     []string   `json:"scopes"`
+		ExpiresAt  *time.Time `json:"expires_at"`
+		CreatedAt  time.Time  `json:"created_at"`
+		LastSeenAt *time.Time `json:"last_seen_at"`
 	}
 	out := make([]keyView, len(keys))
 	for i, k := range keys {
 		out[i] = keyView{
-			KeyID:     k.KeyID,
-			Label:     k.Label,
-			Scopes:    k.Scopes,
-			ExpiresAt: k.ExpiresAt,
-			CreatedAt: k.CreatedAt,
+			KeyID:      k.KeyID,
+			Label:      k.Label,
+			Scopes:     k.Scopes,
+			ExpiresAt:  k.ExpiresAt,
+			CreatedAt:  k.CreatedAt,
+			LastSeenAt: k.LastSeenAt,
 		}
 	}
 

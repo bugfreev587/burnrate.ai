@@ -22,6 +22,7 @@ interface APIKey {
   scopes: string[] | null
   expires_at: string | null
   created_at: string
+  last_seen_at: string | null
 }
 
 interface ProviderKey {
@@ -560,6 +561,7 @@ export default function ManagementPage() {
                     <th>Key ID</th>
                     <th>Label</th>
                     <th>Created</th>
+                    <th>Last Seen</th>
                     <th>Expires</th>
                     <th>Actions</th>
                   </tr>
@@ -567,7 +569,7 @@ export default function ManagementPage() {
                 <tbody>
                   {apiKeys.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="empty-cell">
+                      <td colSpan={6} className="empty-cell">
                         <div className="empty-cta">
                           <p>No API keys yet. Create one to start reporting usage.</p>
                           <button className="btn btn-primary"
@@ -582,6 +584,7 @@ export default function ManagementPage() {
                       <td><code className="key-id">{k.key_id.slice(0, 8)}…</code></td>
                       <td>{k.label}</td>
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
+                      <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td className="text-muted">
                         {k.expires_at ? new Date(k.expires_at).toLocaleDateString() : 'Never'}
                       </td>

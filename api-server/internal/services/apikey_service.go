@@ -195,6 +195,22 @@ func (s *APIKeyService) ListKeys(ctx context.Context, tenantID uint) ([]models.A
 	return keys, nil
 }
 
+// TouchLastSeen records that the key was seen at most once per minute.
+// It is safe to call concurrently and is a no-op when Redis is unavailable.
+func (s *APIKeyService) TouchLastSeen(ctx context.Context, keyID string) {
+	now := time.Now()
+	if s.cache != nil {
+		// SET NX EX 60: only succeeds if the key is not already set.
+		set, err := s.cache.SetNX(ctx, "apikey:touch:"+keyID, "1", 60*time.Second).Result()
+		if err != nil || !set {
+			return // Redis unavailable or already touched within the last minute
+		}
+	}
+	s.db.WithContext(ctx).Model(&models.APIKey{}).
+		Where("key_id = ?", keyID).
+		Update("last_seen_at", now)
+}
+
 func (s *APIKeyService) verifySecret(salt, storedHash []byte, secret string) bool {
 	mac := hmac.New(sha256.New, s.pepper)
 	mac.Write(salt)

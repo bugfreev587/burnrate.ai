@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -72,6 +73,7 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 		c.Set(ContextKeyAPIKey, ak)
 		c.Set("tenant_id", ak.TenantID)
 		c.Set("key_id", ak.KeyID)
+		go svc.TouchLastSeen(context.Background(), ak.KeyID)
 		c.Next()
 	}
 }

@@ -78,6 +78,7 @@ type APIKey struct {
 	Scopes     pq.StringArray `gorm:"type:text[]"`
 	Revoked    bool
 	ExpiresAt  *time.Time
+	LastSeenAt *time.Time
 	CreatedAt  time.Time
 }
 
