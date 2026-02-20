@@ -25,7 +25,7 @@ export default function LandingHowItWorks() {
                   <span className="h-3 w-3 rounded-full bg-yellow-500/60" />
                   <span className="h-3 w-3 rounded-full bg-green-500/60" />
                 </div>
-                <code>
+                <code className="whitespace-pre">
                   <span className="text-purple-400">export </span>
                   <span className="text-blue-300">ANTHROPIC_BASE_URL</span>
                   <span className="text-gray-500">=</span>
