@@ -271,14 +271,22 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 
+	// Resolve API key: prefer BYOK, fall back to client's x-api-key (pass-through).
+	var resolvedKey string
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
 	if err != nil {
-		if errors.Is(err, services.ErrNoActiveKey) {
+		if !errors.Is(err, services.ErrNoActiveKey) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve provider key"})
+			return
+		}
+		// Pass-through mode: forward the client's key.
+		resolvedKey = c.Request.Header.Get("x-api-key")
+		if resolvedKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no_active_provider_key"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve provider key"})
-		return
+	} else {
+		resolvedKey = string(plaintextKey)
 	}
 
 	upstreamURL := upstreamBase(ProviderAnthropic) + "/v1/models"
@@ -288,7 +296,7 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 		return
 	}
 
-	upstreamReq.Header.Set("x-api-key", string(plaintextKey))
+	upstreamReq.Header.Set("x-api-key", resolvedKey)
 	upstreamReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	if v := c.GetHeader("anthropic-version"); v != "" {
 		upstreamReq.Header.Set("anthropic-version", v)
