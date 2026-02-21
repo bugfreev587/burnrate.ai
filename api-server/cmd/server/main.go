@@ -74,7 +74,6 @@ func main() {
 		rdb,
 		time.Duration(cfg.Security.APIKeyCacheTTLSeconds)*time.Second,
 	)
-	tenantSvc := services.NewTenantService(postgresDB.GetDB(), rdb)
 	usageSvc := services.NewUsageLogService(postgresDB.GetDB())
 
 	// Fingerprint service: derives stable session fingerprints from X-Api-Key headers.
@@ -107,7 +106,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, tenantSvc, usageSvc, pricingEngine, providerKeySvc, fingerprintSvc, proxyHandler)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, fingerprintSvc, proxyHandler)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)

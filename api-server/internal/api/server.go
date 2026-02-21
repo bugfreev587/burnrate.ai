@@ -18,27 +18,25 @@ import (
 )
 
 type Server struct {
-	cfg              *config.Config
-	postgresDB       *db.PostgresDB
-	apiKeySvc        *services.APIKeyService
-	tenantSvc        *services.TenantService
-	usageSvc         *services.UsageLogService
-	pricingEngine    *pricing.PricingEngine
-	providerKeySvc   *services.ProviderKeyService
-	fingerprintSvc   *services.FingerprintService
-	proxyHandler     *proxy.ProxyHandler
-	rbac             *middleware.RBACMiddleware
-	router           *gin.Engine
-	httpServer       *http.Server
-	clerkSecretKey   string
-	internalSecret   string
+	cfg            *config.Config
+	postgresDB     *db.PostgresDB
+	apiKeySvc      *services.APIKeyService
+	usageSvc       *services.UsageLogService
+	pricingEngine  *pricing.PricingEngine
+	providerKeySvc *services.ProviderKeyService
+	fingerprintSvc *services.FingerprintService
+	proxyHandler   *proxy.ProxyHandler
+	rbac           *middleware.RBACMiddleware
+	router         *gin.Engine
+	httpServer     *http.Server
+	clerkSecretKey string
+	internalSecret string
 }
 
 func NewServer(
 	cfg *config.Config,
 	postgresDB *db.PostgresDB,
 	apiKeySvc *services.APIKeyService,
-	tenantSvc *services.TenantService,
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
 	providerKeySvc *services.ProviderKeyService,
@@ -56,7 +54,6 @@ func NewServer(
 		cfg:            cfg,
 		postgresDB:     postgresDB,
 		apiKeySvc:      apiKeySvc,
-		tenantSvc:      tenantSvc,
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
@@ -82,27 +79,24 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	apiKeyAuth      := middleware.APIKeyMiddleware(s.apiKeySvc)
-	tenantPathAuth  := middleware.TenantPathMiddleware(s.tenantSvc)
-	fingerprintAuth := middleware.APIKeyFingerprintMiddleware(s.fingerprintSvc, s.apiKeySvc)
+	apiKeyAuth  := middleware.APIKeyMiddleware(s.apiKeySvc)
+	tenantAuth  := middleware.TenantAuthMiddleware(s.apiKeySvc, s.fingerprintSvc)
 
 	// ─── Global health (Railway LB + backward compat) ────────────────────────
 	s.router.GET("/health", s.handleHealth)
 	s.router.GET("/v1/health", s.handleHealth)
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
 
-	// ─── Tenant-scoped proxy routes ──────────────────────────────────────────
-	tenant := s.router.Group("/:tenant_slug")
-	tenant.Use(tenantPathAuth)
-	tenant.Use(fingerprintAuth) // derives fingerprint from X-Api-Key; best-effort, never aborts
+	// ─── Proxy routes (tenant resolved via X-TokenGate-Key or X-Api-Key fingerprint) ──
+	proxyGroup := s.router.Group("/v1")
+	proxyGroup.Use(tenantAuth)
 	{
-		tenant.GET("/health", s.handleTenantHealth)
-		tenant.POST("/v1/messages", s.proxyHandler.HandleProxy)
-		tenant.GET("/v1/models", s.proxyHandler.HandleModels)
-		tenant.Any("/v1/openai/*path", s.proxyHandler.HandleProxy)
-		tenant.Any("/v1/gemini/*path", s.proxyHandler.HandleProxy)
-		tenant.Any("/v1/bedrock/*path", s.proxyHandler.HandleProxy)
-		tenant.Any("/v1/vertex/*path", s.proxyHandler.HandleProxy)
+		proxyGroup.POST("/messages", s.proxyHandler.HandleProxy)
+		proxyGroup.GET("/models", s.proxyHandler.HandleModels)
+		proxyGroup.Any("/openai/*path", s.proxyHandler.HandleProxy)
+		proxyGroup.Any("/gemini/*path", s.proxyHandler.HandleProxy)
+		proxyGroup.Any("/bedrock/*path", s.proxyHandler.HandleProxy)
+		proxyGroup.Any("/vertex/*path", s.proxyHandler.HandleProxy)
 	}
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
