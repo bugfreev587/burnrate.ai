@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -33,6 +34,8 @@ func TenantAuthMiddleware(apiKeySvc *services.APIKeyService) gin.HandlerFunc {
 // Production code should use TenantAuthMiddleware.
 func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		fmt.Println("------- TenantAuthMiddleware -------")
+		fmt.Println("------- EnableGatewayValidate:", os.Getenv("EnableGatewayValidate"))
 		// When gateway validation is disabled, forward all requests as-is.
 		if strings.EqualFold(os.Getenv("EnableGatewayValidate"), "false") {
 			c.Next()
@@ -40,6 +43,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		}
 
 		tgKey := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
+		fmt.Println("------- X-TokenGate-Key:", tgKey)
 		if tgKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{
 				"type":    ErrCodeMissingKey,
@@ -50,6 +54,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		}
 
 		ak, err := apiKeySvc.ValidateKey(c.Request.Context(), tgKey)
+		fmt.Println("------ validation api-key ak:", ak, "err:", err)
 		if err != nil {
 			errStr := err.Error()
 			code := ErrCodeInvalidKey
@@ -68,6 +73,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 			c.Abort()
 			return
 		}
+		fmt.Println("----- validation passed, setting context and proceeding ----- tenantID: ", ak.TenantID, "keyID:", ak.KeyID)
 
 		c.Set(ContextKeyAPIKey, ak)
 		c.Set("tenant_id", ak.TenantID)
