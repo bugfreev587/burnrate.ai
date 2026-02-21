@@ -324,7 +324,7 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 // copyClientHeaders copies safe Anthropic-specific headers from the client request
 // to the upstream request.
 func copyClientHeaders(src *http.Request, dst *http.Request) {
-	for _, h := range []string{"anthropic-version", "anthropic-beta", "accept"} {
+	for _, h := range []string{"anthropic-version", "anthropic-beta", "accept", "anthropic-dangerous-direct-browser-access"} {
 		if v := src.Header.Get(h); v != "" {
 			dst.Header.Set(h, v)
 		}
