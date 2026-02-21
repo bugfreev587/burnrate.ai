@@ -24,7 +24,6 @@ type Server struct {
 	usageSvc       *services.UsageLogService
 	pricingEngine  *pricing.PricingEngine
 	providerKeySvc *services.ProviderKeyService
-	fingerprintSvc *services.FingerprintService
 	proxyHandler   *proxy.ProxyHandler
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
@@ -40,7 +39,6 @@ func NewServer(
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
 	providerKeySvc *services.ProviderKeyService,
-	fingerprintSvc *services.FingerprintService,
 	proxyHandler *proxy.ProxyHandler,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
@@ -57,7 +55,6 @@ func NewServer(
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
-		fingerprintSvc: fingerprintSvc,
 		proxyHandler:   proxyHandler,
 		rbac:           rbac,
 		router:         router,
@@ -81,14 +78,15 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	fmt.Println("------- set up routes -------")
 	apiKeyAuth := middleware.APIKeyMiddleware(s.apiKeySvc)
-	tenantAuth := middleware.TenantAuthMiddleware(s.apiKeySvc, s.fingerprintSvc)
+	// tenantAuth validates X-TokenGate-Key (or passes through when EnableGatewayValidate=false).
+	tenantAuth := middleware.TenantAuthMiddleware(s.apiKeySvc)
 
 	// ─── Global health (Railway LB + backward compat) ────────────────────────
 	s.router.GET("/health", s.handleHealth)
 	s.router.GET("/v1/health", s.handleHealth)
 	s.router.POST("/v1/auth/sync", s.handleAuthSync)
 
-	// ─── Proxy routes (tenant resolved via X-TokenGate-Key or X-Api-Key fingerprint) ──
+	// ─── Proxy routes — validated via X-TokenGate-Key ────────────────────────
 	proxyGroup := s.router.Group("/v1")
 	proxyGroup.Use(tenantAuth)
 	{

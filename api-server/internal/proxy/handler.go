@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
-	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
@@ -55,8 +54,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
-	fpVal, _ := c.Get(middleware.ContextKeyFingerprint)
-	fingerprintStr, _ := fpVal.(string)
 
 	// Resolve provider from X-TokenGate-Provider header or path prefix.
 	provider := resolveProvider(c.GetHeader("X-TokenGate-Provider"), c.Request.URL.Path)
@@ -253,7 +250,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			CacheCreationTokens: counts.CacheCreationTokens,
 			CacheReadTokens:     counts.CacheReadTokens,
 			MessageID:           counts.MessageID,
-			APIKeyFingerprint:   fingerprintStr,
 			Timestamp:           now,
 		}
 		if pubErr := h.eventQueue.Publish(c.Request.Context(), msg); pubErr != nil {

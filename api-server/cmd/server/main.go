@@ -76,14 +76,6 @@ func main() {
 	)
 	usageSvc := services.NewUsageLogService(postgresDB.GetDB())
 
-	// Fingerprint service: derives stable session fingerprints from X-Api-Key headers.
-	fpTTLDays := cfg.Security.FingerprintTTLDays
-	if fpTTLDays <= 0 {
-		fpTTLDays = 30 // default: 30 days
-	}
-	fingerprintSvc := services.NewFingerprintService(rdb, time.Duration(fpTTLDays)*24*time.Hour)
-	log.Printf("✓ Fingerprint service initialized (ttl=%dd)", fpTTLDays)
-
 	// Pricing engine
 	pricingEngine := pricing.NewPricingEngine(postgresDB.GetDB(), rdb)
 
@@ -106,7 +98,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, fingerprintSvc, proxyHandler)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)
