@@ -79,8 +79,9 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	apiKeyAuth  := middleware.APIKeyMiddleware(s.apiKeySvc)
-	tenantAuth  := middleware.TenantAuthMiddleware(s.apiKeySvc, s.fingerprintSvc)
+	fmt.Println("------- set up routes -------")
+	apiKeyAuth := middleware.APIKeyMiddleware(s.apiKeySvc)
+	tenantAuth := middleware.TenantAuthMiddleware(s.apiKeySvc, s.fingerprintSvc)
 
 	// ─── Global health (Railway LB + backward compat) ────────────────────────
 	s.router.GET("/health", s.handleHealth)
