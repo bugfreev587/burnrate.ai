@@ -105,6 +105,10 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	provider := fmt.Sprintf("%v", v["provider"])
 	model := fmt.Sprintf("%v", v["model"])
 	messageID := fmt.Sprintf("%v", v["message_id"])
+	apiKeyFingerprint := fmt.Sprintf("%v", v["api_key_fingerprint"])
+	if apiKeyFingerprint == "<nil>" {
+		apiKeyFingerprint = ""
+	}
 
 	var ts time.Time
 	if tsStr, ok := v["timestamp"]; ok {
@@ -124,6 +128,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		CacheCreationTokens: cacheCreationTokens,
 		CacheReadTokens:     cacheReadTokens,
 		RequestID:           messageID,
+		APIKeyFingerprint:   apiKeyFingerprint,
 		CreatedAt:           ts,
 	}
 	if err := w.usageSvc.Create(ctx, usageLog); err != nil {

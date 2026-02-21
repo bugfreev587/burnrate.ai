@@ -114,6 +114,8 @@ type TenantProviderSettings struct {
 
 // UsageLog records one LLM request reported by the claude-code agent.
 // request_id is an idempotency key; duplicate submissions are ignored.
+// api_key_fingerprint is derived from the client's X-Api-Key header ("ak:<sha256-hex>")
+// and used for stable cross-session audit attribution; raw key values are never stored.
 type UsageLog struct {
 	ID                  uint            `gorm:"primaryKey"`
 	TenantID            uint            `gorm:"index"`
@@ -127,5 +129,6 @@ type UsageLog struct {
 	ReasoningTokens     int64           `gorm:"column:reasoning_tokens"`
 	Cost                decimal.Decimal `gorm:"type:numeric(20,8)"`
 	RequestID           string          `gorm:"column:request_id;uniqueIndex"`
+	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index"`
 	CreatedAt           time.Time       `gorm:"index"`
 }

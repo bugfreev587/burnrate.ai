@@ -19,3 +19,4 @@ redis:
 security:
   api_key_pepper: ""  # set via API_KEY_PEPPER env var
   api_key_cache_ttl_seconds: 300
+  fingerprint_ttl_days: 30  # how long a fingerprint→tenant_id mapping lives in Redis

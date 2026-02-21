@@ -32,6 +32,7 @@ type UsageEventMsg struct {
 	CacheCreationTokens int64
 	CacheReadTokens     int64
 	MessageID           string // Anthropic message ID used as idempotency key
+	APIKeyFingerprint   string // "ak:<sha256-hex>" derived from X-Api-Key; raw key never stored
 	Timestamp           time.Time
 }
 
@@ -48,6 +49,7 @@ func (q *EventQueue) Publish(ctx context.Context, msg UsageEventMsg) error {
 		"cache_creation_tokens": strconv.FormatInt(msg.CacheCreationTokens, 10),
 		"cache_read_tokens":     strconv.FormatInt(msg.CacheReadTokens, 10),
 		"message_id":            msg.MessageID,
+		"api_key_fingerprint":   msg.APIKeyFingerprint,
 		"timestamp":             msg.Timestamp.UTC().Format(time.RFC3339),
 	}
 	err := q.rdb.XAdd(ctx, &redis.XAddArgs{

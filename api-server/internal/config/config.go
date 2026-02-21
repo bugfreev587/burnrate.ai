@@ -26,9 +26,10 @@ type RedisCfg struct {
 }
 
 type SecurityCfg struct {
-	APIKeyPepper            string `yaml:"api_key_pepper"`
-	APIKeyCacheTTLSeconds   int    `yaml:"api_key_cache_ttl_seconds"`
+	APIKeyPepper             string `yaml:"api_key_pepper"`
+	APIKeyCacheTTLSeconds    int    `yaml:"api_key_cache_ttl_seconds"`
 	ProviderKeyEncryptionKey string `yaml:"provider_key_encryption_key"`
+	FingerprintTTLDays       int    `yaml:"fingerprint_ttl_days"`
 }
 
 type Config struct {

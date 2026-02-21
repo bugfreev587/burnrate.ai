@@ -25,6 +25,7 @@ type Server struct {
 	usageSvc         *services.UsageLogService
 	pricingEngine    *pricing.PricingEngine
 	providerKeySvc   *services.ProviderKeyService
+	fingerprintSvc   *services.FingerprintService
 	proxyHandler     *proxy.ProxyHandler
 	rbac             *middleware.RBACMiddleware
 	router           *gin.Engine
@@ -41,6 +42,7 @@ func NewServer(
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
 	providerKeySvc *services.ProviderKeyService,
+	fingerprintSvc *services.FingerprintService,
 	proxyHandler *proxy.ProxyHandler,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
@@ -58,6 +60,7 @@ func NewServer(
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
+		fingerprintSvc: fingerprintSvc,
 		proxyHandler:   proxyHandler,
 		rbac:           rbac,
 		router:         router,
@@ -79,8 +82,9 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	apiKeyAuth     := middleware.APIKeyMiddleware(s.apiKeySvc)
-	tenantPathAuth := middleware.TenantPathMiddleware(s.tenantSvc)
+	apiKeyAuth      := middleware.APIKeyMiddleware(s.apiKeySvc)
+	tenantPathAuth  := middleware.TenantPathMiddleware(s.tenantSvc)
+	fingerprintAuth := middleware.APIKeyFingerprintMiddleware(s.fingerprintSvc, s.apiKeySvc)
 
 	// ─── Global health (Railway LB + backward compat) ────────────────────────
 	s.router.GET("/health", s.handleHealth)
@@ -90,6 +94,7 @@ func (s *Server) setupRoutes() {
 	// ─── Tenant-scoped proxy routes ──────────────────────────────────────────
 	tenant := s.router.Group("/:tenant_slug")
 	tenant.Use(tenantPathAuth)
+	tenant.Use(fingerprintAuth) // derives fingerprint from X-Api-Key; best-effort, never aborts
 	{
 		tenant.GET("/health", s.handleTenantHealth)
 		tenant.POST("/v1/messages", s.proxyHandler.HandleProxy)
