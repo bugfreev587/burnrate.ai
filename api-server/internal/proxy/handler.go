@@ -55,8 +55,11 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
 
+	fmt.Println("------- HandleProxy called ------- tenantID:", tenantID, "keyID:", keyIDStr)
+
 	// Resolve provider from X-TokenGate-Provider header or path prefix.
 	provider := resolveProvider(c.GetHeader("X-TokenGate-Provider"), c.Request.URL.Path)
+	fmt.Println("------- Resolved provider:", provider)
 
 	// Pre-check budget before forwarding.
 	if h.pricingEngine != nil {
@@ -79,6 +82,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			c.Header("X-Tokengate-Budget-Scope", status.Scope)
 		}
 	}
+	fmt.Println("------- Budget pre-check passed -------")
 
 	// BYOK attempt: get the active provider key for this tenant+provider.
 	// If no key is configured, fall back to pass-through mode.
@@ -96,6 +100,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	} else {
 		byokKey = plaintextKey
 	}
+	fmt.Println("------- BYOK key retrieved ------- byokKey is set:", byokKey != nil)
 
 	// Read the request body.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
