@@ -44,17 +44,28 @@ export default function InactivityGuard() {
     }, 1000)
   }, [signOut])
 
-  // Stable callback — only recreated when signOut or startCountdown change.
-  // Called on every user activity event and by the "Stay signed in" button.
-  const resetTimer = useCallback(() => {
-    if (warningActiveRef.current) {
-      warningActiveRef.current = false
-      setShowWarning(false)
-      cancelCountdown()
-    }
+  // Restart the idle timer from scratch.  Used internally after an explicit
+  // cancel or when activity occurs outside the warning phase.
+  const restartIdleTimer = useCallback(() => {
     if (mainTimerRef.current) clearTimeout(mainTimerRef.current)
     mainTimerRef.current = setTimeout(startCountdown, WARN_AFTER_MS)
   }, [startCountdown])
+
+  // Called on every user activity event.  During the warning phase activity
+  // is deliberately ignored — only the explicit "Stay signed in" button can
+  // cancel the countdown.
+  const onActivity = useCallback(() => {
+    if (warningActiveRef.current) return  // ignore passive activity
+    restartIdleTimer()
+  }, [restartIdleTimer])
+
+  // Explicit cancel: attached to the "Stay signed in" button only.
+  const handleStaySignedIn = useCallback(() => {
+    warningActiveRef.current = false
+    setShowWarning(false)
+    cancelCountdown()
+    restartIdleTimer()
+  }, [restartIdleTimer])
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -67,16 +78,16 @@ export default function InactivityGuard() {
     }
 
     ACTIVITY_EVENTS.forEach(e =>
-      window.addEventListener(e, resetTimer, { passive: true })
+      window.addEventListener(e, onActivity, { passive: true })
     )
-    resetTimer() // start the idle timer on mount / sign-in
+    restartIdleTimer() // start the idle timer on mount / sign-in
 
     return () => {
-      ACTIVITY_EVENTS.forEach(e => window.removeEventListener(e, resetTimer))
+      ACTIVITY_EVENTS.forEach(e => window.removeEventListener(e, onActivity))
       if (mainTimerRef.current) clearTimeout(mainTimerRef.current)
       cancelCountdown()
     }
-  }, [isSignedIn, resetTimer])
+  }, [isSignedIn, onActivity, restartIdleTimer])
 
   if (!showWarning) return null
 
@@ -114,10 +125,10 @@ export default function InactivityGuard() {
           {countdown}
         </div>
 
-        <p className="ia-hint">Move your mouse or press any key to stay signed in.</p>
+        <p className="ia-hint">Click the button below to stay signed in.</p>
 
         <div className="ia-actions">
-          <button className="btn btn-primary ia-btn" onClick={resetTimer}>
+          <button className="btn btn-primary ia-btn" onClick={handleStaySignedIn}>
             Stay signed in
           </button>
           <button
