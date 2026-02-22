@@ -877,9 +877,9 @@ export default function ManagementPage() {
                 <div className="install-step">
                   <h4>Set environment variables</h4>
                   <div className="cmd-box">
-                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_API_KEY=${newKeySecret}`}</pre>
+                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`}</pre>
                     <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_API_KEY=${newKeySecret}`, 'env')}>
+                      onClick={() => copy(`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`, 'env')}>
                       {copiedID === 'env' ? 'Copied!' : 'Copy'}
                     </button>
                   </div>
