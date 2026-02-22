@@ -951,22 +951,24 @@ export default function ManagementPage() {
                     </button>
                   </div>
                 </div>
-                <div className="install-step">
-                  <h4>Test the gateway (example curl)</h4>
-                  <div className="cmd-box">
-                    <pre>{`curl https://gateway.tokengate.to/v1/messages \\
-  -H "X-TokenGate-Key: ${newKeySecret}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
-                    <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(
-                        `curl https://gateway.tokengate.to/v1/messages \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
-                        'curl'
-                      )}>
-                      {copiedID === 'curl' ? 'Copied!' : 'Copy'}
-                    </button>
+                {createdKeyMode !== 'CLAUDE_CODE_PASSTHROUGH' && (
+                  <div className="install-step">
+                    <h4>Test the gateway (example curl)</h4>
+                    <div className="cmd-box">
+                      <pre>{`curl https://gateway.tokengate.to/v1/messages \\
+    -H "X-TokenGate-Key: ${newKeySecret}" \\
+    -H "Content-Type: application/json" \\
+    -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
+                      <button className="btn btn-small btn-secondary"
+                        onClick={() => copy(
+                          `curl https://gateway.tokengate.to/v1/messages \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
+                          'curl'
+                        )}>
+                        {copiedID === 'curl' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
             <div className="modal-ftr">
