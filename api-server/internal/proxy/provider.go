@@ -33,25 +33,6 @@ var tokengateHeaders = []string{
 	"X-Tokengate-Session",
 }
 
-// resolveProvider determines the upstream provider from the header value or request path.
-func resolveProvider(headerVal, path string) Provider {
-	if headerVal != "" {
-		return Provider(strings.ToLower(headerVal))
-	}
-	switch {
-	case strings.HasPrefix(path, "/v1/openai/"):
-		return ProviderOpenAI
-	case strings.HasPrefix(path, "/v1/gemini/"):
-		return ProviderGemini
-	case strings.HasPrefix(path, "/v1/bedrock/"):
-		return ProviderBedrock
-	case strings.HasPrefix(path, "/v1/vertex/"):
-		return ProviderVertex
-	default:
-		return ProviderAnthropic
-	}
-}
-
 // upstreamBase returns the base URL for the given provider.
 func upstreamBase(p Provider) string {
 	if url, ok := defaultUpstreamURLs[p]; ok {

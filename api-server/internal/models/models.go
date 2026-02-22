@@ -68,6 +68,31 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
+// Anthropic API key modes
+const (
+	AnthropicModeClaudeCodePassthrough = "CLAUDE_CODE_PASSTHROUGH"
+	AnthropicModeAPIBYOK               = "API_BYOK"
+)
+
+// SupportedAPIKeyModes maps provider → valid modes.
+var SupportedAPIKeyModes = map[string][]string{
+	"anthropic": {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
+}
+
+// ValidAPIKeyMode returns true when mode is valid for provider.
+func ValidAPIKeyMode(provider, mode string) bool {
+	modes, ok := SupportedAPIKeyModes[provider]
+	if !ok {
+		return false
+	}
+	for _, m := range modes {
+		if m == mode {
+			return true
+		}
+	}
+	return false
+}
+
 // APIKey is the machine-to-machine key used by the claude-code agent
 // to authenticate with the TokenGate gateway. Scoped to a tenant.
 type APIKey struct {
@@ -78,6 +103,8 @@ type APIKey struct {
 	Salt       []byte
 	SecretHash []byte
 	Scopes     pq.StringArray `gorm:"type:text[]"`
+	Provider   string         `gorm:"not null;default:anthropic"`
+	Mode       string         `gorm:"not null;default:CLAUDE_CODE_PASSTHROUGH"`
 	Revoked    bool
 	ExpiresAt  *time.Time
 	LastSeenAt *time.Time

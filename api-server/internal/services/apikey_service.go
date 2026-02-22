@@ -32,6 +32,8 @@ type apiKeyCacheData struct {
 	Revoked    bool       `json:"revoked"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	Scopes     []string   `json:"scopes"`
+	Provider   string     `json:"provider"`
+	Mode       string     `json:"mode"`
 	Salt       string     `json:"salt"`        // base64
 	SecretHash string     `json:"secret_hash"` // base64
 }
@@ -52,7 +54,10 @@ func (e *ErrAPIKeyLimitReached) Error() string {
 
 // CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
-func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time) (string, string, error) {
+func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, mode string) (string, string, error) {
+	if !models.ValidAPIKeyMode(provider, mode) {
+		return "", "", fmt.Errorf("invalid mode %q for provider %q", mode, provider)
+	}
 	// Fetch tenant to read the limit
 	var tenant models.Tenant
 	if err := s.db.WithContext(ctx).First(&tenant, tenantID).Error; err != nil {
@@ -96,6 +101,8 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 		Salt:       salt,
 		SecretHash: hash,
 		Scopes:     scopes,
+		Provider:   provider,
+		Mode:       mode,
 		Revoked:    false,
 		ExpiresAt:  expiresAt,
 	}
@@ -140,6 +147,8 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 					Salt:       salt,
 					SecretHash: storedHash,
 					Scopes:     cd.Scopes,
+					Provider:   cd.Provider,
+					Mode:       cd.Mode,
 					Revoked:    cd.Revoked,
 					ExpiresAt:  cd.ExpiresAt,
 				}, nil
@@ -233,6 +242,8 @@ func (s *APIKeyService) cacheKey(ctx context.Context, ak *models.APIKey) {
 		Revoked:    ak.Revoked,
 		ExpiresAt:  ak.ExpiresAt,
 		Scopes:     ak.Scopes,
+		Provider:   ak.Provider,
+		Mode:       ak.Mode,
 		Salt:       base64.StdEncoding.EncodeToString(ak.Salt),
 		SecretHash: base64.StdEncoding.EncodeToString(ak.SecretHash),
 	}

@@ -15,6 +15,8 @@ import (
 
 type createAPIKeyReq struct {
 	Label     string     `json:"label"      binding:"required"`
+	Provider  string     `json:"provider"   binding:"required"`
+	Mode      string     `json:"mode"       binding:"required"`
 	Scopes    []string   `json:"scopes"`
 	ExpiresAt *time.Time `json:"expires_at"`
 }
@@ -55,7 +57,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		}
 	}
 
-	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt)
+	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.Mode)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
 		if errors.As(err, &limitErr) {
@@ -72,9 +74,11 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"key_id": kid,
-		"secret": secret, // shown only once
-		"label":  req.Label,
+		"key_id":   kid,
+		"secret":   secret, // shown only once
+		"label":    req.Label,
+		"provider": req.Provider,
+		"mode":     req.Mode,
 	})
 }
 
@@ -102,6 +106,8 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 	type keyView struct {
 		KeyID      string     `json:"key_id"`
 		Label      string     `json:"label"`
+		Provider   string     `json:"provider"`
+		Mode       string     `json:"mode"`
 		Scopes     []string   `json:"scopes"`
 		ExpiresAt  *time.Time `json:"expires_at"`
 		CreatedAt  time.Time  `json:"created_at"`
@@ -112,6 +118,8 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 		out[i] = keyView{
 			KeyID:      k.KeyID,
 			Label:      k.Label,
+			Provider:   k.Provider,
+			Mode:       k.Mode,
 			Scopes:     k.Scopes,
 			ExpiresAt:  k.ExpiresAt,
 			CreatedAt:  k.CreatedAt,

@@ -19,10 +19,27 @@ interface User {
 interface APIKey {
   key_id: string
   label: string
+  provider: string
+  mode: string
   scopes: string[] | null
   expires_at: string | null
   created_at: string
   last_seen_at: string | null
+}
+
+const PROVIDER_MODES: Record<string, { value: string; label: string; description: string }[]> = {
+  anthropic: [
+    {
+      value: 'CLAUDE_CODE_PASSTHROUGH',
+      label: 'Claude Code (Pass-Through)',
+      description: 'For Claude Code CLI. Forwards browser auth / ephemeral credentials.',
+    },
+    {
+      value: 'API_BYOK',
+      label: 'API — Bring Your Own Key',
+      description: 'For direct API access. Gateway uses your stored Anthropic provider key.',
+    },
+  ],
 }
 
 interface ProviderKey {
@@ -57,6 +74,9 @@ export default function ManagementPage() {
   const [showCreateKeyModal, setShowCreateKeyModal] = useState(false)
   const [showNewKeyModal, setShowNewKeyModal] = useState(false)
   const [newKeyLabel, setNewKeyLabel] = useState('')
+  const [newKeyProvider, setNewKeyProvider] = useState<string>('anthropic')
+  const [newKeyMode, setNewKeyMode] = useState<string>('CLAUDE_CODE_PASSTHROUGH')
+  const [createdKeyMode, setCreatedKeyMode] = useState<string>('')
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null)
   const [copiedID, setCopiedID] = useState<string | null>(null)
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
@@ -294,13 +314,14 @@ export default function ManagementPage() {
       const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ label: newKeyLabel.trim(), scopes: ['*'] }),
+        body: JSON.stringify({ label: newKeyLabel.trim(), provider: newKeyProvider, mode: newKeyMode, scopes: ['*'] }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.message ?? d.error ?? 'Failed to create API key')
       }
       const data = await res.json()
+      setCreatedKeyMode(newKeyMode)
       setNewKeySecret(`${data.key_id}:${data.secret}`)
       setShowCreateKeyModal(false)
       setCreateKeyError(null)
@@ -560,6 +581,8 @@ export default function ManagementPage() {
                   <tr>
                     <th>Key ID</th>
                     <th>Label</th>
+                    <th>Provider</th>
+                    <th>Mode</th>
                     <th>Created</th>
                     <th>Last Seen</th>
                     <th>Expires</th>
@@ -569,7 +592,7 @@ export default function ManagementPage() {
                 <tbody>
                   {apiKeys.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="empty-cell">
+                      <td colSpan={8} className="empty-cell">
                         <div className="empty-cta">
                           <p>No API keys yet. Create one to start reporting usage.</p>
                           <button className="btn btn-primary"
@@ -583,6 +606,8 @@ export default function ManagementPage() {
                     <tr key={k.key_id}>
                       <td><code className="key-id">{k.key_id.slice(0, 8)}…</code></td>
                       <td>{k.label}</td>
+                      <td><span className="provider-badge">{k.provider}</span></td>
+                      <td><span className="mode-badge">{k.mode}</span></td>
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td className="text-muted">
@@ -770,6 +795,48 @@ export default function ManagementPage() {
                   onKeyDown={e => e.key === 'Enter' && handleCreateAPIKey()}
                 />
               </div>
+              <div className="form-group">
+                <label>Provider</label>
+                <div className="role-select">
+                  {Object.keys(PROVIDER_MODES).map(p => (
+                    <label key={p} className={`role-option ${newKeyProvider === p ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="new-key-provider"
+                        value={p}
+                        checked={newKeyProvider === p}
+                        onChange={() => {
+                          setNewKeyProvider(p)
+                          setNewKeyMode(PROVIDER_MODES[p][0].value)
+                        }}
+                      />
+                      <div>
+                        <strong>{p.charAt(0).toUpperCase() + p.slice(1)}</strong>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Mode</label>
+                <div className="role-select">
+                  {(PROVIDER_MODES[newKeyProvider] ?? []).map(m => (
+                    <label key={m.value} className={`role-option ${newKeyMode === m.value ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="new-key-mode"
+                        value={m.value}
+                        checked={newKeyMode === m.value}
+                        onChange={() => setNewKeyMode(m.value)}
+                      />
+                      <div>
+                        <strong>{m.label}</strong>
+                        <span className="role-desc">{m.description}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
             {createKeyError && (
               <div className="flash flash-error modal-flash">{createKeyError}</div>
@@ -877,7 +944,7 @@ export default function ManagementPage() {
                 <div className="install-step">
                   <h4>Set environment variables</h4>
                   <div className="cmd-box">
-                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`}</pre>
+                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${createdKeyMode === 'API_BYOK' ? '\n# No ANTHROPIC_API_KEY needed — the gateway uses your stored provider key' : '\n# Claude Code will add its own auth automatically'}`}</pre>
                     <button className="btn btn-small btn-secondary"
                       onClick={() => copy(`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`, 'env')}>
                       {copiedID === 'env' ? 'Copied!' : 'Copy'}

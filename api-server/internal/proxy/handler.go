@@ -7,13 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
@@ -58,9 +58,13 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 
 	fmt.Println("------- HandleProxy called ------- tenantID:", tenantID, "keyID:", keyIDStr)
 
-	// Resolve provider from X-TokenGate-Provider header or path prefix.
-	provider := resolveProvider(c.GetHeader("X-TokenGate-Provider"), c.Request.URL.Path)
-	fmt.Println("------- Resolved provider:", provider)
+	// Read provider and mode from context (set by auth middleware from the API key record).
+	provider := Provider(c.GetString("provider"))
+	mode := c.GetString("mode")
+	if provider == "" {
+		provider = ProviderAnthropic
+	}
+	fmt.Println("------- provider:", provider, "mode:", mode)
 
 	// Pre-check budget before forwarding.
 	if h.pricingEngine != nil {
@@ -85,10 +89,9 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	fmt.Println("------- Budget pre-check passed -------")
 
-	// BYOK attempt: get the active provider key for this tenant+provider.
-	// If ENABLED_BYOK_LOOKUP is not "true", skip lookup and use pass-through mode.
+	// Resolve auth: API_BYOK fetches the vault key; CLAUDE_CODE_PASSTHROUGH uses the client's headers.
 	var byokKey []byte
-	if strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true") {
+	if mode == models.AnthropicModeAPIBYOK {
 		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
 		if err != nil {
 			if !errors.Is(err, services.ErrNoActiveKey) {
@@ -98,18 +101,15 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 				}})
 				return
 			}
-			// ErrNoActiveKey → pass-through mode; byokKey stays nil.
+			// ErrNoActiveKey → fall through; byokKey stays nil (should not happen for API_BYOK keys).
 		} else {
-			fmt.Println("------ len of retrieved BYOK key:", len(plaintextKey), "plaintext: ", string(plaintextKey))
-			// Only use the retrieved key when it's non-empty; otherwise fall back to pass-through mode.
+			fmt.Println("------ len of retrieved BYOK key:", len(plaintextKey))
 			if len(plaintextKey) > 0 {
-				fmt.Println("------ Set byokKey -----")
 				byokKey = plaintextKey
 			}
 		}
 	}
-	fmt.Println("------ BYOK byokKey len: ", len(byokKey))
-	fmt.Println("------- BYOK lookup enabled:", strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true"), "byokKey is set:", byokKey != nil)
+	fmt.Println("------ mode:", mode, "byokKey set:", byokKey != nil)
 
 	// Read the request body.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -280,11 +280,12 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 // HandleModels handles GET /v1/models — Anthropic model list passthrough.
 func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
-	fmt.Println("------- HandleModels called ------- tenantID:", tenantID)
+	mode := c.GetString("mode")
+	fmt.Println("------- HandleModels called ------- tenantID:", tenantID, "mode:", mode)
 
-	// Resolve API key: prefer BYOK (when enabled), fall back to client's auth headers (pass-through).
+	// Resolve API key based on mode.
 	var resolvedKey string
-	if strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true") {
+	if mode == models.AnthropicModeAPIBYOK {
 		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
 		if err != nil {
 			if !errors.Is(err, services.ErrNoActiveKey) {
