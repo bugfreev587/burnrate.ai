@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -211,6 +212,8 @@ func (s *ProviderKeyService) GetPlaintext(ctx context.Context, keyID uint) ([]by
 // It checks the Redis TPS cache first to avoid a DB round trip on every proxy request.
 // The TPS cache is invalidated on every Activate or Rotate call.
 func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, provider string) ([]byte, error) {
+	var plaintext []byte
+
 	// Fast path: Redis TPS cache.
 	if s.rdb != nil {
 		key := tpsCacheKey(tenantID, provider)
@@ -220,35 +223,55 @@ func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, pr
 				if time.Now().Before(entry.HardExpiry) {
 					// Valid hit — slide the idle TTL.
 					s.rdb.Expire(ctx, key, tpsIdleTTL)
-					return s.GetPlaintext(ctx, entry.ActiveKeyID)
+					pt, err := s.GetPlaintext(ctx, entry.ActiveKeyID)
+					if err != nil {
+						return nil, err
+					}
+					plaintext = pt
+				} else {
+					// Hard expired — drop the stale entry and fall through to DB.
+					s.rdb.Del(ctx, key)
 				}
-				// Hard expired — drop the stale entry and fall through to DB.
-				s.rdb.Del(ctx, key)
 			}
 		}
 	}
-	fmt.Println("----- TPS cache miss for tenantID:", tenantID, "provider:", provider)
 
-	// Slow path: DB.
-	var settings models.TenantProviderSettings
-	err := s.db.WithContext(ctx).
-		Where("tenant_id = ? AND provider = ?", tenantID, provider).
-		First(&settings).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if plaintext == nil {
+		fmt.Println("----- TPS cache miss for tenantID:", tenantID, "provider:", provider)
+
+		// Slow path: DB.
+		var settings models.TenantProviderSettings
+		err := s.db.WithContext(ctx).
+			Where("tenant_id = ? AND provider = ?", tenantID, provider).
+			First(&settings).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrNoActiveKey
+			}
+			return nil, fmt.Errorf("load tenant provider settings: %w", err)
+		}
+		if settings.ActiveKeyID == 0 {
 			return nil, ErrNoActiveKey
 		}
-		return nil, fmt.Errorf("load tenant provider settings: %w", err)
-	}
-	if settings.ActiveKeyID == 0 {
-		return nil, ErrNoActiveKey
+
+		// Populate cache for next request.
+		s.cacheTPS(ctx, &settings)
+		fmt.Println("----- DB hit for tenantID:", tenantID, "provider:", provider, "activeKeyID:", settings.ActiveKeyID)
+
+		pt, err := s.GetPlaintext(ctx, settings.ActiveKeyID)
+		if err != nil {
+			return nil, err
+		}
+		plaintext = pt
 	}
 
-	// Populate cache for next request.
-	s.cacheTPS(ctx, &settings)
-	fmt.Println("----- DB hit for tenantID:", tenantID, "provider:", provider, "activeKeyID:", settings.ActiveKeyID)
+	// Guard: a stored key that starts with "tg_" is a TokenGate API key, not a
+	// provider key. This indicates a misconfiguration (the wrong key was stored).
+	if strings.HasPrefix(string(plaintext), "tg_") {
+		return nil, fmt.Errorf("misconfigured BYOK: the active %q provider key is a TokenGate API key, not a %s key — please store the correct upstream API key", provider, provider)
+	}
 
-	return s.GetPlaintext(ctx, settings.ActiveKeyID)
+	return plaintext, nil
 }
 
 // Activate upserts TenantProviderSettings to point to the given key and bumps policy_version.

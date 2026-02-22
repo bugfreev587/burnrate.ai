@@ -280,6 +280,7 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 // HandleModels handles GET /v1/models — Anthropic model list passthrough.
 func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
+	fmt.Println("------- HandleModels called ------- tenantID:", tenantID)
 
 	// Resolve API key: prefer BYOK, fall back to client's x-api-key (pass-through).
 	var resolvedKey string

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,11 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.HasPrefix(req.APIKey, "tg_") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid api_key: a TokenGate API key cannot be stored as a provider key"})
 		return
 	}
 
