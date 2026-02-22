@@ -100,7 +100,10 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			}
 			// ErrNoActiveKey → pass-through mode; byokKey stays nil.
 		} else {
-			byokKey = plaintextKey
+			// Only use the retrieved key when it's non-empty; otherwise fall back to pass-through mode.
+			if len(plaintextKey) > 0 {
+				byokKey = plaintextKey
+			}
 		}
 	}
 	fmt.Println("------- BYOK lookup enabled:", strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true"), "byokKey is set:", byokKey != nil)
