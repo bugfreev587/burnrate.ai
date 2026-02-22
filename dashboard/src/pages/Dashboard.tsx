@@ -238,6 +238,73 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
   )
 }
 
+// ─── Recent Requests ──────────────────────────────────────────────────────────
+
+const RECENT_DEFAULT_LIMIT = 10
+
+function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'] }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (logs.length === 0) {
+    return (
+      <div className="empty-state">
+        <p>No recent requests.</p>
+        <p className="empty-hint">
+          Configure your Claude Code client to report usage via the gateway API.
+        </p>
+      </div>
+    )
+  }
+
+  const hasMore = logs.length > RECENT_DEFAULT_LIMIT
+  const visible = expanded ? logs : logs.slice(0, RECENT_DEFAULT_LIMIT)
+
+  return (
+    <>
+      <div className="table-wrapper">
+        <table className="usage-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Model</th>
+              <th>Provider</th>
+              <th>Input</th>
+              <th>Output</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(log => (
+              <tr key={log.id}>
+                <td className="text-muted">{fmtDate(log.created_at)}</td>
+                <td><code className="model-code">{log.model || '—'}</code></td>
+                <td className="text-muted">{log.provider || '—'}</td>
+                <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
+                <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
+                <td className="num-cell">{fmt$(log.cost)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {hasMore && (
+        <div className="recent-footer">
+          <span className="recent-count">
+            Showing {visible.length} of {logs.length}
+          </span>
+          <button
+            className="btn-link"
+            onClick={() => setExpanded(e => !e)}
+          >
+            {expanded ? '↑ Show less' : `↓ Show all ${logs.length}`}
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ─── Model Table ──────────────────────────────────────────────────────────────
 
 function ModelTable({ models }: { models: ModelBreakdown[] }) {
@@ -436,41 +503,7 @@ export default function Dashboard() {
             {/* ── Recent Requests ── */}
             <div className="dash-section-title">Recent Requests</div>
             <div className="card">
-              {logs.length === 0 ? (
-                <div className="empty-state">
-                  <p>No usage recorded yet.</p>
-                  <p className="empty-hint">
-                    Configure your Claude Code client to report usage via the gateway API.
-                  </p>
-                </div>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="usage-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Model</th>
-                        <th>Provider</th>
-                        <th>Input</th>
-                        <th>Output</th>
-                        <th>Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {logs.slice(0, 50).map(log => (
-                        <tr key={log.id}>
-                          <td className="text-muted">{fmtDate(log.created_at)}</td>
-                          <td><code className="model-code">{log.model || '—'}</code></td>
-                          <td className="text-muted">{log.provider || '—'}</td>
-                          <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
-                          <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
-                          <td className="num-cell">{fmt$(log.cost)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <RecentRequests logs={logs} />
             </div>
           </>
         )}
