@@ -36,13 +36,18 @@ function resolveDateRange(range: DateRange): { startDate: string; endDate: strin
 // ─── Raw log (for recent-requests table) ─────────────────────────────────────
 export interface UsageLog {
   id: number
+  tenant_id: number
   user_id: string
   provider: string
   model: string
   prompt_tokens: number
   completion_tokens: number
-  cost: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  reasoning_tokens: number
+  cost: string   // decimal.Decimal serialises as a JSON string, e.g. "0.00123400"
   request_id: string | null
+  api_key_fingerprint: string
   created_at: string
 }
 

@@ -144,18 +144,18 @@ type TenantProviderSettings struct {
 // api_key_fingerprint is derived from the client's X-Api-Key header ("ak:<sha256-hex>")
 // and used for stable cross-session audit attribution; raw key values are never stored.
 type UsageLog struct {
-	ID                  uint            `gorm:"primaryKey"`
-	TenantID            uint            `gorm:"index"`
-	UserID              string          `gorm:"index"`
-	Provider            string
-	Model               string
-	PromptTokens        int64           `gorm:"column:prompt_tokens"`
-	CompletionTokens    int64           `gorm:"column:completion_tokens"`
-	CacheCreationTokens int64           `gorm:"column:cache_creation_tokens"`
-	CacheReadTokens     int64           `gorm:"column:cache_read_tokens"`
-	ReasoningTokens     int64           `gorm:"column:reasoning_tokens"`
-	Cost                decimal.Decimal `gorm:"type:numeric(20,8)"`
-	RequestID           string          `gorm:"column:request_id;uniqueIndex"`
-	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index"`
-	CreatedAt           time.Time       `gorm:"index"`
+	ID                  uint            `gorm:"primaryKey"                              json:"id"`
+	TenantID            uint            `gorm:"index"                                   json:"tenant_id"`
+	UserID              string          `gorm:"index"                                   json:"user_id"`
+	Provider            string          `                                               json:"provider"`
+	Model               string          `                                               json:"model"`
+	PromptTokens        int64           `gorm:"column:prompt_tokens"                    json:"prompt_tokens"`
+	CompletionTokens    int64           `gorm:"column:completion_tokens"                json:"completion_tokens"`
+	CacheCreationTokens int64           `gorm:"column:cache_creation_tokens"            json:"cache_creation_tokens"`
+	CacheReadTokens     int64           `gorm:"column:cache_read_tokens"                json:"cache_read_tokens"`
+	ReasoningTokens     int64           `gorm:"column:reasoning_tokens"                 json:"reasoning_tokens"`
+	Cost                decimal.Decimal `gorm:"type:numeric(20,8)"                      json:"cost"`
+	RequestID           string          `gorm:"column:request_id;uniqueIndex"           json:"request_id"`
+	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index" json:"api_key_fingerprint"`
+	CreatedAt           time.Time       `gorm:"index"                                   json:"created_at"`
 }

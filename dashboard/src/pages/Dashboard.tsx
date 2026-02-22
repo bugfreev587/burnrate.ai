@@ -93,6 +93,28 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
 
 // ─── Daily Trend SVG Chart ────────────────────────────────────────────────────
 
+function fmtYTick(val: number, mode: 'cost' | 'tokens'): string {
+  if (mode === 'cost') {
+    if (val === 0) return '$0'
+    if (val >= 1000) return '$' + (val / 1000).toFixed(1) + 'K'
+    if (val >= 1) return '$' + val.toFixed(2)
+    if (val >= 0.01) return '$' + val.toFixed(3)
+    return '$' + val.toFixed(4)
+  } else {
+    if (val === 0) return '0'
+    if (val >= 1_000_000) return (val / 1_000_000).toFixed(1) + 'M'
+    if (val >= 1_000) return (val / 1_000).toFixed(1) + 'K'
+    return Math.round(val).toString()
+  }
+}
+
+function fmtDate(s: string | null | undefined): string {
+  if (!s) return '—'
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
+}
+
 function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens' }) {
   if (data.length === 0) {
     return <div className="trend-empty">No data for the selected period.</div>
@@ -102,31 +124,42 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
   const maxVal = Math.max(...values, 0.0001)
 
   const W = 600
-  const H = 120
-  const PAD = { top: 8, right: 4, bottom: 24, left: 4 }
+  const H = 132
+  // Left padding is wide enough for Y-axis tick labels; bottom for X-axis labels.
+  const PAD = { top: 10, right: 8, bottom: 26, left: 52 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
-  // Build SVG polyline points for line chart
+
+  const xOf = (i: number) => PAD.left + (i / (data.length - 1 || 1)) * chartW
+  const yOf = (v: number) => PAD.top + chartH - (v / maxVal) * chartH
+
   const pts = data.map((d, i) => {
-    const x = PAD.left + (i / (data.length - 1 || 1)) * chartW
     const v = mode === 'cost' ? parseFloat(d.cost) : d.tokens
-    const y = PAD.top + chartH - (v / maxVal) * chartH
-    return `${x},${y}`
+    return `${xOf(i)},${yOf(v)}`
   }).join(' ')
 
   const areaBase = PAD.top + chartH
   const areaPts = [
     `${PAD.left},${areaBase}`,
     ...data.map((d, i) => {
-      const x = PAD.left + (i / (data.length - 1 || 1)) * chartW
       const v = mode === 'cost' ? parseFloat(d.cost) : d.tokens
-      const y = PAD.top + chartH - (v / maxVal) * chartH
-      return `${x},${y}`
+      return `${xOf(i)},${yOf(v)}`
     }),
     `${PAD.left + chartW},${areaBase}`,
   ].join(' ')
 
   const labelStep = Math.ceil(data.length / 5)
+
+  // Three Y-axis ticks: 0, half, max.
+  const yTicks = [
+    { val: 0,          label: fmtYTick(0, mode) },
+    { val: maxVal / 2, label: fmtYTick(maxVal / 2, mode) },
+    { val: maxVal,     label: fmtYTick(maxVal, mode) },
+  ]
+
+  // Rotated axis title mid-point.
+  const axisTitleX = 10
+  const axisTitleY = PAD.top + chartH / 2
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="trend-svg" preserveAspectRatio="none">
@@ -136,24 +169,67 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
           <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
         </linearGradient>
       </defs>
+
+      {/* Y-axis title (rotated) */}
+      <text
+        x={axisTitleX}
+        y={axisTitleY}
+        textAnchor="middle"
+        fontSize="8.5"
+        fill="var(--color-text-muted)"
+        transform={`rotate(-90, ${axisTitleX}, ${axisTitleY})`}
+      >
+        {mode === 'cost' ? 'Cost (USD)' : 'Tokens'}
+      </text>
+
+      {/* Y-axis ticks: gridlines + labels */}
+      {yTicks.map((tick, i) => {
+        const y = yOf(tick.val)
+        return (
+          <g key={i}>
+            <line
+              x1={PAD.left} y1={y}
+              x2={PAD.left + chartW} y2={y}
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth="1"
+            />
+            <text
+              x={PAD.left - 4}
+              y={y + 3}
+              textAnchor="end"
+              fontSize="8"
+              fill="var(--color-text-muted)"
+            >
+              {tick.label}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Y-axis vertical line */}
+      <line
+        x1={PAD.left} y1={PAD.top}
+        x2={PAD.left} y2={PAD.top + chartH}
+        stroke="rgba(255,255,255,0.1)"
+        strokeWidth="1"
+      />
+
       {/* Area fill */}
       <polygon points={areaPts} fill={`url(#grad-${mode})`} />
       {/* Line */}
       <polyline points={pts} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinejoin="round" />
       {/* Dots */}
       {data.map((d, i) => {
-        const x = PAD.left + (i / (data.length - 1 || 1)) * chartW
         const v = mode === 'cost' ? parseFloat(d.cost) : d.tokens
-        const y = PAD.top + chartH - (v / maxVal) * chartH
-        return <circle key={i} cx={x} cy={y} r="3" fill="var(--color-primary)" />
+        return <circle key={i} cx={xOf(i)} cy={yOf(v)} r="3" fill="var(--color-primary)" />
       })}
+
       {/* X-axis labels */}
       {data.map((d, i) => {
         if (i % labelStep !== 0 && i !== data.length - 1) return null
-        const x = PAD.left + (i / (data.length - 1 || 1)) * chartW
         const label = d.date.slice(5) // MM-DD
         return (
-          <text key={i} x={x} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--color-text-muted)">
+          <text key={i} x={xOf(i)} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--color-text-muted)">
             {label}
           </text>
         )
@@ -383,9 +459,9 @@ export default function Dashboard() {
                     <tbody>
                       {logs.slice(0, 50).map(log => (
                         <tr key={log.id}>
-                          <td className="text-muted">{new Date(log.created_at).toLocaleString()}</td>
-                          <td><code className="model-code">{log.model}</code></td>
-                          <td className="text-muted">{log.provider}</td>
+                          <td className="text-muted">{fmtDate(log.created_at)}</td>
+                          <td><code className="model-code">{log.model || '—'}</code></td>
+                          <td className="text-muted">{log.provider || '—'}</td>
                           <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
                           <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
                           <td className="num-cell">{fmt$(log.cost)}</td>
