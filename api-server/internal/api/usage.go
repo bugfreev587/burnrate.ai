@@ -144,7 +144,8 @@ func containsSubstr(s, sub string) bool {
 }
 
 // handleListUsage returns usage logs for the caller's tenant.
-// Results are bounded by the tenant's plan data retention window.
+// Results are bounded by the tenant's plan data retention window, or by
+// optional start_date / end_date query params (YYYY-MM-DD) when provided.
 // GET /v1/usage
 func (s *Server) handleListUsage(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantIDFromContext(c)
@@ -157,6 +158,37 @@ func (s *Server) handleListUsage(c *gin.Context) {
 	s.postgresDB.GetDB().First(&tenant, tenantID)
 	lim := models.GetPlanLimits(tenant.Plan)
 
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	if startDateStr != "" && endDateStr != "" {
+		rangeStart, err1 := time.Parse("2006-01-02", startDateStr)
+		rangeEnd, err2 := time.Parse("2006-01-02", endDateStr)
+		if err1 == nil && err2 == nil {
+			effectiveMin := computeEffectiveMinStart(lim)
+
+			appliedStart := rangeStart
+			if appliedStart.Before(effectiveMin) {
+				appliedStart = effectiveMin
+			}
+
+			now := time.Now().UTC()
+			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, time.UTC)
+			if appliedEnd.After(now) {
+				appliedEnd = now
+			}
+
+			logs, err := s.usageSvc.ListByTenantBetween(c.Request.Context(), tenantID, 500, appliedStart, appliedEnd)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"usage_logs": logs})
+			return
+		}
+	}
+
+	// Fallback: existing retention-window behavior.
 	var since *time.Time
 	if lim.DataRetentionDays > 0 {
 		t := time.Now().AddDate(0, 0, -lim.DataRetentionDays)
@@ -173,6 +205,9 @@ func (s *Server) handleListUsage(c *gin.Context) {
 }
 
 // handleUsageSummary returns aggregated usage for the caller's tenant.
+// Accepts optional start_date / end_date query params (YYYY-MM-DD) to scope
+// the by_model breakdown and daily_trend sections.  Fixed-window cards
+// (today, yesterday, this_month, last_month, cumulative) are unaffected.
 // GET /v1/usage/summary
 func (s *Server) handleUsageSummary(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantIDFromContext(c)
@@ -190,6 +225,43 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	lastMonthStart := monthStart.AddDate(0, -1, 0)
 	trend30Start := todayStart.AddDate(0, 0, -29)
+
+	// ── Optional date range params ───────────────────────────────────────────
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	var rangeQueryStart, rangeQueryEnd *time.Time
+	var appliedRangeOut *gin.H
+
+	if startDateStr != "" && endDateStr != "" {
+		rangeStart, err1 := time.Parse("2006-01-02", startDateStr)
+		rangeEnd, err2 := time.Parse("2006-01-02", endDateStr)
+		if err1 == nil && err2 == nil {
+			var tenant models.Tenant
+			db.First(&tenant, tenantID)
+			lim := models.GetPlanLimits(tenant.Plan)
+			effectiveMin := computeEffectiveMinStart(lim)
+
+			appliedStart := rangeStart
+			if appliedStart.Before(effectiveMin) {
+				appliedStart = effectiveMin
+			}
+
+			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, time.UTC)
+			if appliedEnd.After(now) {
+				appliedEnd = now
+			}
+
+			rangeQueryStart = &appliedStart
+			rangeQueryEnd = &appliedEnd
+
+			ar := gin.H{
+				"start": appliedStart.Format("2006-01-02"),
+				"end":   rangeEnd.Format("2006-01-02"),
+			}
+			appliedRangeOut = &ar
+		}
+	}
 
 	// ── Helper to query a single period ─────────────────────────────────────
 	type periodRow struct {
@@ -232,7 +304,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		avgTokensPerRequest = totalTokens / cumulative.Requests
 	}
 
-	// ── By-model breakdown (this month) ─────────────────────────────────────
+	// ── By-model breakdown ───────────────────────────────────────────────────
 	type modelRow struct {
 		Model        string
 		Provider     string
@@ -242,8 +314,13 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Requests     int64
 	}
 	var byModel []modelRow
-	db.Model(&models.UsageLog{}).
-		Where("tenant_id = ? AND created_at >= ?", tenantID, monthStart).
+	byModelQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	if rangeQueryStart != nil {
+		byModelQ = byModelQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+	} else {
+		byModelQ = byModelQ.Where("created_at >= ?", monthStart)
+	}
+	byModelQ.
 		Select("model, provider, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as input_tokens, COALESCE(SUM(completion_tokens),0) as output_tokens, COUNT(*) as requests").
 		Group("model, provider").
 		Order("total_cost DESC").
@@ -261,15 +338,20 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		}
 	}
 
-	// ── Daily trend (last 30 days, UTC date) ────────────────────────────────
+	// ── Daily trend ──────────────────────────────────────────────────────────
 	type dailyRow struct {
-		Date    string
-		Cost    decimal.Decimal
-		Tokens  int64
+		Date   string
+		Cost   decimal.Decimal
+		Tokens int64
 	}
 	var daily []dailyRow
-	db.Model(&models.UsageLog{}).
-		Where("tenant_id = ? AND created_at >= ?", tenantID, trend30Start).
+	dailyQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	if rangeQueryStart != nil {
+		dailyQ = dailyQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+	} else {
+		dailyQ = dailyQ.Where("created_at >= ?", trend30Start)
+	}
+	dailyQ.
 		Select("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date, COALESCE(SUM(cost),0) as cost, COALESCE(SUM(prompt_tokens)+SUM(completion_tokens),0) as tokens").
 		Group("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')").
 		Order("date ASC").
@@ -284,13 +366,13 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"cost": gin.H{
-			"today":       today.TotalCost.StringFixed(4),
-			"yesterday":   yesterday.TotalCost.StringFixed(4),
-			"this_month":  thisMonth.TotalCost.StringFixed(4),
-			"last_month":  lastMonth.TotalCost.StringFixed(4),
-			"cumulative":  cumulative.TotalCost.StringFixed(4),
+			"today":      today.TotalCost.StringFixed(4),
+			"yesterday":  yesterday.TotalCost.StringFixed(4),
+			"this_month": thisMonth.TotalCost.StringFixed(4),
+			"last_month": lastMonth.TotalCost.StringFixed(4),
+			"cumulative": cumulative.TotalCost.StringFixed(4),
 		},
 		"requests": gin.H{
 			"today":      today.Requests,
@@ -300,12 +382,18 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 			"cumulative": cumulative.Requests,
 		},
 		"tokens": gin.H{
-			"input_total":       tokens.InputTotal,
-			"output_total":      tokens.OutputTotal,
-			"total":             totalTokens,
-			"avg_per_request":   avgTokensPerRequest,
+			"input_total":     tokens.InputTotal,
+			"output_total":    tokens.OutputTotal,
+			"total":           totalTokens,
+			"avg_per_request": avgTokensPerRequest,
 		},
 		"by_model":    byModelOut,
 		"daily_trend": dailyOut,
-	})
+	}
+
+	if appliedRangeOut != nil {
+		resp["applied_range"] = *appliedRangeOut
+	}
+
+	c.JSON(http.StatusOK, resp)
 }

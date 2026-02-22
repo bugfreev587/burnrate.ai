@@ -34,7 +34,7 @@ var planLimitsMap = map[string]PlanLimits{
 		AllowedPeriods:    []string{"monthly"},
 		AllowBlockAction:  false,
 		AllowPerKeyBudget: false,
-		DataRetentionDays: 30,
+		DataRetentionDays: 7,
 	},
 	PlanPro: {
 		MaxAPIKeys:        5,
@@ -50,7 +50,7 @@ var planLimitsMap = map[string]PlanLimits{
 		AllowedPeriods:    []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:  true,
 		AllowPerKeyBudget: true,
-		DataRetentionDays: 365,
+		DataRetentionDays: 180,
 	},
 	PlanBusiness: {
 		MaxAPIKeys:        -1,

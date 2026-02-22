@@ -2,6 +2,37 @@ import { useEffect, useState, useCallback } from 'react'
 
 const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
+// ─── Date range ───────────────────────────────────────────────────────────────
+export interface DateRange {
+  preset?: string    // "1d" | "3d" | "7d" | "14d" | "30d" | "90d"
+  startDate?: string // "YYYY-MM-DD", used when preset == "custom"
+  endDate?: string
+}
+
+// Resolve a DateRange to concrete start/end query strings.
+function resolveDateRange(range: DateRange): { startDate: string; endDate: string } | null {
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+
+  if (range.preset && range.preset !== 'custom') {
+    const daysMap: Record<string, number> = {
+      '1d': 1, '3d': 3, '7d': 7, '14d': 14, '30d': 30, '90d': 90,
+    }
+    const days = daysMap[range.preset]
+    if (days !== undefined) {
+      const start = new Date(today)
+      start.setDate(start.getDate() - days)
+      return { startDate: start.toISOString().slice(0, 10), endDate: todayStr }
+    }
+  }
+
+  if (range.preset === 'custom' && range.startDate && range.endDate) {
+    return { startDate: range.startDate, endDate: range.endDate }
+  }
+
+  return null
+}
+
 // ─── Raw log (for recent-requests table) ─────────────────────────────────────
 export interface UsageLog {
   id: number
@@ -55,6 +86,7 @@ export interface UsageSummary {
   tokens: TokenSummary
   by_model: ModelBreakdown[]
   daily_trend: DailyTrend[]
+  applied_range?: { start: string; end: string }
 }
 
 // ─── Budget ───────────────────────────────────────────────────────────────────
@@ -76,15 +108,17 @@ interface DashboardState {
   logs: UsageLog[]
   summary: UsageSummary | null
   budgets: BudgetStatus[]
+  appliedRange: { start: string; end: string } | null
   loading: boolean
   error: string | null
 }
 
-export function useUsageData(): DashboardState & { refresh: () => void } {
+export function useUsageData(dateRange?: DateRange): DashboardState & { refresh: () => void } {
   const [state, setState] = useState<DashboardState>({
     logs: [],
     summary: null,
     budgets: [],
+    appliedRange: null,
     loading: false,
     error: null,
   })
@@ -98,20 +132,30 @@ export function useUsageData(): DashboardState & { refresh: () => void } {
     try {
       const headers = { 'X-User-ID': userId }
 
+      // Build optional date query string.
+      let dateQS = ''
+      if (dateRange) {
+        const resolved = resolveDateRange(dateRange)
+        if (resolved) {
+          dateQS = `?start_date=${resolved.startDate}&end_date=${resolved.endDate}`
+        }
+      }
+
       const [logsRes, summaryRes, budgetRes] = await Promise.all([
-        fetch(`${API_SERVER_URL}/v1/usage`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/usage/summary`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/admin/budget`, { headers }),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }
-      const summaryData = summaryRes.ok ? await summaryRes.json() : null
+      const summaryData: UsageSummary | null = summaryRes.ok ? await summaryRes.json() : null
       const budgetData = budgetRes.ok ? await budgetRes.json() : { budget_limits: [] }
 
       setState({
         logs: logsData.usage_logs ?? [],
         summary: summaryData,
         budgets: budgetData.budget_limits ?? [],
+        appliedRange: summaryData?.applied_range ?? null,
         loading: false,
         error: null,
       })
@@ -122,7 +166,8 @@ export function useUsageData(): DashboardState & { refresh: () => void } {
         error: err instanceof Error ? err.message : 'Failed to load usage data',
       }))
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange?.preset, dateRange?.startDate, dateRange?.endDate])
 
   useEffect(() => {
     fetchData()

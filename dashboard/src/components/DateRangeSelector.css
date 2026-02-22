@@ -1,0 +1,102 @@
+/* ─── DateRangeSelector ──────────────────────────────────────────────────── */
+
+.drs-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 160px;
+}
+
+/* Preset button strip */
+.drs-dropdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.drs-option {
+  background: var(--color-card, #1a1a2e);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  color: var(--color-text, #e2e8f0);
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.drs-option:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+  border-color: var(--color-primary, #7c3aed);
+}
+
+.drs-option--selected {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: var(--color-primary, #7c3aed);
+  color: var(--color-primary, #7c3aed);
+}
+
+.drs-option--disabled,
+.drs-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.drs-lock {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+/* Retention hint */
+.drs-hint {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #718096);
+  margin: 0;
+}
+
+/* Custom date picker section */
+.drs-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
+}
+
+.drs-custom-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.drs-custom-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #718096);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.drs-date-input {
+  background: var(--color-bg, #0f0f1a);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  color: var(--color-text, #e2e8f0);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  outline: none;
+  color-scheme: dark;
+}
+
+.drs-date-input:focus {
+  border-color: var(--color-primary, #7c3aed);
+}

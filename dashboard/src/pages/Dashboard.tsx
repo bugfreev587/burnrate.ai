@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
+import DateRangeSelector from '../components/DateRangeSelector'
 import { useUsageData } from '../hooks/useUsageData'
-import type { BudgetStatus, DailyTrend, ModelBreakdown } from '../hooks/useUsageData'
+import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown } from '../hooks/useUsageData'
+import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import './Dashboard.css'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,7 +95,7 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
 
 function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens' }) {
   if (data.length === 0) {
-    return <div className="trend-empty">No data for the last 30 days.</div>
+    return <div className="trend-empty">No data for the selected period.</div>
   }
 
   const values = data.map(d => mode === 'cost' ? parseFloat(d.cost) : d.tokens)
@@ -163,7 +166,7 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
 
 function ModelTable({ models }: { models: ModelBreakdown[] }) {
   if (models.length === 0) {
-    return <p className="model-empty">No model usage this month.</p>
+    return <p className="model-empty">No model usage for the selected period.</p>
   }
   const maxCost = Math.max(...models.map(m => parseFloat(m.cost)), 0.0001)
   return (
@@ -171,7 +174,7 @@ function ModelTable({ models }: { models: ModelBreakdown[] }) {
       <thead>
         <tr>
           <th>Model</th>
-          <th>Cost (this month)</th>
+          <th>Cost</th>
           <th>Input</th>
           <th>Output</th>
           <th>Requests</th>
@@ -212,9 +215,23 @@ function ModelTable({ models }: { models: ModelBreakdown[] }) {
 
 export default function Dashboard() {
   const { user } = useUser()
-  const { logs, summary, budgets, loading, error, refresh } = useUsageData()
+  const { config } = useDashboardConfig()
+  const [dateRange, setDateRange] = useState<DateRange>({ preset: '30d' })
+  const { logs, summary, budgets, appliedRange, loading, error, refresh } = useUsageData(dateRange)
 
   const s = summary
+
+  // Derive a human-readable label for the selected period section.
+  const PRESET_LABELS: Record<string, string> = {
+    '1d': 'Last 24 Hours',
+    '3d': 'Last 3 Days',
+    '7d': 'Last 7 Days',
+    '14d': 'Last 14 Days',
+    '30d': 'Last 30 Days',
+    '90d': 'Last 90 Days',
+    'custom': 'Custom Period',
+  }
+  const periodLabel = dateRange.preset ? (PRESET_LABELS[dateRange.preset] ?? 'Selected Period') : 'Selected Period'
 
   return (
     <div className="page-container">
@@ -229,10 +246,23 @@ export default function Dashboard() {
               <p className="dash-welcome">Welcome back, {user.firstName}!</p>
             )}
           </div>
-          <button className="btn btn-secondary refresh-btn" onClick={refresh}>
-            Refresh
-          </button>
+          <div className="dash-controls">
+            <DateRangeSelector
+              config={config}
+              value={dateRange}
+              onChange={setDateRange}
+            />
+            <button className="btn btn-secondary refresh-btn" onClick={refresh}>
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {appliedRange && (
+          <p className="applied-range-note">
+            Showing data from {appliedRange.start} to {appliedRange.end}
+          </p>
+        )}
 
         {loading && (
           <div className="loading-center">
@@ -312,7 +342,7 @@ export default function Dashboard() {
             </div>
 
             {/* ── Model Breakdown + Daily Trend side-by-side ── */}
-            <div className="dash-section-title">This Month</div>
+            <div className="dash-section-title">{periodLabel}</div>
             <div className="dash-split">
               <div className="card dash-split-left">
                 <p className="card-subtitle">Breakdown by Model</p>
@@ -320,9 +350,9 @@ export default function Dashboard() {
               </div>
 
               <div className="card dash-split-right">
-                <p className="card-subtitle">Daily Cost — last 30 days</p>
+                <p className="card-subtitle">Daily Cost — {periodLabel.toLowerCase()}</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="cost" />
-                <p className="card-subtitle" style={{ marginTop: '1.5rem' }}>Daily Tokens — last 30 days</p>
+                <p className="card-subtitle" style={{ marginTop: '1.5rem' }}>Daily Tokens — {periodLabel.toLowerCase()}</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="tokens" />
               </div>
             </div>

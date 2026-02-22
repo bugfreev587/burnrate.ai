@@ -38,3 +38,13 @@ func (s *UsageLogService) ListByTenantSince(ctx context.Context, tenantID uint, 
 	}
 	return logs, q.Find(&logs).Error
 }
+
+// ListByTenantBetween lists usage logs for a tenant between two timestamps (inclusive).
+func (s *UsageLogService) ListByTenantBetween(ctx context.Context, tenantID uint, limit int, from, to time.Time) ([]models.UsageLog, error) {
+	var logs []models.UsageLog
+	q := s.db.Where("tenant_id = ? AND created_at >= ? AND created_at <= ?", tenantID, from, to).Order("created_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return logs, q.Find(&logs).Error
+}

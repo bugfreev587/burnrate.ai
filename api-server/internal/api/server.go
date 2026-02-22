@@ -113,6 +113,7 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/summary", s.handleUsageSummary)
 		viewer.GET("/cost-ledger", s.handleListCostLedger)
 		viewer.GET("/usage/forecast", s.handleUsageForecast)
+		viewer.GET("/dashboard/config", s.handleDashboardConfig)
 	}
 
 	// ─── Admin+ ──────────────────────────────────────────────────────────────
