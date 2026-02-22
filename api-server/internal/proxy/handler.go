@@ -282,22 +282,32 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 	fmt.Println("------- HandleModels called ------- tenantID:", tenantID)
 
-	// Resolve API key: prefer BYOK, fall back to client's x-api-key (pass-through).
+	// Resolve API key: prefer BYOK (when enabled), fall back to client's auth headers (pass-through).
 	var resolvedKey string
-	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
-	if err != nil {
-		if !errors.Is(err, services.ErrNoActiveKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve provider key"})
-			return
+	if strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true") {
+		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
+		if err != nil {
+			if !errors.Is(err, services.ErrNoActiveKey) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve provider key"})
+				return
+			}
+			// ErrNoActiveKey → fall through to pass-through mode below.
+		} else {
+			resolvedKey = string(plaintextKey)
 		}
-		// Pass-through mode: forward the client's key.
-		resolvedKey = c.Request.Header.Get("x-api-key")
+	}
+
+	// Pass-through: use the client's own key when no BYOK key was resolved.
+	if resolvedKey == "" {
+		if v := c.Request.Header.Get("x-api-key"); v != "" {
+			resolvedKey = v
+		} else if v := c.Request.Header.Get("Authorization"); v != "" {
+			resolvedKey = strings.TrimPrefix(v, "Bearer ")
+		}
 		if resolvedKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no_active_provider_key"})
 			return
 		}
-	} else {
-		resolvedKey = string(plaintextKey)
 	}
 
 	upstreamURL := upstreamBase(ProviderAnthropic) + "/v1/models"
