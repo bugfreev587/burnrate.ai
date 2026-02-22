@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -85,22 +86,24 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	fmt.Println("------- Budget pre-check passed -------")
 
 	// BYOK attempt: get the active provider key for this tenant+provider.
-	// If no key is configured, fall back to pass-through mode.
+	// If ENABLED_BYOK_LOOKUP is not "true", skip lookup and use pass-through mode.
 	var byokKey []byte
-	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
-	if err != nil {
-		if !errors.Is(err, services.ErrNoActiveKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
-				"type":    "tg_internal_error",
-				"message": "Failed to retrieve provider key.",
-			}})
-			return
+	if strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true") {
+		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
+		if err != nil {
+			if !errors.Is(err, services.ErrNoActiveKey) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+					"type":    "tg_internal_error",
+					"message": "Failed to retrieve provider key.",
+				}})
+				return
+			}
+			// ErrNoActiveKey → pass-through mode; byokKey stays nil.
+		} else {
+			byokKey = plaintextKey
 		}
-		// ErrNoActiveKey → pass-through mode; byokKey stays nil.
-	} else {
-		byokKey = plaintextKey
 	}
-	fmt.Println("------- BYOK key retrieved ------- byokKey is set:", byokKey != nil)
+	fmt.Println("------- BYOK lookup enabled:", strings.EqualFold(os.Getenv("ENABLED_BYOK_LOOKUP"), "true"), "byokKey is set:", byokKey != nil)
 
 	// Read the request body.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
