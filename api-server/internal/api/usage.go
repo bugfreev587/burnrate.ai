@@ -287,21 +287,24 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 	lastMonth := periodStats(&lastMonthStart, &monthStart)
 	cumulative := periodStats(nil, nil)
 
-	// ── Token totals (cumulative) ────────────────────────────────────────────
+	// ── Token totals (scoped to date range when provided, cumulative otherwise) ─
 	type tokenRow struct {
 		InputTotal  int64
 		OutputTotal int64
+		Requests    int64
 	}
 	var tokens tokenRow
-	db.Model(&models.UsageLog{}).
-		Where("tenant_id = ?", tenantID).
-		Select("COALESCE(SUM(prompt_tokens), 0) as input_total, COALESCE(SUM(completion_tokens), 0) as output_total").
+	tokenQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	if rangeQueryStart != nil {
+		tokenQ = tokenQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+	}
+	tokenQ.Select("COALESCE(SUM(prompt_tokens), 0) as input_total, COALESCE(SUM(completion_tokens), 0) as output_total, COUNT(*) as requests").
 		Scan(&tokens)
 
 	totalTokens := tokens.InputTotal + tokens.OutputTotal
 	var avgTokensPerRequest int64
-	if cumulative.Requests > 0 {
-		avgTokensPerRequest = totalTokens / cumulative.Requests
+	if tokens.Requests > 0 {
+		avgTokensPerRequest = totalTokens / tokens.Requests
 	}
 
 	// ── By-model breakdown ───────────────────────────────────────────────────

@@ -471,17 +471,17 @@ export default function Dashboard() {
               <div className="card summary-card">
                 <p className="summary-label">Input Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.input_total) : '—'}</p>
-                <p className="summary-sub">cumulative</p>
+                <p className="summary-sub">{periodLabel.toLowerCase()}</p>
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Output Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.output_total) : '—'}</p>
-                <p className="summary-sub">cumulative</p>
+                <p className="summary-sub">{periodLabel.toLowerCase()}</p>
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Total Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.total) : '—'}</p>
-                <p className="summary-sub">cumulative</p>
+                <p className="summary-sub">{periodLabel.toLowerCase()}</p>
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Avg / Request</p>
