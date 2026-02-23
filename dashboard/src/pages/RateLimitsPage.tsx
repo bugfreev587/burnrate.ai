@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { useRateLimits } from '../hooks/useRateLimits'
+import { usePricingConfig } from '../hooks/usePricingConfig'
 import type { UpsertRateLimitReq } from '../hooks/useRateLimits'
 import Navbar from '../components/Navbar'
 import './RateLimitsPage.css'
@@ -13,17 +14,28 @@ const METRIC_OPTIONS = [
   { value: 'otpm', label: 'OTPM', description: 'Output tokens per minute' },
 ]
 
-const PROVIDER_OPTIONS = [
-  { value: '', label: 'All Providers' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'google', label: 'Google' },
-]
-
 export default function RateLimitsPage() {
   const navigate = useNavigate()
   const { role, isSynced } = useUserSync()
   const { limits, loading, error, upsertLimit, deleteLimit } = useRateLimits()
+  const { catalog } = usePricingConfig()
+
+  // Derive unique providers from catalog
+  const providerOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const entry of catalog) {
+      if (!seen.has(entry.provider)) {
+        seen.set(entry.provider, entry.provider_display || entry.provider)
+      }
+    }
+    return [
+      { value: '', label: 'All Providers' },
+      ...Array.from(seen.entries()).map(([value, display]) => ({
+        value,
+        label: display,
+      })),
+    ]
+  }, [catalog])
 
   const [showModal, setShowModal] = useState(false)
   const [formProvider, setFormProvider] = useState('')
@@ -35,6 +47,16 @@ export default function RateLimitsPage() {
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Derive models filtered by selected provider
+  const modelOptions = useMemo(() => {
+    const models = catalog
+      .filter(entry => !formProvider || entry.provider === formProvider)
+      .map(entry => entry.model_name)
+    // Deduplicate and sort
+    const unique = Array.from(new Set(models)).sort()
+    return [{ value: '', label: 'All Models' }, ...unique.map(m => ({ value: m, label: m }))]
+  }, [catalog, formProvider])
 
   const isAdmin = isSynced && hasPermission(role, 'admin')
 
@@ -227,21 +249,20 @@ export default function RateLimitsPage() {
 
               <div className="form-group">
                 <label>Provider</label>
-                <select value={formProvider} onChange={e => setFormProvider(e.target.value)}>
-                  {PROVIDER_OPTIONS.map(o => (
+                <select value={formProvider} onChange={e => { setFormProvider(e.target.value); setFormModel('') }}>
+                  {providerOptions.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group">
-                <label>Model <span className="optional">(leave empty for all models)</span></label>
-                <input
-                  type="text"
-                  value={formModel}
-                  onChange={e => setFormModel(e.target.value)}
-                  placeholder="e.g. claude-sonnet-4-6"
-                />
+                <label>Model</label>
+                <select value={formModel} onChange={e => setFormModel(e.target.value)}>
+                  {modelOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
