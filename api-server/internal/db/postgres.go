@@ -84,6 +84,10 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("seed pricing data: %w", err)
 	}
 
+	if err := pricing.EnsureMissingModels(db); err != nil {
+		return nil, fmt.Errorf("ensure missing models: %w", err)
+	}
+
 	// One-time backfill: copy final_cost from cost_ledgers into usage_logs
 	// where cost was never set (zero). Safe to run repeatedly — the WHERE
 	// clause ensures already-backfilled rows are skipped.
