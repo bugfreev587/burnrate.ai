@@ -23,7 +23,7 @@ const PROVIDER_OPTIONS = [
 export default function RateLimitsPage() {
   const navigate = useNavigate()
   const { role, isSynced } = useUserSync()
-  const { limits, loading, error, refresh, upsertLimit, deleteLimit } = useRateLimits()
+  const { limits, loading, error, upsertLimit, deleteLimit } = useRateLimits()
 
   const [showModal, setShowModal] = useState(false)
   const [formProvider, setFormProvider] = useState('')
