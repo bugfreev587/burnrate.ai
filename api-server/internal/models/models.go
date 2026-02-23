@@ -158,4 +158,5 @@ type UsageLog struct {
 	RequestID           string          `gorm:"column:request_id;uniqueIndex"           json:"request_id"`
 	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index" json:"api_key_fingerprint"`
 	CreatedAt           time.Time       `gorm:"index"                                   json:"created_at"`
+	APIUsageBilled      bool            `gorm:"column:api_usage_billed;not null;default:false;index" json:"api_usage_billed"`
 }

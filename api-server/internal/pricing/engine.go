@@ -373,7 +373,7 @@ func (e *PricingEngine) dbBudgetSpend(ctx context.Context, tenantID uint, period
 	e.db.WithContext(ctx).
 		Model(&models.CostLedger{}).
 		Select("COALESCE(SUM(final_cost), 0)").
-		Where("tenant_id = ? AND timestamp >= ?", tenantID, start).
+		Where("tenant_id = ? AND timestamp >= ? AND api_usage_billed = ?", tenantID, start, true).
 		Scan(&total)
 	return total
 }
@@ -383,6 +383,10 @@ func (e *PricingEngine) dbBudgetSpend(ctx context.Context, tenantID uint, period
 // Uses INCRBYFLOAT (acceptable soft-cap precision; ledger is authoritative).
 func (e *PricingEngine) incrementBudget(ctx context.Context, event UsageEvent, finalCost decimal.Decimal) {
 	if e.rdb == nil {
+		return
+	}
+	// Non-billable usage must not affect budget counters.
+	if !event.APIUsageBilled {
 		return
 	}
 	amount := finalCost.InexactFloat64()
@@ -425,6 +429,7 @@ func (e *PricingEngine) writeLedger(ctx context.Context, event UsageEvent, resul
 		PricingSnapshot:     string(snapshotJSON),
 		IdempotencyKey:      event.IdempotencyKey,
 		Timestamp:           event.Timestamp,
+		APIUsageBilled:      event.APIUsageBilled,
 	}
 
 	if err := e.db.WithContext(ctx).Create(ledger).Error; err != nil {

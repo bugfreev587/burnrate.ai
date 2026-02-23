@@ -79,6 +79,7 @@ type CostLedger struct {
 	IdempotencyKey      string          `gorm:"uniqueIndex"` // = UsageLog.request_id
 	Timestamp           time.Time       `gorm:"index"`
 	CreatedAt           time.Time
+	APIUsageBilled      bool            `gorm:"column:api_usage_billed;not null;default:false;index" json:"api_usage_billed"`
 }
 
 // BudgetLimit enforces spend limits scoped to a tenant, optionally further

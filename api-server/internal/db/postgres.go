@@ -104,6 +104,23 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		log.Printf("backfill usage_logs costs: updated %d rows", res.RowsAffected)
 	}
 
+	// One-time backfill: mark all existing usage as billable so historical
+	// dashboards are preserved. Safe to run repeatedly — the WHERE clause
+	// ensures already-backfilled rows are skipped.
+	backfillBilledSQL := `UPDATE usage_logs SET api_usage_billed = true WHERE api_usage_billed = false`
+	if res := db.Exec(backfillBilledSQL); res.Error != nil {
+		log.Printf("backfill usage_logs api_usage_billed: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		log.Printf("backfill usage_logs api_usage_billed: updated %d rows", res.RowsAffected)
+	}
+
+	backfillLedgerBilledSQL := `UPDATE cost_ledgers SET api_usage_billed = true WHERE api_usage_billed = false`
+	if res := db.Exec(backfillLedgerBilledSQL); res.Error != nil {
+		log.Printf("backfill cost_ledgers api_usage_billed: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		log.Printf("backfill cost_ledgers api_usage_billed: updated %d rows", res.RowsAffected)
+	}
+
 	return &PostgresDB{db: db}, nil
 }
 

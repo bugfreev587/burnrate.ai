@@ -374,7 +374,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		}
 
 		q := s.postgresDB.GetDB().Model(&models.UsageLog{}).
-			Where("tenant_id = ? AND created_at >= ?", tenantID, periodStart)
+			Where("tenant_id = ? AND created_at >= ? AND api_usage_billed = ?", tenantID, periodStart, true)
 		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
 			q = q.Where("request_id IN (SELECT request_id FROM usage_logs WHERE tenant_id = ?)", tenantID)
 			// scope to key: UsageLog doesn't store key_id, so account-level spend is the best proxy
@@ -647,14 +647,14 @@ func (s *Server) handleUsageForecast(c *gin.Context) {
 	s.postgresDB.GetDB().
 		Model(&models.CostLedger{}).
 		Select("COALESCE(SUM(final_cost), 0)").
-		Where("tenant_id = ? AND timestamp >= ? AND timestamp < ?", tenantID, monthStart, monthEnd).
+		Where("tenant_id = ? AND timestamp >= ? AND timestamp < ? AND api_usage_billed = ?", tenantID, monthStart, monthEnd, true).
 		Scan(&totalCost)
 
 	var daysWithData int64
 	s.postgresDB.GetDB().
 		Model(&models.CostLedger{}).
 		Select("COUNT(DISTINCT DATE(timestamp))").
-		Where("tenant_id = ? AND timestamp >= ? AND timestamp < ?", tenantID, monthStart, monthEnd).
+		Where("tenant_id = ? AND timestamp >= ? AND timestamp < ? AND api_usage_billed = ?", tenantID, monthStart, monthEnd, true).
 		Scan(&daysWithData)
 
 	daysElapsed := int(daysWithData)

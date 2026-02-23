@@ -109,6 +109,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	if apiKeyFingerprint == "<nil>" {
 		apiKeyFingerprint = ""
 	}
+	apiUsageBilled := fmt.Sprintf("%v", v["api_usage_billed"]) == "true"
 
 	var ts time.Time
 	if tsStr, ok := v["timestamp"]; ok {
@@ -130,6 +131,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		Timestamp:           ts,
 		IdempotencyKey:      messageID,
 		APIKeyRef:           keyID,
+		APIUsageBilled:      apiUsageBilled,
 	}
 	result, err := w.pricingEngine.Process(ctx, event)
 	if err != nil {
@@ -149,6 +151,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		RequestID:           messageID,
 		APIKeyFingerprint:   apiKeyFingerprint,
 		CreatedAt:           ts,
+		APIUsageBilled:      apiUsageBilled,
 	}
 	if err := w.usageSvc.Create(ctx, usageLog); err != nil {
 		// Ignore duplicate request_id (already processed)

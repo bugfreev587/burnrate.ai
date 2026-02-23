@@ -34,6 +34,7 @@ type UsageEventMsg struct {
 	MessageID           string // Anthropic message ID used as idempotency key
 	APIKeyFingerprint   string // "ak:<sha256-hex>" derived from X-Api-Key; raw key never stored
 	Timestamp           time.Time
+	APIUsageBilled      bool
 }
 
 // Publish XADD tokengate:usage:events * field value ...
@@ -51,6 +52,7 @@ func (q *EventQueue) Publish(ctx context.Context, msg UsageEventMsg) error {
 		"message_id":            msg.MessageID,
 		"api_key_fingerprint":   msg.APIKeyFingerprint,
 		"timestamp":             msg.Timestamp.UTC().Format(time.RFC3339),
+		"api_usage_billed":      strconv.FormatBool(msg.APIUsageBilled),
 	}
 	err := q.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: streamName,

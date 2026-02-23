@@ -70,6 +70,14 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	fmt.Println("------- provider:", provider, "mode:", mode)
 
+	// Determine whether this request is billable API usage.
+	apiUsageBilled := false
+	if mode == models.AnthropicModeAPIBYOK {
+		apiUsageBilled = true
+	} else if v := c.Request.Header.Get("x-api-key"); strings.HasPrefix(v, "sk-ant-api") {
+		apiUsageBilled = true
+	}
+
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -309,6 +317,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			CacheReadTokens:     counts.CacheReadTokens,
 			MessageID:           counts.MessageID,
 			Timestamp:           now,
+			APIUsageBilled:      apiUsageBilled,
 		}
 		if pubErr := h.eventQueue.Publish(c.Request.Context(), msg); pubErr != nil {
 			log.Printf("proxy: publish usage event (tenant=%d): %v", tenantID, pubErr)
