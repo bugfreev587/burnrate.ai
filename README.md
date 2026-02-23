@@ -4,7 +4,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 
 ## What it does
 
-- **Anthropic reverse proxy** – Agents set `ANTHROPIC_BASE_URL` to the gateway; the gateway authenticates the `br_xxx` key, fetches the tenant's stored Anthropic key, and forwards the request. Token usage is extracted from the SSE stream and logged automatically.
+- **Multi-provider reverse proxy** – Supports Anthropic (`/v1/messages`), OpenAI (`/v1/responses`, `/v1/openai/*`), and other providers. Agents set their base URL to the gateway; the gateway authenticates the `tg_xxx` key, fetches the tenant's stored provider key, and forwards the request. Token usage is extracted from the response and logged automatically.
 - **Provider key vault** – Anthropic and OpenAI keys are stored with AES-256-GCM envelope encryption (per-key DEK, master key in env). Admins add, activate, and rotate keys from the Management dashboard; developers never touch raw credentials.
 - **Usage tracking** – Agents can also call a simple HTTP endpoint to report token consumption after each LLM request (legacy path, still supported).
 - **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
@@ -18,6 +18,28 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **API key management** – Admins create and revoke agent API keys with provider and mode selection (e.g., `CLAUDE_CODE_PASSTHROUGH` for browser auth pass-through, `API_BYOK` for direct API access). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
+
+## Supported Providers & Modes
+
+| Provider | Mode | Auth Flow | Billing | Description |
+|---|---|---|---|---|
+| **Anthropic** | `CLAUDE_CODE_PASSTHROUGH` | Browser auth (Claude monthly subscription) | API usage billed to Anthropic subscription | User authenticates via Claude Code's browser login. The gateway passes through the user's session credentials to Anthropic. Usage is tracked but billed through the user's existing Anthropic subscription. |
+| **Anthropic** | `API_BYOK` | Bring Your Own Key | API usage billed to tenant's Anthropic API key | Tenant stores their Anthropic API key in the encrypted vault. The gateway injects the stored key on every request. Full cost tracking, budget enforcement, and rate limiting apply. |
+| **OpenAI** | `API_BYOK` | Bring Your Own Key | API usage billed to tenant's OpenAI API key | Tenant stores their OpenAI API key in the encrypted vault. Requests to `/v1/responses` and `/v1/openai/*` are forwarded to OpenAI with the stored key. Supports Codex CLI and other OpenAI-compatible clients. |
+
+### How each mode works
+
+**`CLAUDE_CODE_PASSTHROUGH` (Anthropic only)**
+- The user runs `claude` with browser-based login (monthly subscription).
+- Claude Code sends requests with the user's Anthropic session token.
+- The gateway validates the `tg_xxx` key, passes the session token through to `api.anthropic.com`, and extracts token usage from the response.
+- Cost is tracked for visibility but billed through the user's Anthropic subscription.
+
+**`API_BYOK` (Anthropic & OpenAI)**
+- The admin stores a provider API key in the encrypted vault via the Management dashboard.
+- The gateway validates the `tg_xxx` key, fetches the stored provider key from the vault, and injects it into the upstream request.
+- The user never sees or handles the raw provider key.
+- Full budget enforcement, rate limiting, and cost tracking apply.
 
 ## Architecture
 
@@ -55,8 +77,10 @@ The gateway will:
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/v1/messages` | Full Anthropic Messages API proxy (streaming + non-streaming) |
+| POST | `/v1/messages` | Anthropic Messages API proxy (streaming + non-streaming) |
+| POST | `/v1/responses` | OpenAI Responses API — routes to OpenAI (passthrough) or Anthropic (translated) based on model name |
 | GET | `/v1/models` | Anthropic models list passthrough |
+| ANY | `/v1/openai/*` | OpenAI API passthrough (e.g. `/v1/openai/chat/completions`) |
 
 ### Budget response headers
 
@@ -213,8 +237,14 @@ api-server/
     │   ├── queue.go                  # Redis Streams producer (XADD)
     │   └── worker.go                 # Redis Streams consumer (XREADGROUP + XACK)
     ├── proxy/
-    │   ├── handler.go                # Reverse proxy for /v1/messages and /v1/models
-    │   └── stream.go                 # SSE parser + token extractor
+    │   ├── handler.go                # Reverse proxy + shared helpers (rate limit, budget, auth, response headers)
+    │   ├── responses_handler.go      # POST /v1/responses — provider-aware routing (OpenAI / Anthropic)
+    │   ├── responses_translate.go    # Responses ↔ Messages format translation (request + response)
+    │   ├── responses_stream.go       # SSE parsing for OpenAI Responses + Anthropic→Responses SSE translation
+    │   ├── stream.go                 # Anthropic SSE parser + token extractor
+    │   ├── model_registry.go         # Model name → provider resolution (prefix matching)
+    │   ├── provider.go               # Provider config, upstream URLs, auth, header copying
+    │   └── request.go                # Request metadata extraction (model, max_tokens, max_output_tokens)
     ├── ratelimit/
     │   └── limiter.go                # Redis sliding-window rate limiter (RPM/ITPM/OTPM)
     ├── db/postgres.go                # GORM init + AutoMigrate + seed
@@ -353,9 +383,15 @@ POST /v1/agent/usage   (or via proxy → Redis Streams → worker)
 | anthropic | claude-opus-4-6 | $15.00 | $75.00 | $18.75 | $1.50 |
 | openai | gpt-4o | $2.50 | $10.00 | — | — |
 | openai | gpt-4o-mini | $0.15 | $0.60 | — | — |
-| openai | gpt-4-turbo | $10.00 | $30.00 | — | — |
+| openai | gpt-4.1 | $2.00 | $8.00 | — | — |
+| openai | gpt-4.1-mini | $0.40 | $1.60 | — | — |
+| openai | gpt-4.1-nano | $0.10 | $0.40 | — | — |
+| openai | gpt-5.2-codex | $1.75 | $14.00 | — | — |
+| openai | gpt-5.3-codex | $1.75 | $14.00 | — | — |
+| openai | o3 | $2.00 | $8.00 | — | — |
+| openai | o3-mini | $1.10 | $4.40 | — | — |
+| openai | o4-mini | $1.10 | $4.40 | — | — |
 | openai | o1 | $15.00 | $60.00 | — | — |
-| openai | o1-mini | $3.00 | $12.00 | — | — |
 | google | gemini-1.5-pro | $1.25 | $5.00 | — | — |
 | google | gemini-1.5-flash | $0.075 | $0.30 | — | — |
 | google | gemini-2.0-flash | $0.10 | $0.40 | — | — |
@@ -376,7 +412,10 @@ POST /v1/agent/usage   (or via proxy → Redis Streams → worker)
 | Method | Path | Description |
 |---|---|---|
 | POST | `/v1/messages` | Anthropic Messages API proxy (streaming + non-streaming) |
+| POST | `/v1/responses` | OpenAI Responses API — provider-aware routing (OpenAI passthrough or Anthropic translation) |
 | GET | `/v1/models` | Anthropic models list passthrough |
+| ANY | `/v1/openai/*` | OpenAI API passthrough |
+| ANY | `/v1/gemini/*` | Gemini API passthrough |
 | POST | `/v1/agent/usage` | Report LLM usage directly (legacy path); cost computed server-side |
 
 **Legacy usage request:**
@@ -722,6 +761,8 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Monthly spend forecast | ✅ Live |
 | Provider key vault (AES-256-GCM envelope encryption) | ✅ Live |
 | Anthropic reverse proxy (`/v1/messages`) | ✅ Live |
+| OpenAI Responses API (`/v1/responses`) — Codex CLI support | ✅ Live |
+| Provider-aware model routing (OpenAI / Anthropic / Gemini) | ✅ Live |
 | SSE streaming proxy with token extraction | ✅ Live |
 | Async usage processing via Redis Streams | ✅ Live |
 | Usage summary / aggregation | 🚧 Not implemented |
