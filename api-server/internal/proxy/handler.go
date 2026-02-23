@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -52,6 +53,196 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 	}
 }
 
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
+// determineBillable returns true when the request should be recorded as billable API usage.
+func determineBillable(mode string, headers http.Header) bool {
+	if mode == models.AnthropicModeAPIBYOK {
+		return true
+	}
+	if v := headers.Get("x-api-key"); strings.HasPrefix(v, "sk-ant-api") {
+		return true
+	}
+	return false
+}
+
+// checkRateLimit performs a rate limit check. If the limit is exceeded it writes
+// a 429 response and returns true. Returns false when the request may proceed.
+func (h *ProxyHandler) checkRateLimit(c *gin.Context, tenantID uint, keyID string, provider Provider, model string, bodyLen int, maxTokens int) (exceeded bool) {
+	if h.rateLimiter == nil {
+		return false
+	}
+	estimatedInputTokens := int64(bodyLen / 4)
+	if estimatedInputTokens < 1 {
+		estimatedInputTokens = 1
+	}
+	result, _ := h.rateLimiter.Check(c.Request.Context(), tenantID, keyID, string(provider), model, estimatedInputTokens, maxTokens)
+	if result != nil && result.Exceeded {
+		retryAfterSec := result.RetryAfterMs / 1000
+		if retryAfterSec < 1 {
+			retryAfterSec = 1
+		}
+		c.Header("Retry-After", fmt.Sprintf("%d", retryAfterSec))
+		c.Header("X-Tokengate-RateLimit-Metric", result.Metric)
+		c.JSON(http.StatusTooManyRequests, gin.H{"type": "error", "error": gin.H{
+			"type":    "rate_limit_error",
+			"message": fmt.Sprintf("Rate limit exceeded: %d %s for %s", result.Limit, result.Metric, model),
+		}})
+		return true
+	}
+	return false
+}
+
+// preCheckBudget performs a budget pre-check and reserves worst-case output spend.
+// If the budget is exceeded it writes a 402 response and returns ok=false.
+func (h *ProxyHandler) preCheckBudget(c *gin.Context, tenantID uint, keyID string, provider Provider, model string, maxTokens int) (reservedAmount decimal.Decimal, ok bool) {
+	reservedAmount = decimal.Zero
+	if h.pricingEngine == nil {
+		return reservedAmount, true
+	}
+	status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyID, time.Now())
+	if err != nil {
+		var budgetErr *pricing.ErrBudgetExceeded
+		if errors.As(err, &budgetErr) {
+			c.JSON(http.StatusPaymentRequired, gin.H{"error": gin.H{
+				"type":    "tg_budget_exceeded",
+				"message": fmt.Sprintf("Budget limit exceeded for period=%s. Limit: %s, Current: %s", budgetErr.Period, budgetErr.LimitAmount.StringFixed(4), budgetErr.CurrentSpend.StringFixed(4)),
+			}})
+			return reservedAmount, false
+		}
+	}
+	if status != nil && status.AtWarning {
+		c.Header("X-Tokengate-Budget-Warning", "true")
+		c.Header("X-Tokengate-Budget-Limit", status.LimitAmount.StringFixed(4))
+		c.Header("X-Tokengate-Budget-Used", status.CurrentSpend.StringFixed(4))
+		c.Header("X-Tokengate-Budget-Period", status.Period)
+		c.Header("X-Tokengate-Budget-Scope", status.Scope)
+	}
+	if maxTokens > 0 {
+		reserved, _ := h.pricingEngine.ReserveSpend(c.Request.Context(), tenantID, keyID, string(provider), model, maxTokens)
+		reservedAmount = reserved
+	}
+	return reservedAmount, true
+}
+
+// resolveAuth fetches the BYOK key for API_BYOK mode. For passthrough mode it
+// returns nil. Returns ok=false (and writes a 500 response) on internal errors.
+func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provider, mode string) (byokKey []byte, ok bool) {
+	if mode != models.AnthropicModeAPIBYOK {
+		return nil, true
+	}
+	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
+	if err != nil {
+		if !errors.Is(err, services.ErrNoActiveKey) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+				"type":    "tg_internal_error",
+				"message": "Failed to retrieve provider key.",
+			}})
+			return nil, false
+		}
+		return nil, true
+	}
+	if len(plaintextKey) > 0 {
+		return plaintextKey, true
+	}
+	return nil, true
+}
+
+// buildUpstreamRequest creates an HTTP request for the upstream provider with
+// correct headers and authentication applied.
+func (h *ProxyHandler) buildUpstreamRequest(ctx context.Context, method, url string, body []byte, provider Provider, mode string, byokKey []byte, clientReq *http.Request) (*http.Request, error) {
+	upstreamReq, err := http.NewRequestWithContext(ctx, method, url, newBodyReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy safe provider-specific headers from the client request.
+	copyClientHeadersForProvider(provider, clientReq, upstreamReq)
+
+	// Security: strip all TokenGate headers — never forward them upstream.
+	stripTokengateHeaders(upstreamReq)
+
+	if byokKey != nil {
+		applyByokAuth(provider, byokKey, upstreamReq)
+	} else {
+		// Pass-through mode: forward provider auth headers from the client as-is.
+		for _, hdr := range []string{"Authorization", "x-api-key", "x-goog-api-key"} {
+			if v := clientReq.Header.Get(hdr); v != "" {
+				upstreamReq.Header.Set(hdr, v)
+			}
+		}
+	}
+
+	// Forward Content-Type from the original request.
+	if ct := clientReq.Header.Get("Content-Type"); ct != "" {
+		upstreamReq.Header.Set("Content-Type", ct)
+	}
+
+	// For Anthropic, set a default API version if the client didn't supply one.
+	if provider == ProviderAnthropic && upstreamReq.Header.Get("anthropic-version") == "" {
+		upstreamReq.Header.Set("anthropic-version", defaultAnthropicVersion)
+	}
+
+	return upstreamReq, nil
+}
+
+// copyAndWriteResponseHeaders copies upstream response headers to the client writer
+// and sets SSE-specific overrides when isSSE is true.
+func copyAndWriteResponseHeaders(resp *http.Response, w gin.ResponseWriter, isSSE bool) {
+	for key, vals := range resp.Header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, v := range vals {
+			w.Header().Add(key, v)
+		}
+	}
+	if isSSE {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Del("Content-Length")
+	}
+}
+
+// reconcilePostResponse adjusts rate limit OTPM counters and releases the spend reservation.
+func (h *ProxyHandler) reconcilePostResponse(ctx context.Context, tenantID uint, keyID string, provider Provider, model string, maxTokens int, outputTokens int64, reserved decimal.Decimal) {
+	if h.rateLimiter != nil && maxTokens > 0 {
+		h.rateLimiter.Reconcile(ctx, tenantID, keyID, string(provider), model, outputTokens, maxTokens)
+	}
+	if h.pricingEngine != nil && !reserved.IsZero() {
+		h.pricingEngine.ReleaseReservation(ctx, tenantID, keyID, reserved)
+	}
+}
+
+// publishUsageEvent publishes a usage event to Redis Streams (fire-and-forget).
+func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, ts time.Time) {
+	if tenantID == 0 {
+		return
+	}
+	if counts.MessageID == "" && counts.InputTokens == 0 && counts.OutputTokens == 0 {
+		return
+	}
+	msg := events.UsageEventMsg{
+		TenantID:            tenantID,
+		KeyID:               keyID,
+		Provider:            string(provider),
+		Model:               counts.Model,
+		InputTokens:         counts.InputTokens,
+		OutputTokens:        counts.OutputTokens,
+		CacheCreationTokens: counts.CacheCreationTokens,
+		CacheReadTokens:     counts.CacheReadTokens,
+		MessageID:           counts.MessageID,
+		Timestamp:           ts,
+		APIUsageBilled:      billed,
+	}
+	if pubErr := h.eventQueue.Publish(ctx, msg); pubErr != nil {
+		log.Printf("proxy: publish usage event (tenant=%d): %v", tenantID, pubErr)
+	}
+}
+
+// ─── HandleProxy ─────────────────────────────────────────────────────────────
+
 // HandleProxy handles proxy requests to any supported upstream provider.
 // It resolves the provider from the X-TokenGate-Provider header or request path,
 // attempts BYOK auth, and falls back to pass-through when no key is configured.
@@ -70,13 +261,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	fmt.Println("------- provider:", provider, "mode:", mode)
 
-	// Determine whether this request is billable API usage.
-	apiUsageBilled := false
-	if mode == models.AnthropicModeAPIBYOK {
-		apiUsageBilled = true
-	} else if v := c.Request.Header.Get("x-api-key"); strings.HasPrefix(v, "sk-ant-api") {
-		apiUsageBilled = true
-	}
+	apiUsageBilled := determineBillable(mode, c.Request.Header)
 
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -89,78 +274,19 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	reqMeta := parseRequestMeta(bodyBytes)
 
-	// Rate limit check.
-	if h.rateLimiter != nil {
-		// Estimate input tokens from body size (rough: ~4 chars per token).
-		estimatedInputTokens := int64(len(bodyBytes) / 4)
-		if estimatedInputTokens < 1 {
-			estimatedInputTokens = 1
-		}
-		result, _ := h.rateLimiter.Check(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, estimatedInputTokens, reqMeta.MaxTokens)
-		if result != nil && result.Exceeded {
-			retryAfterSec := result.RetryAfterMs / 1000
-			if retryAfterSec < 1 {
-				retryAfterSec = 1
-			}
-			c.Header("Retry-After", fmt.Sprintf("%d", retryAfterSec))
-			c.Header("X-Tokengate-RateLimit-Metric", result.Metric)
-			c.JSON(http.StatusTooManyRequests, gin.H{"type": "error", "error": gin.H{
-				"type":    "rate_limit_error",
-				"message": fmt.Sprintf("Rate limit exceeded: %d %s for %s", result.Limit, result.Metric, reqMeta.Model),
-			}})
-			return
-		}
+	if h.checkRateLimit(c, tenantID, keyIDStr, provider, reqMeta.Model, len(bodyBytes), reqMeta.MaxTokens) {
+		return
 	}
 
-	// Pre-check budget with spend reservation before forwarding.
-	var reservedAmount = decimal.Zero
-	if h.pricingEngine != nil {
-		status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyIDStr, time.Now())
-		if err != nil {
-			var budgetErr *pricing.ErrBudgetExceeded
-			if errors.As(err, &budgetErr) {
-				c.JSON(http.StatusPaymentRequired, gin.H{"error": gin.H{
-					"type":    "tg_budget_exceeded",
-					"message": fmt.Sprintf("Budget limit exceeded for period=%s. Limit: %s, Current: %s", budgetErr.Period, budgetErr.LimitAmount.StringFixed(4), budgetErr.CurrentSpend.StringFixed(4)),
-				}})
-				return
-			}
-		}
-		if status != nil && status.AtWarning {
-			c.Header("X-Tokengate-Budget-Warning", "true")
-			c.Header("X-Tokengate-Budget-Limit", status.LimitAmount.StringFixed(4))
-			c.Header("X-Tokengate-Budget-Used", status.CurrentSpend.StringFixed(4))
-			c.Header("X-Tokengate-Budget-Period", status.Period)
-			c.Header("X-Tokengate-Budget-Scope", status.Scope)
-		}
-
-		// Reserve spend (worst-case output cost) to prevent concurrent overshoot.
-		if reqMeta.MaxTokens > 0 {
-			reserved, _ := h.pricingEngine.ReserveSpend(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, reqMeta.MaxTokens)
-			reservedAmount = reserved
-		}
+	reservedAmount, ok := h.preCheckBudget(c, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens)
+	if !ok {
+		return
 	}
 	fmt.Println("------- Budget pre-check passed -------")
 
-	// Resolve auth: API_BYOK fetches the vault key; CLAUDE_CODE_PASSTHROUGH uses the client's headers.
-	var byokKey []byte
-	if mode == models.AnthropicModeAPIBYOK {
-		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
-		if err != nil {
-			if !errors.Is(err, services.ErrNoActiveKey) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
-					"type":    "tg_internal_error",
-					"message": "Failed to retrieve provider key.",
-				}})
-				return
-			}
-			// ErrNoActiveKey → fall through; byokKey stays nil (should not happen for API_BYOK keys).
-		} else {
-			fmt.Println("------ len of retrieved BYOK key:", len(plaintextKey))
-			if len(plaintextKey) > 0 {
-				byokKey = plaintextKey
-			}
-		}
+	byokKey, ok := h.resolveAuth(c, tenantID, provider, mode)
+	if !ok {
+		return
 	}
 	fmt.Println("------ mode:", mode, "byokKey set:", byokKey != nil)
 
@@ -170,44 +296,13 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		upstreamURL += "?" + c.Request.URL.RawQuery
 	}
 
-	upstreamReq, err := http.NewRequestWithContext(
-		c.Request.Context(), c.Request.Method, upstreamURL, newBodyReader(bodyBytes),
-	)
+	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), c.Request.Method, upstreamURL, bodyBytes, provider, mode, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"type":    "tg_internal_error",
 			"message": "Failed to build upstream request.",
 		}})
 		return
-	}
-
-	// Copy safe Anthropic-specific headers from the client request.
-	copyClientHeaders(c.Request, upstreamReq)
-
-	// Security: strip all TokenGate headers — never forward them upstream.
-	stripTokengateHeaders(upstreamReq)
-
-	if byokKey != nil {
-		// BYOK mode: apply provider-specific auth using the stored key.
-		applyByokAuth(provider, byokKey, upstreamReq)
-	} else {
-		// Pass-through mode: forward provider auth headers from the client as-is.
-		// This supports Claude subscription users and similar direct-auth scenarios.
-		for _, hdr := range []string{"Authorization", "x-api-key", "x-goog-api-key"} {
-			if v := c.Request.Header.Get(hdr); v != "" {
-				upstreamReq.Header.Set(hdr, v)
-			}
-		}
-	}
-
-	// Forward Content-Type from the original request.
-	if ct := c.Request.Header.Get("Content-Type"); ct != "" {
-		upstreamReq.Header.Set("Content-Type", ct)
-	}
-
-	// For Anthropic, set a default API version if the client didn't supply one.
-	if provider == ProviderAnthropic && upstreamReq.Header.Get("anthropic-version") == "" {
-		upstreamReq.Header.Set("anthropic-version", defaultAnthropicVersion)
 	}
 
 	resp, err := h.httpClient.Do(upstreamReq)
@@ -223,31 +318,8 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	// Determine from the upstream response whether this is an SSE stream.
 	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
-
-	// Copy upstream response headers.
-	// Use Add (not Set) to preserve multi-value headers (e.g. Set-Cookie).
-	// Skip Content-Length: for SSE it is absent; for errors forwarding a wrong
-	// Content-Length alongside a modified body confuses clients.
-	for key, vals := range resp.Header {
-		if strings.EqualFold(key, "Content-Length") {
-			continue
-		}
-		for _, v := range vals {
-			c.Writer.Header().Add(key, v)
-		}
-	}
-
-	// For SSE responses, override headers that matter for streaming to work
-	// correctly through proxies (Railway/Nginx) and browsers.
-	if isSSE {
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("X-Accel-Buffering", "no")
-		c.Writer.Header().Del("Content-Length")
-	}
-
+	copyAndWriteResponseHeaders(resp, c.Writer, isSSE)
 	c.Writer.WriteHeader(resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
@@ -295,34 +367,8 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 
-	// Post-response reconciliation: adjust rate limit OTPM counters and release spend reservation.
-	if h.rateLimiter != nil && reqMeta.MaxTokens > 0 {
-		h.rateLimiter.Reconcile(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, counts.OutputTokens, reqMeta.MaxTokens)
-	}
-	if h.pricingEngine != nil && !reservedAmount.IsZero() {
-		h.pricingEngine.ReleaseReservation(c.Request.Context(), tenantID, keyIDStr, reservedAmount)
-	}
-
-	// Publish usage event to Redis Streams (fire-and-forget).
-	// Skip when tenant_id is 0 (e.g. gateway validation disabled) — no valid tenant to attribute usage to.
-	if tenantID != 0 && (counts.MessageID != "" || counts.InputTokens > 0 || counts.OutputTokens > 0) {
-		msg := events.UsageEventMsg{
-			TenantID:            tenantID,
-			KeyID:               keyIDStr,
-			Provider:            string(provider),
-			Model:               counts.Model,
-			InputTokens:         counts.InputTokens,
-			OutputTokens:        counts.OutputTokens,
-			CacheCreationTokens: counts.CacheCreationTokens,
-			CacheReadTokens:     counts.CacheReadTokens,
-			MessageID:           counts.MessageID,
-			Timestamp:           now,
-			APIUsageBilled:      apiUsageBilled,
-		}
-		if pubErr := h.eventQueue.Publish(c.Request.Context(), msg); pubErr != nil {
-			log.Printf("proxy: publish usage event (tenant=%d): %v", tenantID, pubErr)
-		}
-	}
+	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, now)
 }
 
 // HandleMessages is a backward-compatible alias for HandleProxy (Anthropic /v1/messages).
@@ -397,11 +443,7 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 }
 
 // copyClientHeaders copies safe Anthropic-specific headers from the client request
-// to the upstream request.
+// to the upstream request. Kept for backward compatibility.
 func copyClientHeaders(src *http.Request, dst *http.Request) {
-	for _, h := range []string{"anthropic-version", "anthropic-beta", "accept", "anthropic-dangerous-direct-browser-access"} {
-		if v := src.Header.Get(h); v != "" {
-			dst.Header.Set(h, v)
-		}
-	}
+	copyClientHeadersForProvider(ProviderAnthropic, src, dst)
 }

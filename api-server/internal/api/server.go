@@ -95,6 +95,7 @@ func (s *Server) setupRoutes() {
 	proxyGroup.Use(tenantAuth)
 	{
 		proxyGroup.POST("/messages", s.proxyHandler.HandleProxy)
+		proxyGroup.POST("/responses", s.proxyHandler.HandleResponses)
 		proxyGroup.GET("/models", s.proxyHandler.HandleModels)
 		proxyGroup.Any("/openai/*path", s.proxyHandler.HandleProxy)
 		proxyGroup.Any("/gemini/*path", s.proxyHandler.HandleProxy)

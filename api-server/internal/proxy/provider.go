@@ -71,6 +71,25 @@ func applyByokAuth(p Provider, key []byte, req *http.Request) {
 	}
 }
 
+// copyClientHeadersForProvider copies safe provider-specific headers from the
+// client request to the upstream request.
+func copyClientHeadersForProvider(p Provider, src *http.Request, dst *http.Request) {
+	var headers []string
+	switch p {
+	case ProviderAnthropic:
+		headers = []string{"anthropic-version", "anthropic-beta", "accept", "anthropic-dangerous-direct-browser-access"}
+	case ProviderOpenAI:
+		headers = []string{"openai-beta", "openai-organization", "accept"}
+	default:
+		headers = []string{"accept"}
+	}
+	for _, h := range headers {
+		if v := src.Header.Get(h); v != "" {
+			dst.Header.Set(h, v)
+		}
+	}
+}
+
 // stripTokengateHeaders removes all TokenGate-specific headers from the request
 // so they are never forwarded upstream.
 func stripTokengateHeaders(req *http.Request) {

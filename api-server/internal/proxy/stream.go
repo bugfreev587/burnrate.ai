@@ -138,6 +138,28 @@ func extractTokensFromJSON(body []byte) TokenCounts {
 	}
 }
 
+// extractTokensFromOpenAIResponsesJSON parses token usage from an OpenAI Responses API
+// non-streaming JSON response body (usage.input_tokens, usage.output_tokens).
+func extractTokensFromOpenAIResponsesJSON(body []byte) TokenCounts {
+	var resp struct {
+		ID    string `json:"id"`
+		Model string `json:"model"`
+		Usage struct {
+			InputTokens  int64 `json:"input_tokens"`
+			OutputTokens int64 `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return TokenCounts{}
+	}
+	return TokenCounts{
+		MessageID:    resp.ID,
+		Model:        resp.Model,
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+	}
+}
+
 // isStreamingRequest checks whether the request body asks for stream: true.
 func isStreamingRequest(body []byte) bool {
 	var req struct {

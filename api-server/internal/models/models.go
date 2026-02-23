@@ -77,6 +77,7 @@ const (
 // SupportedAPIKeyModes maps provider → valid modes.
 var SupportedAPIKeyModes = map[string][]string{
 	"anthropic": {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
+	"openai":    {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
 }
 
 // ValidAPIKeyMode returns true when mode is valid for provider.
