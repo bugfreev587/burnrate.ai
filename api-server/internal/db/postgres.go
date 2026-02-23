@@ -84,6 +84,22 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("seed pricing data: %w", err)
 	}
 
+	// One-time backfill: copy final_cost from cost_ledgers into usage_logs
+	// where cost was never set (zero). Safe to run repeatedly — the WHERE
+	// clause ensures already-backfilled rows are skipped.
+	backfillSQL := `
+		UPDATE usage_logs
+		SET cost = cl.final_cost
+		FROM cost_ledgers cl
+		WHERE usage_logs.request_id = cl.idempotency_key
+		  AND usage_logs.cost = 0
+		  AND cl.final_cost > 0`
+	if res := db.Exec(backfillSQL); res.Error != nil {
+		log.Printf("backfill usage_logs costs: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		log.Printf("backfill usage_logs costs: updated %d rows", res.RowsAffected)
+	}
+
 	return &PostgresDB{db: db}, nil
 }
 

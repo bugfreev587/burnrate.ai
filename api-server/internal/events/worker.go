@@ -118,29 +118,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		ts = time.Now()
 	}
 
-	// Write UsageLog record
-	usageLog := &models.UsageLog{
-		TenantID:            tenantID,
-		Provider:            provider,
-		Model:               model,
-		PromptTokens:        inputTokens,
-		CompletionTokens:    outputTokens,
-		CacheCreationTokens: cacheCreationTokens,
-		CacheReadTokens:     cacheReadTokens,
-		RequestID:           messageID,
-		APIKeyFingerprint:   apiKeyFingerprint,
-		CreatedAt:           ts,
-	}
-	if err := w.usageSvc.Create(ctx, usageLog); err != nil {
-		// Ignore duplicate request_id (already processed)
-		if isDuplicateError(err) {
-			log.Printf("usageworker: duplicate message_id=%s, skipping usage log", messageID)
-		} else {
-			return fmt.Errorf("create usage log: %w", err)
-		}
-	}
-
-	// Run the pricing pipeline
+	// Run the pricing pipeline first so we can store the cost on the UsageLog.
 	event := pricing.UsageEvent{
 		TenantID:            tenantID,
 		Provider:            provider,
@@ -153,8 +131,32 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		IdempotencyKey:      messageID,
 		APIKeyRef:           keyID,
 	}
-	if _, err := w.pricingEngine.Process(ctx, event); err != nil {
+	result, err := w.pricingEngine.Process(ctx, event)
+	if err != nil {
 		return fmt.Errorf("pricing engine: %w", err)
+	}
+
+	// Write UsageLog record with the computed cost.
+	usageLog := &models.UsageLog{
+		TenantID:            tenantID,
+		Provider:            provider,
+		Model:               model,
+		PromptTokens:        inputTokens,
+		CompletionTokens:    outputTokens,
+		CacheCreationTokens: cacheCreationTokens,
+		CacheReadTokens:     cacheReadTokens,
+		Cost:                result.FinalCost,
+		RequestID:           messageID,
+		APIKeyFingerprint:   apiKeyFingerprint,
+		CreatedAt:           ts,
+	}
+	if err := w.usageSvc.Create(ctx, usageLog); err != nil {
+		// Ignore duplicate request_id (already processed)
+		if isDuplicateError(err) {
+			log.Printf("usageworker: duplicate message_id=%s, skipping usage log", messageID)
+		} else {
+			return fmt.Errorf("create usage log: %w", err)
+		}
 	}
 
 	return nil
