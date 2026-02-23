@@ -131,7 +131,7 @@ export default function LimitsPage() {
     try {
       const req: UpsertSpendLimitReq = {
         scope_type: 'account', scope_id: '', period_type: slPeriod,
-        limit_amount: slLimitAmount, alert_threshold: threshold, action: slAction,
+        limit_amount: slLimitAmount, alert_threshold: String(threshold), action: slAction,
       }
       await upsertSpendLimit(req)
       showSuccess('Spend limit saved'); setShowSLModal(false); resetSLForm()

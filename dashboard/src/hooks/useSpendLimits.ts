@@ -26,7 +26,7 @@ export interface UpsertSpendLimitReq {
   scope_id: string
   period_type: string
   limit_amount: string
-  alert_threshold: number
+  alert_threshold: string
   action: string
 }
 
