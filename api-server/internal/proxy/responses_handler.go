@@ -32,7 +32,11 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
 
+	fmt.Println("------- HandleResponses -------")
+
 	mode := c.GetString("mode")
+
+	fmt.Println("tenantID:", tenantID, "keyID:", keyIDStr, "mode:", mode)
 
 	// Read the request body.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -53,6 +57,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		}})
 		return
 	}
+	fmt.Println("------- request parsed ------- model:", req.Model, "stream:", req.Stream, "max_output_tokens:", req.MaxOutputTokens)
 
 	if req.Model == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
@@ -76,6 +81,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 			return
 		}
 	}
+	fmt.Println("------- resolved provider:", provider)
 
 	// Compute max_tokens for rate limiting / budget.
 	maxTokens := 0
@@ -98,6 +104,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	if !ok {
 		return
 	}
+	fmt.Println("----- handle response byokKey: ", byokKey)
 
 	now := time.Now()
 	var counts TokenCounts
