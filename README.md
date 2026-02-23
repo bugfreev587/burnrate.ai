@@ -35,14 +35,14 @@ The frontend is hosted on **Vercel**. The backend runs in a **Docker container o
 The gateway acts as a drop-in replacement for the Anthropic API. Configure Claude Code (or any Anthropic SDK client) like this:
 
 ```bash
-export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
-export ANTHROPIC_API_KEY=<key_id>:<secret>   # your TokenGate tg_xxx key
+export ANTHROPIC_BASE_URL="https://gateway.tokengate.to"
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<key_id>:<secret>"   # your TokenGate tg_xxx key
 ```
 
 > **Important — do not include `/v1` in `ANTHROPIC_BASE_URL`.** The Anthropic SDK appends `/v1/messages` automatically; including `/v1` in the base URL results in `/v1/v1/messages` → 404.
 
 The gateway will:
-1. Validate the `br_xxx` key and resolve the tenant (and the key's own ID for per-key budget tracking).
+1. Validate the `tg_xxx` key and resolve the tenant (and the key's own ID for per-key budget tracking).
 2. **Pre-check budget** — if the tenant's current spend already equals or exceeds a blocking budget limit, return HTTP 402 immediately (no upstream call made). If spend is above the alert threshold, response headers are set (see below).
 3. Fetch the tenant's active Anthropic provider key from the encrypted vault.
 4. Forward the request to `api.anthropic.com` with the real key.
