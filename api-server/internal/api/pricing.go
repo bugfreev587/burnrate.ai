@@ -477,7 +477,7 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		})
 		return
 	}
-	if action == models.BudgetActionBlock && !planLim.AllowBlockAction {
+	if (action == models.BudgetActionBlock || action == models.BudgetActionAlertBlock) && !planLim.AllowBlockAction {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "plan_restriction",
 			"message": fmt.Sprintf("Your %s plan does not support automatic blocking. Upgrade to Pro or higher.", tenant.Plan),

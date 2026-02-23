@@ -23,7 +23,7 @@ const PERIOD_OPTIONS = [
 ]
 
 const ACTION_OPTIONS = [
-  { value: 'alert', label: 'Alert Only', description: 'Warn via headers when threshold is reached' },
+  { value: 'alert', label: 'Alert', description: 'Warn via headers when threshold is reached' },
   { value: 'block', label: 'Hard Block', description: 'Reject requests (HTTP 402) when limit is exceeded' },
 ]
 
@@ -71,7 +71,7 @@ export default function LimitsPage() {
   const [slPeriod, setSlPeriod] = useState('monthly')
   const [slLimitAmount, setSlLimitAmount] = useState('')
   const [slThreshold, setSlThreshold] = useState('80')
-  const [slAction, setSlAction] = useState('alert')
+  const [slActions, setSlActions] = useState<string[]>(['alert'])
   const [slFormError, setSlFormError] = useState<string | null>(null)
   const [slSaving, setSlSaving] = useState(false)
 
@@ -119,7 +119,7 @@ export default function LimitsPage() {
   // ── Spend limit handlers ──────────────────────────────────────────────────
   const resetSLForm = () => {
     setSlPeriod('monthly'); setSlLimitAmount(''); setSlThreshold('80')
-    setSlAction('alert'); setSlFormError(null)
+    setSlActions(['alert']); setSlFormError(null)
   }
 
   const handleSaveSL = async () => {
@@ -127,11 +127,15 @@ export default function LimitsPage() {
     if (!amount || amount <= 0) { setSlFormError('Limit amount must be a positive number'); return }
     const threshold = parseFloat(slThreshold)
     if (isNaN(threshold) || threshold < 0 || threshold > 100) { setSlFormError('Alert threshold must be 0-100'); return }
+    if (slActions.length === 0) { setSlFormError('Select at least one action'); return }
+    const action = slActions.includes('alert') && slActions.includes('block')
+      ? 'alert_block'
+      : slActions[0]
     setSlSaving(true); setSlFormError(null)
     try {
       const req: UpsertSpendLimitReq = {
         scope_type: 'account', scope_id: '', period_type: slPeriod,
-        limit_amount: slLimitAmount, alert_threshold: String(threshold), action: slAction,
+        limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
       }
       await upsertSpendLimit(req)
       showSuccess('Spend limit saved'); setShowSLModal(false); resetSLForm()
@@ -230,9 +234,17 @@ export default function LimitsPage() {
                         <td>${parseFloat(l.limit_amount).toFixed(2)}</td>
                         <td>{l.alert_threshold}%</td>
                         <td>
-                          <span className={`action-badge action-${l.action}`}>
-                            {l.action === 'block' ? 'Hard Block' : 'Alert Only'}
-                          </span>
+                          {l.action === 'alert_block' ? (
+                            <>
+                              <span className="action-badge action-alert">Alert</span>
+                              {' '}
+                              <span className="action-badge action-block">Hard Block</span>
+                            </>
+                          ) : (
+                            <span className={`action-badge action-${l.action}`}>
+                              {l.action === 'block' ? 'Hard Block' : 'Alert'}
+                            </span>
+                          )}
                         </td>
                         <td>${parseFloat(l.current_spend).toFixed(2)}</td>
                         <td>
@@ -393,19 +405,24 @@ export default function LimitsPage() {
               <div className="form-group">
                 <label>Action</label>
                 <div className="role-select">
-                  {ACTION_OPTIONS.map(a => (
-                    <label key={a.value} className={`role-option ${slAction === a.value ? 'selected' : ''}`}>
-                      <input
-                        type="radio" name="sl-action" value={a.value}
-                        checked={slAction === a.value}
-                        onChange={() => setSlAction(a.value)}
-                      />
-                      <div>
-                        <strong>{a.label}</strong>
-                        <span className="role-desc">{a.description}</span>
-                      </div>
-                    </label>
-                  ))}
+                  {ACTION_OPTIONS.map(a => {
+                    const checked = slActions.includes(a.value)
+                    return (
+                      <label key={a.value} className={`role-option ${checked ? 'selected' : ''}`}>
+                        <input
+                          type="checkbox" value={a.value}
+                          checked={checked}
+                          onChange={() => setSlActions(prev =>
+                            prev.includes(a.value) ? prev.filter(v => v !== a.value) : [...prev, a.value]
+                          )}
+                        />
+                        <div>
+                          <strong>{a.label}</strong>
+                          <span className="role-desc">{a.description}</span>
+                        </div>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
             </div>

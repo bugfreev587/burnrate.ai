@@ -144,8 +144,9 @@ const (
 
 // Budget action constants
 const (
-	BudgetActionAlert = "alert"
-	BudgetActionBlock = "block"
+	BudgetActionAlert      = "alert"
+	BudgetActionBlock      = "block"
+	BudgetActionAlertBlock = "alert_block" // alert at threshold AND block at limit
 )
 
 // Budget scope constants

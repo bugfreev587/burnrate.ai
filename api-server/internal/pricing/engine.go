@@ -156,7 +156,7 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 		// Compute threshold amount
 		thresholdAmount := limit.LimitAmount.Mul(limit.AlertThreshold).Div(decimal.NewFromInt(100))
 
-		if limit.Action == models.BudgetActionBlock && effective.GreaterThanOrEqual(limit.LimitAmount) {
+		if (limit.Action == models.BudgetActionBlock || limit.Action == models.BudgetActionAlertBlock) && effective.GreaterThanOrEqual(limit.LimitAmount) {
 			return &BudgetStatus{
 				AtWarning:    true,
 				Scope:        limit.ScopeType,
