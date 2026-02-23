@@ -140,6 +140,8 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, mode string, byokKey []byte) (TokenCounts, error) {
 	upstreamURL := upstreamBase(ProviderOpenAI) + "/v1/responses"
 
+	fmt.Println("----- handleResponsesOpenAI upstreamURL:", upstreamURL)
+
 	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, body, provider, mode, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{

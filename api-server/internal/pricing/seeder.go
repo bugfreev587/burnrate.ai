@@ -94,6 +94,46 @@ var anthropicModels = []modelEntry{
 	}},
 }
 
+// openaiModels is the canonical list of OpenAI models and their pricing.
+var openaiModels = []modelEntry{
+	// GPT-4o family
+	{name: "gpt-4o", prices: map[string]string{models.PriceTypeInput: "2.50", models.PriceTypeOutput: "10.00"}},
+	{name: "gpt-4o-mini", prices: map[string]string{models.PriceTypeInput: "0.15", models.PriceTypeOutput: "0.60"}},
+	{name: "gpt-4-turbo", prices: map[string]string{models.PriceTypeInput: "10.00", models.PriceTypeOutput: "30.00"}},
+	{name: "gpt-3.5-turbo", prices: map[string]string{models.PriceTypeInput: "0.50", models.PriceTypeOutput: "1.50"}},
+	// GPT-4.1 family
+	{name: "gpt-4.1", prices: map[string]string{models.PriceTypeInput: "2.00", models.PriceTypeOutput: "8.00"}},
+	{name: "gpt-4.1-mini", prices: map[string]string{models.PriceTypeInput: "0.40", models.PriceTypeOutput: "1.60"}},
+	{name: "gpt-4.1-nano", prices: map[string]string{models.PriceTypeInput: "0.10", models.PriceTypeOutput: "0.40"}},
+	// GPT-5 family
+	{name: "gpt-5", prices: map[string]string{models.PriceTypeInput: "1.25", models.PriceTypeOutput: "10.00"}},
+	{name: "gpt-5-mini", prices: map[string]string{models.PriceTypeInput: "0.25", models.PriceTypeOutput: "2.00"}},
+	{name: "gpt-5-nano", prices: map[string]string{models.PriceTypeInput: "0.05", models.PriceTypeOutput: "0.40"}},
+	{name: "gpt-5-codex", prices: map[string]string{models.PriceTypeInput: "1.25", models.PriceTypeOutput: "10.00"}},
+	{name: "gpt-5-codex-mini", prices: map[string]string{models.PriceTypeInput: "0.25", models.PriceTypeOutput: "2.00"}},
+	// GPT-5.1 family
+	{name: "gpt-5.1", prices: map[string]string{models.PriceTypeInput: "1.25", models.PriceTypeOutput: "10.00"}},
+	{name: "gpt-5.1-codex", prices: map[string]string{models.PriceTypeInput: "1.25", models.PriceTypeOutput: "10.00"}},
+	{name: "gpt-5.1-codex-mini", prices: map[string]string{models.PriceTypeInput: "0.25", models.PriceTypeOutput: "2.00"}},
+	{name: "gpt-5.1-codex-max", prices: map[string]string{models.PriceTypeInput: "1.25", models.PriceTypeOutput: "10.00"}},
+	// GPT-5.2 family
+	{name: "gpt-5.2", prices: map[string]string{models.PriceTypeInput: "1.75", models.PriceTypeOutput: "14.00"}},
+	{name: "gpt-5.2-codex", prices: map[string]string{models.PriceTypeInput: "1.75", models.PriceTypeOutput: "14.00"}},
+	{name: "gpt-5.2-pro", prices: map[string]string{models.PriceTypeInput: "21.00", models.PriceTypeOutput: "168.00"}},
+	// GPT-5.3 family
+	{name: "gpt-5.3-codex", prices: map[string]string{models.PriceTypeInput: "1.75", models.PriceTypeOutput: "14.00"}},
+	{name: "gpt-5.3-codex-spark", prices: map[string]string{models.PriceTypeInput: "1.75", models.PriceTypeOutput: "14.00"}},
+	// O-series reasoning models
+	{name: "o1", prices: map[string]string{models.PriceTypeInput: "15.00", models.PriceTypeOutput: "60.00"}},
+	{name: "o1-mini", prices: map[string]string{models.PriceTypeInput: "3.00", models.PriceTypeOutput: "12.00"}},
+	{name: "o1-pro", prices: map[string]string{models.PriceTypeInput: "150.00", models.PriceTypeOutput: "600.00"}},
+	{name: "o3", prices: map[string]string{models.PriceTypeInput: "2.00", models.PriceTypeOutput: "8.00"}},
+	{name: "o3-mini", prices: map[string]string{models.PriceTypeInput: "1.10", models.PriceTypeOutput: "4.40"}},
+	{name: "o4-mini", prices: map[string]string{models.PriceTypeInput: "1.10", models.PriceTypeOutput: "4.40"}},
+	// ChatGPT models
+	{name: "chatgpt-4o-latest", prices: map[string]string{models.PriceTypeInput: "5.00", models.PriceTypeOutput: "15.00"}},
+}
+
 // SeedInitialData seeds providers, models, and pricing into the DB.
 // It is a no-op if providers already exist.
 func SeedInitialData(db *gorm.DB) error {
@@ -121,13 +161,7 @@ func SeedInitialData(db *gorm.DB) error {
 		{
 			name:        "openai",
 			displayName: "OpenAI",
-			models: []modelEntry{
-				{name: "gpt-4o", prices: map[string]string{models.PriceTypeInput: "2.50", models.PriceTypeOutput: "10.00"}},
-				{name: "gpt-4o-mini", prices: map[string]string{models.PriceTypeInput: "0.15", models.PriceTypeOutput: "0.60"}},
-				{name: "gpt-4-turbo", prices: map[string]string{models.PriceTypeInput: "10.00", models.PriceTypeOutput: "30.00"}},
-				{name: "o1", prices: map[string]string{models.PriceTypeInput: "15.00", models.PriceTypeOutput: "60.00"}},
-				{name: "o1-mini", prices: map[string]string{models.PriceTypeInput: "3.00", models.PriceTypeOutput: "12.00"}},
-			},
+			models:      openaiModels,
 		},
 		{
 			name:        "google",
@@ -197,19 +231,37 @@ func SeedInitialData(db *gorm.DB) error {
 	return nil
 }
 
-// EnsureMissingModels adds any Anthropic models that are not yet in the DB
+// EnsureMissingModels adds any models that are not yet in the DB
 // and corrects pricing for existing models whose prices have changed.
 // Safe to call on every startup — it only inserts/updates where needed.
 func EnsureMissingModels(db *gorm.DB) error {
-	var provider models.Provider
-	if err := db.Where("name = ?", "anthropic").First(&provider).Error; err != nil {
-		// Provider doesn't exist yet (fresh DB); SeedInitialData will handle it.
-		return nil
+	providers := []struct {
+		name   string
+		models []modelEntry
+	}{
+		{"anthropic", anthropicModels},
+		{"openai", openaiModels},
 	}
 
 	effectiveFrom := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	for _, me := range anthropicModels {
+	for _, p := range providers {
+		if err := ensureModelsForProvider(db, p.name, p.models, effectiveFrom); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureModelsForProvider adds/updates models for a single provider.
+func ensureModelsForProvider(db *gorm.DB, providerName string, entries []modelEntry, effectiveFrom time.Time) error {
+	var provider models.Provider
+	if err := db.Where("name = ?", providerName).First(&provider).Error; err != nil {
+		// Provider doesn't exist yet (fresh DB); SeedInitialData will handle it.
+		return nil
+	}
+
+	for _, me := range entries {
 		var modelDef models.ModelDef
 		result := db.Where("provider_id = ? AND model_name = ?", provider.ID, me.name).First(&modelDef)
 
@@ -236,7 +288,7 @@ func EnsureMissingModels(db *gorm.DB) error {
 					return err
 				}
 			}
-			log.Printf("pricing: added missing model %s", me.name)
+			log.Printf("pricing: added missing model %s (%s)", me.name, providerName)
 			continue
 		} else if result.Error != nil {
 			return result.Error
