@@ -153,3 +153,27 @@ const (
 	BudgetScopeAccount = "account"
 	BudgetScopeAPIKey  = "api_key"
 )
+
+// RateLimit defines a tenant-aware, model-scoped rate limit.
+// The unique index ensures at most one limit per (tenant, provider, model, scope, metric).
+type RateLimit struct {
+	ID            uint      `gorm:"primaryKey"`
+	TenantID      uint      `gorm:"uniqueIndex:idx_ratelimit_unique"`
+	Provider      string    `gorm:"uniqueIndex:idx_ratelimit_unique;size:32;default:''"` // "" = all
+	Model         string    `gorm:"uniqueIndex:idx_ratelimit_unique;size:128;default:''"` // "" = all
+	ScopeType     string    `gorm:"uniqueIndex:idx_ratelimit_unique;size:16;default:account"` // account|api_key
+	ScopeID       string    `gorm:"uniqueIndex:idx_ratelimit_unique;size:64;default:''"`
+	Metric        string    `gorm:"uniqueIndex:idx_ratelimit_unique;size:16"` // rpm|itpm|otpm
+	LimitValue    int64     `gorm:"not null"`
+	WindowSeconds int       `gorm:"not null;default:60"`
+	Enabled       bool      `gorm:"not null;default:true"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// Rate limit metric constants
+const (
+	RateLimitMetricRPM  = "rpm"
+	RateLimitMetricITPM = "itpm"
+	RateLimitMetricOTPM = "otpm"
+)

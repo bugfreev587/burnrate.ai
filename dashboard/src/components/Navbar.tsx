@@ -75,6 +75,11 @@ export default function Navbar() {
                       </Link>
                     )}
                     {canAccessAdmin && (
+                      <Link to="/rate-limits" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                        Rate Limits
+                      </Link>
+                    )}
+                    {canAccessAdmin && (
                       <Link to="/pricing" className="dropdown-item" onClick={() => setShowMenu(false)}>
                         Pricing Config
                       </Link>

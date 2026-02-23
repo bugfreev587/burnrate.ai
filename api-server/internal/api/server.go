@@ -14,6 +14,7 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
+	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
@@ -25,6 +26,7 @@ type Server struct {
 	pricingEngine  *pricing.PricingEngine
 	providerKeySvc *services.ProviderKeyService
 	proxyHandler   *proxy.ProxyHandler
+	rateLimiter    *ratelimit.Limiter
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
 	httpServer     *http.Server
@@ -40,6 +42,7 @@ func NewServer(
 	pricingEngine *pricing.PricingEngine,
 	providerKeySvc *services.ProviderKeyService,
 	proxyHandler *proxy.ProxyHandler,
+	rateLimiter *ratelimit.Limiter,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -56,6 +59,7 @@ func NewServer(
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
 		proxyHandler:   proxyHandler,
+		rateLimiter:    rateLimiter,
 		rbac:           rbac,
 		router:         router,
 		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
@@ -170,6 +174,11 @@ func (s *Server) setupRoutes() {
 		admin.GET("/budget", s.handleGetBudget)
 		admin.PUT("/budget", s.handleUpsertBudget)
 		admin.DELETE("/budget/:budget_id", s.handleDeleteBudget)
+
+		// Rate limit management
+		admin.GET("/rate-limits", s.handleListRateLimits)
+		admin.PUT("/rate-limits", s.handleUpsertRateLimit)
+		admin.DELETE("/rate-limits/:id", s.handleDeleteRateLimit)
 	}
 
 	// ─── Owner only ──────────────────────────────────────────────────────────

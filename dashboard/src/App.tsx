@@ -12,6 +12,7 @@ import ProfilePage from './pages/ProfilePage'
 import ManagementPage from './pages/ManagementPage'
 import PricingConfigPage from './pages/PricingConfigPage'
 import PlanPage from './pages/PlanPage'
+import RateLimitsPage from './pages/RateLimitsPage'
 import PublicPricingPage from './pages/PublicPricingPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/profile/*" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/management" element={<ProtectedRoute><ManagementPage /></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
+          <Route path="/rate-limits" element={<ProtectedRoute><RateLimitsPage /></ProtectedRoute>} />
           <Route path="/plan" element={<ProtectedRoute><PlanPage /></ProtectedRoute>} />
           <Route path="/plans" element={<PublicPricingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

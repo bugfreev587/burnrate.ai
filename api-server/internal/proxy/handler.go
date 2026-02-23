@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
@@ -25,15 +27,17 @@ type ProxyHandler struct {
 	providerKeySvc *services.ProviderKeyService
 	eventQueue     *events.EventQueue
 	pricingEngine  *pricing.PricingEngine
+	rateLimiter    *ratelimit.Limiter
 	httpClient     *http.Client
 }
 
 // NewProxyHandler creates a new ProxyHandler.
-func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue, pricingEngine *pricing.PricingEngine) *ProxyHandler {
+func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue, pricingEngine *pricing.PricingEngine, rateLimiter *ratelimit.Limiter) *ProxyHandler {
 	return &ProxyHandler{
 		providerKeySvc: providerKeySvc,
 		eventQueue:     eventQueue,
 		pricingEngine:  pricingEngine,
+		rateLimiter:    rateLimiter,
 		// No overall Timeout: streaming responses can run arbitrarily long.
 		// Client disconnect is handled via context cancellation on the upstream request.
 		// ResponseHeaderTimeout ensures we fail fast if the upstream is unresponsive.
@@ -66,7 +70,42 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	fmt.Println("------- provider:", provider, "mode:", mode)
 
-	// Pre-check budget before forwarding.
+	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type":    "tg_bad_request",
+			"message": "Failed to read request body.",
+		}})
+		return
+	}
+	reqMeta := parseRequestMeta(bodyBytes)
+
+	// Rate limit check.
+	if h.rateLimiter != nil {
+		// Estimate input tokens from body size (rough: ~4 chars per token).
+		estimatedInputTokens := int64(len(bodyBytes) / 4)
+		if estimatedInputTokens < 1 {
+			estimatedInputTokens = 1
+		}
+		result, _ := h.rateLimiter.Check(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, estimatedInputTokens, reqMeta.MaxTokens)
+		if result != nil && result.Exceeded {
+			retryAfterSec := result.RetryAfterMs / 1000
+			if retryAfterSec < 1 {
+				retryAfterSec = 1
+			}
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfterSec))
+			c.Header("X-Tokengate-RateLimit-Metric", result.Metric)
+			c.JSON(http.StatusTooManyRequests, gin.H{"type": "error", "error": gin.H{
+				"type":    "rate_limit_error",
+				"message": fmt.Sprintf("Rate limit exceeded: %d %s for %s", result.Limit, result.Metric, reqMeta.Model),
+			}})
+			return
+		}
+	}
+
+	// Pre-check budget with spend reservation before forwarding.
+	var reservedAmount = decimal.Zero
 	if h.pricingEngine != nil {
 		status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyIDStr, time.Now())
 		if err != nil {
@@ -85,6 +124,12 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			c.Header("X-Tokengate-Budget-Used", status.CurrentSpend.StringFixed(4))
 			c.Header("X-Tokengate-Budget-Period", status.Period)
 			c.Header("X-Tokengate-Budget-Scope", status.Scope)
+		}
+
+		// Reserve spend (worst-case output cost) to prevent concurrent overshoot.
+		if reqMeta.MaxTokens > 0 {
+			reserved, _ := h.pricingEngine.ReserveSpend(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, reqMeta.MaxTokens)
+			reservedAmount = reserved
 		}
 	}
 	fmt.Println("------- Budget pre-check passed -------")
@@ -110,16 +155,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 	fmt.Println("------ mode:", mode, "byokKey set:", byokKey != nil)
-
-	// Read the request body.
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-			"type":    "tg_bad_request",
-			"message": "Failed to read request body.",
-		}})
-		return
-	}
 
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
@@ -250,6 +285,14 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		} else {
 			io.Copy(c.Writer, resp.Body)
 		}
+	}
+
+	// Post-response reconciliation: adjust rate limit OTPM counters and release spend reservation.
+	if h.rateLimiter != nil && reqMeta.MaxTokens > 0 {
+		h.rateLimiter.Reconcile(c.Request.Context(), tenantID, keyIDStr, string(provider), reqMeta.Model, counts.OutputTokens, reqMeta.MaxTokens)
+	}
+	if h.pricingEngine != nil && !reservedAmount.IsZero() {
+		h.pricingEngine.ReleaseReservation(c.Request.Context(), tenantID, keyIDStr, reservedAmount)
 	}
 
 	// Publish usage event to Redis Streams (fire-and-forget).

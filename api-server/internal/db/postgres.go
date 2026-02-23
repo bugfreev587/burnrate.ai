@@ -75,6 +75,7 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.PricingConfig{},
 		&models.PricingConfigRate{},
 		&models.APIKeyConfig{},
+		&models.RateLimit{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}

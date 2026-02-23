@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
+	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
@@ -94,11 +95,14 @@ func main() {
 	go usageWorker.Run(context.Background())
 	log.Println("✓ Usage worker started")
 
+	// Rate limiter
+	rateLimiter := ratelimit.NewLimiter(postgresDB.GetDB(), rdb)
+
 	// Proxy handler
-	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine)
+	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)

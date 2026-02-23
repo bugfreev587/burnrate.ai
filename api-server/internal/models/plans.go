@@ -25,40 +25,52 @@ type PlanLimits struct {
 	// DataRetentionDays is how many days of usage / cost-ledger history are visible.
 	// -1 means unlimited (all history retained).
 	DataRetentionDays int `json:"data_retention_days"`
+	// AllowRateLimits permits configuring model-scoped rate limits (RPM/ITPM/OTPM).
+	AllowRateLimits bool `json:"allow_rate_limits"`
+	// AllowPerKeyRateLimit permits rate limits scoped to individual API keys.
+	AllowPerKeyRateLimit bool `json:"allow_per_key_rate_limit"`
 }
 
 var planLimitsMap = map[string]PlanLimits{
 	PlanFree: {
-		MaxAPIKeys:        1,
-		MaxMembers:        1,
-		AllowedPeriods:    []string{"monthly"},
-		AllowBlockAction:  false,
-		AllowPerKeyBudget: false,
-		DataRetentionDays: 7,
+		MaxAPIKeys:           1,
+		MaxMembers:           1,
+		AllowedPeriods:       []string{"monthly"},
+		AllowBlockAction:     false,
+		AllowPerKeyBudget:    false,
+		DataRetentionDays:    7,
+		AllowRateLimits:      false,
+		AllowPerKeyRateLimit: false,
 	},
 	PlanPro: {
-		MaxAPIKeys:        5,
-		MaxMembers:        1,
-		AllowedPeriods:    []string{"monthly", "weekly", "daily"},
-		AllowBlockAction:  true,
-		AllowPerKeyBudget: false,
-		DataRetentionDays: 90,
+		MaxAPIKeys:           5,
+		MaxMembers:           1,
+		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
+		AllowBlockAction:     true,
+		AllowPerKeyBudget:    false,
+		DataRetentionDays:    90,
+		AllowRateLimits:      true,
+		AllowPerKeyRateLimit: false,
 	},
 	PlanTeam: {
-		MaxAPIKeys:        -1,
-		MaxMembers:        10,
-		AllowedPeriods:    []string{"monthly", "weekly", "daily"},
-		AllowBlockAction:  true,
-		AllowPerKeyBudget: true,
-		DataRetentionDays: 180,
+		MaxAPIKeys:           -1,
+		MaxMembers:           10,
+		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
+		AllowBlockAction:     true,
+		AllowPerKeyBudget:    true,
+		DataRetentionDays:    180,
+		AllowRateLimits:      true,
+		AllowPerKeyRateLimit: true,
 	},
 	PlanBusiness: {
-		MaxAPIKeys:        -1,
-		MaxMembers:        -1,
-		AllowedPeriods:    []string{"monthly", "weekly", "daily"},
-		AllowBlockAction:  true,
-		AllowPerKeyBudget: true,
-		DataRetentionDays: -1,
+		MaxAPIKeys:           -1,
+		MaxMembers:           -1,
+		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
+		AllowBlockAction:     true,
+		AllowPerKeyBudget:    true,
+		DataRetentionDays:    -1,
+		AllowRateLimits:      true,
+		AllowPerKeyRateLimit: true,
 	},
 }
 

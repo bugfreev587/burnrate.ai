@@ -150,34 +150,36 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 
 	for _, limit := range limits {
 		spend := e.getSpend(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, now)
+		reserved := e.getReserved(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, now)
+		effective := spend.Add(reserved)
 
 		// Compute threshold amount
 		thresholdAmount := limit.LimitAmount.Mul(limit.AlertThreshold).Div(decimal.NewFromInt(100))
 
-		if limit.Action == models.BudgetActionBlock && spend.GreaterThanOrEqual(limit.LimitAmount) {
+		if limit.Action == models.BudgetActionBlock && effective.GreaterThanOrEqual(limit.LimitAmount) {
 			return &BudgetStatus{
 				AtWarning:    true,
 				Scope:        limit.ScopeType,
 				Period:       limit.PeriodType,
 				LimitAmount:  limit.LimitAmount,
-				CurrentSpend: spend,
+				CurrentSpend: effective,
 				Threshold:    limit.AlertThreshold,
 			}, &ErrBudgetExceeded{
 				TenantID:     tenantID,
 				LimitAmount:  limit.LimitAmount,
-				CurrentSpend: spend,
+				CurrentSpend: effective,
 				Period:       limit.PeriodType,
 			}
 		}
 
-		if spend.GreaterThanOrEqual(thresholdAmount) {
-			if nearestStatus == nil || spend.Div(limit.LimitAmount).GreaterThan(nearestStatus.CurrentSpend.Div(nearestStatus.LimitAmount)) {
+		if effective.GreaterThanOrEqual(thresholdAmount) {
+			if nearestStatus == nil || effective.Div(limit.LimitAmount).GreaterThan(nearestStatus.CurrentSpend.Div(nearestStatus.LimitAmount)) {
 				nearestStatus = &BudgetStatus{
 					AtWarning:    true,
 					Scope:        limit.ScopeType,
 					Period:       limit.PeriodType,
 					LimitAmount:  limit.LimitAmount,
-					CurrentSpend: spend,
+					CurrentSpend: effective,
 					Threshold:    limit.AlertThreshold,
 				}
 			}
@@ -185,6 +187,132 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 	}
 
 	return nearestStatus, nil
+}
+
+// ReserveSpend atomically reserves worst-case spend for a request in Redis.
+// Returns the reserved amount. Call ReleaseReservation after the response completes.
+func (e *PricingEngine) ReserveSpend(ctx context.Context, tenantID uint, keyID, provider, model string, maxTokens int) (decimal.Decimal, error) {
+	if e.rdb == nil || maxTokens <= 0 {
+		return decimal.Zero, nil
+	}
+
+	// Resolve output price for the model
+	event := UsageEvent{
+		Provider:  provider,
+		Model:     model,
+		Timestamp: time.Now(),
+		TenantID:  tenantID,
+		APIKeyRef: keyID,
+	}
+	resolved, err := e.resolver.Resolve(ctx, event)
+	if err != nil {
+		// If model not found, no reservation needed
+		return decimal.Zero, nil
+	}
+
+	outputPrice, ok := resolved.Prices[models.PriceTypeOutput]
+	if !ok || outputPrice.UnitSize == 0 {
+		return decimal.Zero, nil
+	}
+
+	// Compute worst-case output cost: maxTokens * (pricePerUnit / unitSize)
+	reservedAmount := outputPrice.PricePerUnit.
+		Mul(decimal.NewFromInt(int64(maxTokens))).
+		Div(decimal.NewFromInt(outputPrice.UnitSize))
+
+	if reservedAmount.IsZero() {
+		return decimal.Zero, nil
+	}
+
+	now := time.Now()
+	amount := reservedAmount.InexactFloat64()
+
+	// Increment reservation counters for all periods
+	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
+		key := e.reservationRedisKey(tenantID, period, now)
+		e.rdb.IncrByFloat(ctx, key, amount)
+		e.rdb.ExpireAt(ctx, key, periodEnd(period, now))
+
+		if keyID != "" {
+			keyKey := e.reservationRedisKeyForKey(keyID, period, now)
+			e.rdb.IncrByFloat(ctx, keyKey, amount)
+			e.rdb.ExpireAt(ctx, keyKey, periodEnd(period, now))
+		}
+	}
+
+	return reservedAmount, nil
+}
+
+// ReleaseReservation decrements the reservation counter after a request completes.
+// The actual cost is already handled by incrementBudget in the worker pipeline.
+func (e *PricingEngine) ReleaseReservation(ctx context.Context, tenantID uint, keyID string, reservedAmount decimal.Decimal) {
+	if e.rdb == nil || reservedAmount.IsZero() {
+		return
+	}
+
+	now := time.Now()
+	amount := reservedAmount.InexactFloat64()
+
+	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
+		key := e.reservationRedisKey(tenantID, period, now)
+		e.rdb.IncrByFloat(ctx, key, -amount)
+
+		if keyID != "" {
+			keyKey := e.reservationRedisKeyForKey(keyID, period, now)
+			e.rdb.IncrByFloat(ctx, keyKey, -amount)
+		}
+	}
+}
+
+// getReserved returns the current reservation amount from Redis.
+func (e *PricingEngine) getReserved(ctx context.Context, tenantID uint, keyID, scopeType, scopeID, periodType string, t time.Time) decimal.Decimal {
+	if e.rdb == nil {
+		return decimal.Zero
+	}
+
+	var key string
+	if scopeType == models.BudgetScopeAPIKey {
+		key = e.reservationRedisKeyForKey(scopeID, periodType, t)
+	} else {
+		key = e.reservationRedisKey(tenantID, periodType, t)
+	}
+
+	if val, err := e.rdb.Get(ctx, key).Result(); err == nil {
+		if reserved, err := decimal.NewFromString(val); err == nil && reserved.IsPositive() {
+			return reserved
+		}
+	}
+	return decimal.Zero
+}
+
+// reservationRedisKey returns the Redis key for a tenant's reservation counter.
+func (e *PricingEngine) reservationRedisKey(tenantID uint, periodType string, t time.Time) string {
+	switch periodType {
+	case models.PeriodMonthly:
+		return fmt.Sprintf("budget:reserved:%d:%d-%02d", tenantID, t.Year(), t.Month())
+	case models.PeriodWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("budget:reserved:%d:w%d-%02d", tenantID, year, week)
+	case models.PeriodDaily:
+		return fmt.Sprintf("budget:reserved:%d:%d-%02d-%02d", tenantID, t.Year(), t.Month(), t.Day())
+	default:
+		return fmt.Sprintf("budget:reserved:%d:%s:%d-%02d", tenantID, periodType, t.Year(), t.Month())
+	}
+}
+
+// reservationRedisKeyForKey returns the Redis key for an API key's reservation counter.
+func (e *PricingEngine) reservationRedisKeyForKey(keyID, periodType string, t time.Time) string {
+	switch periodType {
+	case models.PeriodMonthly:
+		return fmt.Sprintf("budget:reserved:key:%s:%d-%02d", keyID, t.Year(), t.Month())
+	case models.PeriodWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("budget:reserved:key:%s:w%d-%02d", keyID, year, week)
+	case models.PeriodDaily:
+		return fmt.Sprintf("budget:reserved:key:%s:%d-%02d-%02d", keyID, t.Year(), t.Month(), t.Day())
+	default:
+		return fmt.Sprintf("budget:reserved:key:%s:%s:%d-%02d", keyID, periodType, t.Year(), t.Month())
+	}
 }
 
 // getSpend returns the current spend for a budget limit scope from Redis (or DB fallback).
