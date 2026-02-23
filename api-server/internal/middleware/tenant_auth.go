@@ -43,11 +43,17 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		}
 
 		tgKey := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
+		// Fallback: accept Authorization: Bearer <key> (used by OpenAI-compatible clients like Codex CLI).
+		if tgKey == "" {
+			if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				tgKey = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+			}
+		}
 		fmt.Println("------- X-TokenGate-Key:", tgKey)
 		if tgKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{
 				"type":    ErrCodeMissingKey,
-				"message": "Authentication required. Provide the X-TokenGate-Key header.",
+				"message": "Authentication required. Provide the X-TokenGate-Key or Authorization: Bearer header.",
 			}})
 			c.Abort()
 			return
