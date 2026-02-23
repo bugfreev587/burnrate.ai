@@ -83,7 +83,7 @@ func TestTenantAuth_InvalidTGKey_Returns401(t *testing.T) {
 }
 
 func TestTenantAuth_GatewayValidateDisabled_PassesThrough(t *testing.T) {
-	t.Setenv("EnableGatewayValidate", "false")
+	t.Setenv("ENABLE_GW_VALIDATION", "false")
 	// No valid key configured — still expect 200 because validation is disabled.
 	r := newTenantAuthRouter(&mockAPIKeyService{err: errors.New("should not be called")})
 	w := doReq(r, "") // no X-TokenGate-Key header

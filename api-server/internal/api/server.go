@@ -78,7 +78,7 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	fmt.Println("------- set up routes -------")
 	apiKeyAuth := middleware.APIKeyMiddleware(s.apiKeySvc)
-	// tenantAuth validates X-TokenGate-Key (or passes through when EnableGatewayValidate=false).
+	// tenantAuth validates X-TokenGate-Key (or passes through when ENABLE_GW_VALIDATION=false).
 	tenantAuth := middleware.TenantAuthMiddleware(s.apiKeySvc)
 
 	// ─── Global health (Railway LB + backward compat) ────────────────────────

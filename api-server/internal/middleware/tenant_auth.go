@@ -22,7 +22,7 @@ type APIKeyValidatorForTest interface {
 
 // TenantAuthMiddleware validates requests using the X-TokenGate-Key header.
 //
-// When the EnableGatewayValidate env var is set to "false", all requests are
+// When the ENABLE_GW_VALIDATION env var is set to "false", all requests are
 // passed through to the upstream without validation.
 // Otherwise, X-TokenGate-Key must be present and valid; requests that fail
 // validation are rejected with 401.
@@ -35,9 +35,9 @@ func TenantAuthMiddleware(apiKeySvc *services.APIKeyService) gin.HandlerFunc {
 func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Println("------- TenantAuthMiddleware -------")
-		fmt.Println("------- EnableGatewayValidate:", os.Getenv("EnableGatewayValidate"))
+		fmt.Println("------- ENABLE_GW_VALIDATION:", os.Getenv("ENABLE_GW_VALIDATION"))
 		// When gateway validation is disabled, forward all requests as-is.
-		if strings.EqualFold(os.Getenv("EnableGatewayValidate"), "false") {
+		if strings.EqualFold(os.Getenv("ENABLE_GW_VALIDATION"), "false") {
 			c.Next()
 			return
 		}

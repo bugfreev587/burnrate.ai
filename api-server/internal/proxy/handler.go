@@ -253,7 +253,8 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 
 	// Publish usage event to Redis Streams (fire-and-forget).
-	if counts.MessageID != "" || counts.InputTokens > 0 || counts.OutputTokens > 0 {
+	// Skip when tenant_id is 0 (e.g. gateway validation disabled) — no valid tenant to attribute usage to.
+	if tenantID != 0 && (counts.MessageID != "" || counts.InputTokens > 0 || counts.OutputTokens > 0) {
 		msg := events.UsageEventMsg{
 			TenantID:            tenantID,
 			KeyID:               keyIDStr,
