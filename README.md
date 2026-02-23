@@ -10,12 +10,13 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
 - **Cost ledger** – Every priced request is written to an immutable ledger for financial auditing and forecasting.
 - **Spend forecasting** – Daily-average extrapolation gives a projected monthly spend based on actual usage so far.
-- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert or block requests when exceeded. Limits apply at the account scope or per API key. Blocking limits are checked **before** forwarding to Anthropic (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
+- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert, block, or both (alert + hard block) requests when exceeded. Limits apply at the account scope or per API key. Blocking limits are checked **before** forwarding to Anthropic (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
+- **Rate limits** – Tenant-aware, model-scoped rate limits enforced via Redis sliding-window counters. Supported metrics: RPM (requests per minute), ITPM (input tokens per minute), OTPM (output tokens per minute). Limits can target all models or specific provider+model combinations and can be scoped to the account or individual API keys.
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
-- **Dashboard** – Owners and team members see total requests, tokens, and costs with a per-request history table.
+- **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
-- **API key management** – Admins create and revoke agent API keys; secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
-- **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, and data retention window.
+- **API key management** – Admins create and revoke agent API keys with provider and mode selection (e.g., `CLAUDE_CODE_PASSTHROUGH` for browser auth pass-through, `API_BYOK` for direct API access). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
+- **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
 ## Architecture
@@ -186,6 +187,7 @@ api-server/
     │   ├── apikeys.go                # API key CRUD
     │   ├── users.go                  # User management
     │   ├── provider_keys.go          # Provider key CRUD + activate + rotate
+    │   ├── ratelimits.go             # Rate limit CRUD (RPM/ITPM/OTPM)
     │   └── middleware.go             # CORS · logger (errors + slow only) · rate-limit
     ├── middleware/
     │   ├── auth.go                   # API key validation
@@ -195,7 +197,7 @@ api-server/
     │   │                             # TenantProviderSettings · UsageLog
     │   ├── plans.go                  # Plan tier constants + PlanLimits struct + GetPlanLimits()
     │   └── pricing.go                # Provider · ModelDef · ModelPricing · ContractPricing
-    │                                 # PricingMarkup · CostLedger · BudgetLimit
+    │                                 # PricingMarkup · CostLedger · BudgetLimit · RateLimit
     ├── pricing/
     │   ├── types.go                  # UsageEvent · PricingResult · errors
     │   ├── resolver.go               # Contract override → standard pricing (Redis-cached)
@@ -213,6 +215,8 @@ api-server/
     ├── proxy/
     │   ├── handler.go                # Reverse proxy for /v1/messages and /v1/models
     │   └── stream.go                 # SSE parser + token extractor
+    ├── ratelimit/
+    │   └── limiter.go                # Redis sliding-window rate limiter (RPM/ITPM/OTPM)
     ├── db/postgres.go                # GORM init + AutoMigrate + seed
     └── config/config.go              # YAML config + env overrides
 ```
@@ -223,7 +227,7 @@ api-server/
 |---|---|
 | `Tenant` | `id`, `name`, `plan` (free\|pro\|team\|business, default free), `max_api_keys` (derived from plan) |
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
-| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `expires_at` |
+| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `mode` (CLAUDE_CODE_PASSTHROUGH\|API_BYOK), `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
 | `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id`, `policy_version` (bumped on every activate/rotate) |
 | `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id` |
@@ -233,7 +237,8 @@ api-server/
 | `ContractPricing` | `id`, `tenant_id`, `model_id`, `price_type`, `price_override` (decimal), `effective_from`, `effective_to` |
 | `PricingMarkup` | `id`, `tenant_id`, `provider_id?`, `model_id?`, `percentage` (decimal), `priority`, `effective_from` |
 | `CostLedger` | `id`, `tenant_id`, `idempotency_key`, `base_cost`, `markup_amount`, `final_cost`, `pricing_snapshot` (jsonb) |
-| `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block) |
+| `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block\|alert_block) |
+| `RateLimit` | `id`, `tenant_id`, `provider` ("" = all), `model` ("" = all), `scope_type`, `scope_id`, `metric` (rpm\|itpm\|otpm), `limit_value`, `window_seconds`, `enabled` |
 | `APIKeyConfig` | `id`, `tenant_id`, `key_id` (varchar 64), `config_id` |
 
 ### Provider key encryption
@@ -291,7 +296,9 @@ Every tenant has a `plan` field that gates feature access. New tenants start on 
 | **Budget periods** | Monthly only | Monthly · Weekly · Daily | Monthly · Weekly · Daily | Monthly · Weekly · Daily |
 | **Hard block** (`action: "block"`) | — | ✓ | ✓ | ✓ |
 | **Per-key budget scope** | — | — | ✓ | ✓ |
-| **Data retention** | 30 days | 90 days | 1 year | Unlimited |
+| **Rate limits** (RPM / ITPM / OTPM) | — | ✓ | ✓ | ✓ |
+| **Per-key rate limits** | — | — | ✓ | ✓ |
+| **Data retention** | 7 days | 90 days | 180 days | Unlimited |
 
 Plan limits are defined in `internal/models/plans.go` and enforced at the API layer:
 
@@ -405,6 +412,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | GET | `/v1/usage/summary` | Aggregated stats *(not yet implemented)* |
 | GET | `/v1/cost-ledger` | Paginated cost ledger (`?page=1&limit=50&from=&to=`) |
 | GET | `/v1/usage/forecast` | Projected monthly spend based on daily average |
+| GET | `/v1/dashboard/config` | Dashboard config (plan-aware data retention window) |
 
 #### Admin+
 
@@ -427,9 +435,13 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | GET / POST | `/v1/admin/pricing/markups` | List / create markup rules |
 | DELETE | `/v1/admin/pricing/markups/:id` | Delete a markup rule |
 | GET / POST | `/v1/admin/pricing/contracts` | List / create contract pricing overrides |
+| GET | `/v1/admin/pricing/catalog` | Pricing catalog (providers + models for dropdowns) |
 | GET | `/v1/admin/budget` | List all budget limits for the tenant |
 | PUT | `/v1/admin/budget` | Upsert a budget limit (scope: `account` or `api_key`) |
 | DELETE | `/v1/admin/budget/:budget_id` | Delete a budget limit by ID |
+| GET | `/v1/admin/rate-limits` | List all rate limits for the tenant |
+| PUT | `/v1/admin/rate-limits` | Upsert a rate limit (model-scoped, per metric) |
+| DELETE | `/v1/admin/rate-limits/:id` | Delete a rate limit by ID |
 
 > Price fields in admin requests use JSON strings (e.g. `"price_per_unit": "3.00"`) to avoid float precision loss.
 
@@ -441,7 +453,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
   "period_type": "monthly",  // "monthly" | "weekly" | "daily" (weekly/daily require Pro+)
   "limit_amount": "100.00",  // decimal string
   "alert_threshold": "80",   // percentage to trigger warning headers (default: 80)
-  "action": "block"          // "alert" (headers only) | "block" (HTTP 402, requires Pro+)
+  "action": "block"          // "alert" (headers only) | "block" (HTTP 402, requires Pro+) | "alert_block" (both)
 }
 ```
 
@@ -482,6 +494,7 @@ Production config is loaded from `conf/api-server-prod.yaml`. Sensitive values a
 | `API_KEY_PEPPER` | Secret pepper for API key hashing |
 | `CORS_ORIGINS` | Comma-separated allowed origins (or `*`) |
 | `PROVIDER_KEY_ENCRYPTION_KEY` | 64-char hex (32-byte) AES master key for provider key encryption. **Required** — server fails to start if unset. Generate with `openssl rand -hex 32`. |
+| `ENABLE_GW_VALIDATION` | When `false`, allows passthrough requests without gateway key validation (used for `CLAUDE_CODE_PASSTHROUGH` mode). Default: `true`. |
 
 ---
 
@@ -505,9 +518,10 @@ dashboard/
 │   │   ├── LandingPage.tsx      # Marketing landing page (/)
 │   │   ├── SignInPage.tsx       # Clerk sign-in embed
 │   │   ├── SignUpPage.tsx       # Clerk sign-up embed
-│   │   ├── Dashboard.tsx        # Usage summary + log table
+│   │   ├── Dashboard.tsx        # Usage summary + trend charts + collapsible log table + date range
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
-│   │   ├── ManagementPage.tsx   # Team, API key, and provider key management
+│   │   ├── ManagementPage.tsx   # Team, API key (provider+mode), and provider key management
+│   │   ├── LimitsPage.tsx       # Spend limits + rate limits management (unified)
 │   │   ├── PricingConfigPage.tsx# Per-key pricing overrides
 │   │   ├── PublicPricingPage.tsx# Full pricing page at /pricing (monthly/annual toggle, 4-tier cards)
 │   │   ├── PublicPricingPage.css
@@ -515,6 +529,7 @@ dashboard/
 │   ├── components/
 │   │   ├── Navbar.tsx           # Dashboard top nav + user menu (dark theme, logo-dark.svg)
 │   │   ├── APIKeyModal.tsx      # One-time secret display
+│   │   ├── DateRangeSelector.tsx# Plan-aware date range picker (presets: 1d–90d + custom)
 │   │   ├── InactivityGuard.tsx  # Auto sign-out after 10 min idle; 2-min warning modal
 │   │   ├── InactivityGuard.css
 │   │   └── landing/             # Landing page components (Tailwind-scoped)
@@ -533,8 +548,11 @@ dashboard/
 │   │       └── LandingFooter.tsx
 │   └── hooks/
 │       ├── useUserSync.ts       # Clerk ↔ backend sync
-│       ├── useUsageData.ts      # Usage log fetcher
-│       └── usePricingConfig.ts  # Pricing config fetcher
+│       ├── useUsageData.ts      # Usage log fetcher (date-range-aware)
+│       ├── useDashboardConfig.ts# Dashboard config fetcher (plan-aware retention)
+│       ├── usePricingConfig.ts  # Pricing config fetcher
+│       ├── useSpendLimits.ts    # Spend limit CRUD hook
+│       └── useRateLimits.ts     # Rate limit CRUD hook
 ├── tailwind.config.ts           # Tailwind v3; preflight disabled; scoped to landing/** only
 ├── postcss.config.js            # PostCSS (tailwindcss + autoprefixer)
 ├── vercel.json                  # SPA rewrite (all routes → index.html)
@@ -545,8 +563,9 @@ dashboard/
 
 - **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
-- **Dashboard** – Summary cards (requests / tokens / cost) and a paginated usage table.
-- **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create, revoke, one-time secret display), Provider Keys table (add, activate, revoke).
+- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note, and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle).
+- **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is hidden for `CLAUDE_CODE_PASSTHROUGH` mode keys.
+- **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types and per-key scoping. Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
 - **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
@@ -554,7 +573,10 @@ dashboard/
 ### Key hooks
 
 - **`useUserSync`** – Runs once after Clerk sign-in. Calls `POST /v1/auth/sync`, stores `userId`, `tenantId`, `role`, and `status` in state and `localStorage`. Handles three cases: existing user, pending email invitation, and brand-new user (creates tenant).
-- **`useUsageData`** – Calls `GET /v1/usage`, returns logs + refresh function.
+- **`useUsageData`** – Calls `GET /v1/usage` with date range parameters, returns logs + refresh function. Supports `from`/`to` date filtering.
+- **`useDashboardConfig`** – Fetches plan-aware dashboard config (`GET /v1/dashboard/config`) including data retention window for the tenant's plan tier.
+- **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend and percentage used.
+- **`useRateLimits`** – CRUD hook for rate limits (`GET/PUT/DELETE /v1/admin/rate-limits`). Includes current usage from Redis counters.
 
 ### Branding
 
@@ -693,7 +715,10 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Immutable cost ledger | ✅ Live |
 | Per-tenant markups | ✅ Live |
 | Contract pricing overrides | ✅ Live |
-| Budget enforcement (alert / block) | ✅ Live |
+| Budget enforcement (alert / block / alert+block) | ✅ Live |
+| Rate limits (RPM / ITPM / OTPM, model-scoped) | ✅ Live |
+| Dashboard date range selection (plan-aware retention) | ✅ Live |
+| API key provider + mode (CLAUDE_CODE_PASSTHROUGH / API_BYOK) | ✅ Live |
 | Monthly spend forecast | ✅ Live |
 | Provider key vault (AES-256-GCM envelope encryption) | ✅ Live |
 | Anthropic reverse proxy (`/v1/messages`) | ✅ Live |
