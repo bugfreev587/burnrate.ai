@@ -29,7 +29,7 @@ func (s *UsageLogService) ListByTenant(ctx context.Context, tenantID uint, limit
 // created at or after that time are returned (used for plan-based data retention).
 func (s *UsageLogService) ListByTenantSince(ctx context.Context, tenantID uint, limit int, since *time.Time) ([]models.UsageLog, error) {
 	var logs []models.UsageLog
-	q := s.db.Where("tenant_id = ?", tenantID).Order("created_at DESC")
+	q := s.db.Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true).Order("created_at DESC")
 	if since != nil {
 		q = q.Where("created_at >= ?", *since)
 	}
@@ -42,7 +42,7 @@ func (s *UsageLogService) ListByTenantSince(ctx context.Context, tenantID uint, 
 // ListByTenantBetween lists usage logs for a tenant between two timestamps (inclusive).
 func (s *UsageLogService) ListByTenantBetween(ctx context.Context, tenantID uint, limit int, from, to time.Time) ([]models.UsageLog, error) {
 	var logs []models.UsageLog
-	q := s.db.Where("tenant_id = ? AND created_at >= ? AND created_at <= ?", tenantID, from, to).Order("created_at DESC")
+	q := s.db.Where("tenant_id = ? AND api_usage_billed = ? AND created_at >= ? AND created_at <= ?", tenantID, true, from, to).Order("created_at DESC")
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
