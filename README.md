@@ -10,7 +10,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
 - **Cost ledger** – Every priced request is written to an immutable ledger for financial auditing and forecasting.
 - **Spend forecasting** – Daily-average extrapolation gives a projected monthly spend based on actual usage so far.
-- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert, block, or both (alert + hard block) requests when exceeded. Limits apply at the account scope or per API key. Blocking limits are checked **before** forwarding to Anthropic (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
+- **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert, block, or both (alert + hard block) requests when exceeded. Limits apply at the account scope or per API key, and can optionally be scoped to a specific provider (e.g. "$50/month for Anthropic", "$100/month for OpenAI"). Provider-scoped limits use separate Redis counters and DB queries. Blocking limits are checked **before** forwarding to the upstream provider (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
 - **Rate limits** – Tenant-aware, model-scoped rate limits enforced via Redis sliding-window counters. Supported metrics: RPM (requests per minute), ITPM (input tokens per minute), OTPM (output tokens per minute). Limits can target all models or specific provider+model combinations and can be scoped to the account or individual API keys.
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
@@ -267,7 +267,7 @@ api-server/
 | `ContractPricing` | `id`, `tenant_id`, `model_id`, `price_type`, `price_override` (decimal), `effective_from`, `effective_to` |
 | `PricingMarkup` | `id`, `tenant_id`, `provider_id?`, `model_id?`, `percentage` (decimal), `priority`, `effective_from` |
 | `CostLedger` | `id`, `tenant_id`, `idempotency_key`, `base_cost`, `markup_amount`, `final_cost`, `pricing_snapshot` (jsonb) |
-| `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `limit_amount`, `alert_threshold`, `action` (alert\|block\|alert_block) |
+| `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `provider` ("" = all, "anthropic", "openai"), `limit_amount`, `alert_threshold`, `action` (alert\|block\|alert_block) |
 | `RateLimit` | `id`, `tenant_id`, `provider` ("" = all), `model` ("" = all), `scope_type`, `scope_id`, `metric` (rpm\|itpm\|otpm), `limit_value`, `window_seconds`, `enabled` |
 | `APIKeyConfig` | `id`, `tenant_id`, `key_id` (varchar 64), `config_id` |
 
@@ -360,8 +360,9 @@ POST /v1/agent/usage   (or via proxy → Redis Streams → worker)
         ├─ 3. Apply markups
         │      SUM(markup.percentage) → base × (1 + total% / 100)
         │
-        ├─ 4. Budget check (blocking limits, scope-aware)
+        ├─ 4. Budget check (blocking limits, scope-aware + provider-aware)
         │      Checks account-level AND api_key-level limits
+        │      Provider-scoped limits only apply when the request's provider matches
         │      Redis counter → fallback DB SUM (account) → ErrBudgetExceeded
         │      Note: proxy pre-checks BEFORE forwarding (step 2 above);
         │            worker re-checks on final cost after the fact
@@ -369,7 +370,7 @@ POST /v1/agent/usage   (or via proxy → Redis Streams → worker)
         ├─ 5. Write CostLedger  (idempotent on request_id / message_id)
         │
         └─ 6. Increment Redis budget counters (INCRBYFLOAT, ExpireAt end-of-period)
-               Increments both account-level and api_key-level counters per period
+               Increments account-level, api_key-level, and provider-scoped counters per period
 ```
 
 ### Seeded pricing (effective 2024-01-01, per 1M tokens)
@@ -490,6 +491,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
   "scope_type": "account",   // "account" (default) | "api_key" (Team+ only)
   "scope_id": "",            // "" for account scope; key_id for api_key scope
   "period_type": "monthly",  // "monthly" | "weekly" | "daily" (weekly/daily require Pro+)
+  "provider": "anthropic",   // "" (all providers) | "anthropic" | "openai" — optional
   "limit_amount": "100.00",  // decimal string
   "alert_threshold": "80",   // percentage to trigger warning headers (default: 80)
   "action": "block"          // "alert" (headers only) | "block" (HTTP 402, requires Pro+) | "alert_block" (both)
@@ -604,7 +606,7 @@ dashboard/
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
 - **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note, and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle).
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is hidden for `CLAUDE_CODE_PASSTHROUGH` mode keys.
-- **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types and per-key scoping. Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
+- **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (Anthropic / OpenAI). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
 - **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
@@ -614,7 +616,7 @@ dashboard/
 - **`useUserSync`** – Runs once after Clerk sign-in. Calls `POST /v1/auth/sync`, stores `userId`, `tenantId`, `role`, and `status` in state and `localStorage`. Handles three cases: existing user, pending email invitation, and brand-new user (creates tenant).
 - **`useUsageData`** – Calls `GET /v1/usage` with date range parameters, returns logs + refresh function. Supports `from`/`to` date filtering.
 - **`useDashboardConfig`** – Fetches plan-aware dashboard config (`GET /v1/dashboard/config`) including data retention window for the tenant's plan tier.
-- **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend and percentage used.
+- **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend, percentage used, and optional provider scope.
 - **`useRateLimits`** – CRUD hook for rate limits (`GET/PUT/DELETE /v1/admin/rate-limits`). Includes current usage from Redis counters.
 
 ### Branding
@@ -754,7 +756,7 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Immutable cost ledger | ✅ Live |
 | Per-tenant markups | ✅ Live |
 | Contract pricing overrides | ✅ Live |
-| Budget enforcement (alert / block / alert+block) | ✅ Live |
+| Budget enforcement (alert / block / alert+block, per-provider) | ✅ Live |
 | Rate limits (RPM / ITPM / OTPM, model-scoped) | ✅ Live |
 | Dashboard date range selection (plan-aware retention) | ✅ Live |
 | API key provider + mode (4 provider-specific modes) | ✅ Live |
