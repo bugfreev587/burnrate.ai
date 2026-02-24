@@ -57,6 +57,12 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	sqlDB.SetConnMaxLifetime(60 * time.Minute)
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
+	// One-time: drop legacy budget unique indexes that lack the provider column.
+	// GORM AutoMigrate won't drop/recreate existing indexes, so we must do it explicitly.
+	for _, idx := range []string{"idx_budget_tenant_period", "idx_budget_tenant_scope"} {
+		db.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", idx))
+	}
+
 	// Auto-migrate schema (in dependency order)
 	if err := db.AutoMigrate(
 		&models.Tenant{},
