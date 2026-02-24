@@ -92,7 +92,7 @@ func (s *Server) setupRoutes() {
 
 	// ─── Proxy routes — validated via X-TokenGate-Key ────────────────────────
 	proxyGroup := s.router.Group("/v1")
-	proxyGroup.Use(tenantAuth)
+	proxyGroup.Use(tenantAuth, middleware.PathProviderGuard())
 	{
 		proxyGroup.POST("/messages", s.proxyHandler.HandleProxy)
 		proxyGroup.POST("/responses", s.proxyHandler.HandleResponses)
