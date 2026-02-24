@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -145,6 +146,21 @@ func containsSubstr(s, sub string) bool {
 	return false
 }
 
+// parseTimezone reads the "tz" query parameter (an IANA timezone name such as
+// "America/Los_Angeles") and returns the corresponding *time.Location.
+// Falls back to time.UTC when the parameter is missing or invalid.
+func parseTimezone(c *gin.Context) *time.Location {
+	tz := c.Query("tz")
+	if tz == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
 // handleListUsage returns usage logs for the caller's tenant.
 // Results are bounded by the tenant's plan data retention window, or by
 // optional start_date / end_date query params (YYYY-MM-DD) when provided.
@@ -159,6 +175,7 @@ func (s *Server) handleListUsage(c *gin.Context) {
 	var tenant models.Tenant
 	s.postgresDB.GetDB().First(&tenant, tenantID)
 	lim := models.GetPlanLimits(tenant.Plan)
+	loc := parseTimezone(c)
 
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
@@ -169,13 +186,13 @@ func (s *Server) handleListUsage(c *gin.Context) {
 		if err1 == nil && err2 == nil {
 			effectiveMin := computeEffectiveMinStart(lim)
 
-			appliedStart := rangeStart
+			appliedStart := time.Date(rangeStart.Year(), rangeStart.Month(), rangeStart.Day(), 0, 0, 0, 0, loc)
 			if appliedStart.Before(effectiveMin) {
 				appliedStart = effectiveMin
 			}
 
-			now := time.Now().UTC()
-			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, time.UTC)
+			now := time.Now().In(loc)
+			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, loc)
 			if appliedEnd.After(now) {
 				appliedEnd = now
 			}
@@ -219,12 +236,13 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 	}
 
 	db := s.postgresDB.GetDB()
-	now := time.Now().UTC()
+	loc := parseTimezone(c)
+	now := time.Now().In(loc)
 
-	// ── Time windows ────────────────────────────────────────────────────────
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	// ── Time windows (in caller's local timezone) ───────────────────────────
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	yesterdayStart := todayStart.AddDate(0, 0, -1)
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 	lastMonthStart := monthStart.AddDate(0, -1, 0)
 	trend30Start := todayStart.AddDate(0, 0, -29)
 
@@ -244,12 +262,12 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 			lim := models.GetPlanLimits(tenant.Plan)
 			effectiveMin := computeEffectiveMinStart(lim)
 
-			appliedStart := rangeStart
+			appliedStart := time.Date(rangeStart.Year(), rangeStart.Month(), rangeStart.Day(), 0, 0, 0, 0, loc)
 			if appliedStart.Before(effectiveMin) {
 				appliedStart = effectiveMin
 			}
 
-			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, time.UTC)
+			appliedEnd := time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 23, 59, 59, 999999999, loc)
 			if appliedEnd.After(now) {
 				appliedEnd = now
 			}
@@ -356,9 +374,10 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 	} else {
 		dailyQ = dailyQ.Where("created_at >= ?", trend30Start)
 	}
+	tzName := loc.String()
 	dailyQ.
-		Select("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') as date, COALESCE(SUM(cost),0) as cost, COALESCE(SUM(prompt_tokens)+SUM(completion_tokens),0) as tokens").
-		Group("TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')").
+		Select(fmt.Sprintf("TO_CHAR(created_at AT TIME ZONE '%s', 'YYYY-MM-DD') as date, COALESCE(SUM(cost),0) as cost, COALESCE(SUM(prompt_tokens)+SUM(completion_tokens),0) as tokens", tzName)).
+		Group(fmt.Sprintf("TO_CHAR(created_at AT TIME ZONE '%s', 'YYYY-MM-DD')", tzName)).
 		Order("date ASC").
 		Scan(&daily)
 

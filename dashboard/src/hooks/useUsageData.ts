@@ -9,10 +9,15 @@ export interface DateRange {
   endDate?: string
 }
 
+// Format a Date as YYYY-MM-DD in the browser's local timezone.
+function localDateStr(d: Date): string {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+
 // Resolve a DateRange to concrete start/end query strings.
 function resolveDateRange(range: DateRange): { startDate: string; endDate: string } | null {
   const today = new Date()
-  const todayStr = today.toISOString().slice(0, 10)
+  const todayStr = localDateStr(today)
 
   if (range.preset && range.preset !== 'custom') {
     const daysMap: Record<string, number> = {
@@ -22,7 +27,7 @@ function resolveDateRange(range: DateRange): { startDate: string; endDate: strin
     if (days !== undefined) {
       const start = new Date(today)
       start.setDate(start.getDate() - days)
-      return { startDate: start.toISOString().slice(0, 10), endDate: todayStr }
+      return { startDate: localDateStr(start), endDate: todayStr }
     }
   }
 
@@ -137,19 +142,20 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
     try {
       const headers = { 'X-User-ID': userId }
 
-      // Build optional date query string.
-      let dateQS = ''
+      // Build optional date query string, always including the browser timezone.
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      let dateQS = `?tz=${encodeURIComponent(tz)}`
       if (dateRange) {
         const resolved = resolveDateRange(dateRange)
         if (resolved) {
-          dateQS = `?start_date=${resolved.startDate}&end_date=${resolved.endDate}`
+          dateQS += `&start_date=${resolved.startDate}&end_date=${resolved.endDate}`
         }
       }
 
       const [logsRes, summaryRes, budgetRes] = await Promise.all([
         fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/admin/budget`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/admin/budget?tz=${encodeURIComponent(tz)}`, { headers }),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }

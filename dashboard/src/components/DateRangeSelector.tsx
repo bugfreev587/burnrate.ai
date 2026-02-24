@@ -35,7 +35,8 @@ function retentionHint(config: DashboardConfig | null): string {
 }
 
 export default function DateRangeSelector({ config, value, onChange }: Props) {
-  const today = new Date().toISOString().slice(0, 10)
+  const _now = new Date()
+  const today = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0')
   const effectiveMin = config?.effective.min_start_date ?? '2026-01-01'
   const selectedPreset = value.preset ?? '30d'
   const showCustomPicker = selectedPreset === 'custom'

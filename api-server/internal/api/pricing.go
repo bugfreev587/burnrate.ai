@@ -356,7 +356,8 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 	}
 
 	// Compute current period spend for each limit.
-	now := time.Now().UTC()
+	loc := parseTimezone(c)
+	now := time.Now().In(loc)
 	out := make([]gin.H, len(limits))
 	for i, bl := range limits {
 		var periodStart time.Time
@@ -366,11 +367,11 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			if weekday == 0 {
 				weekday = 7 // Sunday → 7 so Monday = start
 			}
-			periodStart = time.Date(now.Year(), now.Month(), now.Day()-weekday+1, 0, 0, 0, 0, time.UTC)
+			periodStart = time.Date(now.Year(), now.Month(), now.Day()-weekday+1, 0, 0, 0, 0, loc)
 		case models.PeriodDaily:
-			periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+			periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 		default: // monthly
-			periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+			periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		}
 
 		q := s.postgresDB.GetDB().Model(&models.UsageLog{}).
@@ -632,8 +633,9 @@ func (s *Server) handleUsageForecast(c *gin.Context) {
 		return
 	}
 
-	now := time.Now().UTC()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	loc := parseTimezone(c)
+	now := time.Now().In(loc)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 	monthEnd := monthStart.AddDate(0, 1, 0)
 	daysInMonth := int(monthEnd.Sub(monthStart).Hours() / 24)
 
@@ -651,9 +653,10 @@ func (s *Server) handleUsageForecast(c *gin.Context) {
 		Scan(&totalCost)
 
 	var daysWithData int64
+	tzName := loc.String()
 	s.postgresDB.GetDB().
 		Model(&models.CostLedger{}).
-		Select("COUNT(DISTINCT DATE(timestamp))").
+		Select(fmt.Sprintf("COUNT(DISTINCT DATE(timestamp AT TIME ZONE '%s'))", tzName)).
 		Where("tenant_id = ? AND timestamp >= ? AND timestamp < ? AND api_usage_billed = ?", tenantID, monthStart, monthEnd, true).
 		Scan(&daysWithData)
 
