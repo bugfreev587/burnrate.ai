@@ -63,6 +63,10 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		db.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", idx))
 	}
 
+	// One-time: drop unused slug column and its unique index from tenants table.
+	db.Exec("DROP INDEX IF EXISTS idx_tenants_slug")
+	db.Exec("ALTER TABLE tenants DROP COLUMN IF EXISTS slug")
+
 	// Auto-migrate schema (in dependency order)
 	if err := db.AutoMigrate(
 		&models.Tenant{},
