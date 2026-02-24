@@ -100,7 +100,7 @@ func (h *ProxyHandler) preCheckBudget(c *gin.Context, tenantID uint, keyID strin
 	if h.pricingEngine == nil {
 		return reservedAmount, true
 	}
-	status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyID, time.Now())
+	status, err := h.pricingEngine.PreCheckBudget(c.Request.Context(), tenantID, keyID, string(provider), time.Now())
 	if err != nil {
 		var budgetErr *pricing.ErrBudgetExceeded
 		if errors.As(err, &budgetErr) {

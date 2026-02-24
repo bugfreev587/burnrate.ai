@@ -68,6 +68,7 @@ export default function LimitsPage() {
 
   // ── Spend limit modal state ───────────────────────────────────────────────
   const [showSLModal, setShowSLModal] = useState(false)
+  const [slProvider, setSlProvider] = useState('')
   const [slPeriod, setSlPeriod] = useState('monthly')
   const [slLimitAmount, setSlLimitAmount] = useState('')
   const [slThreshold, setSlThreshold] = useState('80')
@@ -118,7 +119,7 @@ export default function LimitsPage() {
 
   // ── Spend limit handlers ──────────────────────────────────────────────────
   const resetSLForm = () => {
-    setSlPeriod('monthly'); setSlLimitAmount(''); setSlThreshold('80')
+    setSlProvider(''); setSlPeriod('monthly'); setSlLimitAmount(''); setSlThreshold('80')
     setSlActions(['alert']); setSlFormError(null)
   }
 
@@ -135,7 +136,7 @@ export default function LimitsPage() {
     try {
       const req: UpsertSpendLimitReq = {
         scope_type: 'account', scope_id: '', period_type: slPeriod,
-        limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
+        provider: slProvider, limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
       }
       await upsertSpendLimit(req)
       showSuccess('Spend limit saved'); setShowSLModal(false); resetSLForm()
@@ -200,6 +201,7 @@ export default function LimitsPage() {
                 <thead>
                   <tr>
                     <th>Period</th>
+                    <th>Provider</th>
                     <th>Limit (USD)</th>
                     <th>Alert At</th>
                     <th>Action</th>
@@ -211,7 +213,7 @@ export default function LimitsPage() {
                 <tbody>
                   {spendLimits.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="empty-cell">
+                      <td colSpan={8} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
                           <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }}>
@@ -229,6 +231,11 @@ export default function LimitsPage() {
                         <td>
                           <span className={`metric-badge metric-${l.period_type === 'monthly' ? 'rpm' : l.period_type === 'weekly' ? 'itpm' : 'otpm'}`}>
                             {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="provider-badge">
+                            {l.provider ? l.provider.charAt(0).toUpperCase() + l.provider.slice(1) : 'All'}
                           </span>
                         </td>
                         <td>${parseFloat(l.limit_amount).toFixed(2)}</td>
@@ -376,6 +383,26 @@ export default function LimitsPage() {
                         type="radio" name="sl-period" value={p.value}
                         checked={slPeriod === p.value}
                         onChange={() => setSlPeriod(p.value)}
+                      />
+                      <div><strong>{p.label}</strong></div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Provider</label>
+                <div className="role-select">
+                  {[
+                    { value: '', label: 'All Providers' },
+                    { value: 'anthropic', label: 'Anthropic' },
+                    { value: 'openai', label: 'OpenAI' },
+                  ].map(p => (
+                    <label key={p.value} className={`role-option ${slProvider === p.value ? 'selected' : ''}`}>
+                      <input
+                        type="radio" name="sl-provider" value={p.value}
+                        checked={slProvider === p.value}
+                        onChange={() => setSlProvider(p.value)}
                       />
                       <div><strong>{p.label}</strong></div>
                     </label>

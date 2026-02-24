@@ -380,6 +380,9 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			q = q.Where("request_id IN (SELECT request_id FROM usage_logs WHERE tenant_id = ?)", tenantID)
 			// scope to key: UsageLog doesn't store key_id, so account-level spend is the best proxy
 		}
+		if bl.Provider != "" {
+			q = q.Where("provider = ?", bl.Provider)
+		}
 		var currentSpend decimal.Decimal
 		q.Select("COALESCE(SUM(cost), 0)").Scan(&currentSpend)
 
@@ -396,6 +399,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			"scope_type":      bl.ScopeType,
 			"scope_id":        bl.ScopeID,
 			"period_type":     bl.PeriodType,
+			"provider":        bl.Provider,
 			"limit_amount":    bl.LimitAmount.StringFixed(2),
 			"alert_threshold": bl.AlertThreshold.StringFixed(0),
 			"action":          bl.Action,
@@ -413,6 +417,7 @@ type upsertBudgetReq struct {
 	ScopeType      string `json:"scope_type"`                         // account|api_key (default: account)
 	ScopeID        string `json:"scope_id"`                           // "" for account, key_id for api_key
 	PeriodType     string `json:"period_type"     binding:"required"` // monthly|weekly|daily
+	Provider       string `json:"provider"`                           // "" = all, "anthropic", "openai"
 	LimitAmount    string `json:"limit_amount"    binding:"required"` // decimal string
 	AlertThreshold string `json:"alert_threshold"`                    // percentage, default 80
 	Action         string `json:"action"`                             // alert|block
@@ -436,6 +441,11 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 	}
 	if scopeType != models.BudgetScopeAccount && scopeType != models.BudgetScopeAPIKey {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "scope_type must be 'account' or 'api_key'"})
+		return
+	}
+	provider := req.Provider
+	if provider != "" && provider != "anthropic" && provider != "openai" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "provider must be empty, 'anthropic', or 'openai'"})
 		return
 	}
 	limit, err := decimal.NewFromString(req.LimitAmount)
@@ -500,15 +510,16 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		ScopeType:      scopeType,
 		ScopeID:        req.ScopeID,
 		PeriodType:     req.PeriodType,
+		Provider:       provider,
 		LimitAmount:    limit,
 		AlertThreshold: alertThreshold,
 		Action:         action,
 	}
 
-	// Upsert: find by (tenant_id, scope_type, scope_id, period_type) and update, or create.
+	// Upsert: find by (tenant_id, scope_type, scope_id, period_type, provider) and update, or create.
 	result := s.postgresDB.GetDB().
-		Where("tenant_id = ? AND scope_type = ? AND scope_id = ? AND period_type = ?",
-			tenantID, scopeType, req.ScopeID, req.PeriodType).
+		Where("tenant_id = ? AND scope_type = ? AND scope_id = ? AND period_type = ? AND provider = ?",
+			tenantID, scopeType, req.ScopeID, req.PeriodType, provider).
 		Assign(models.BudgetLimit{
 			LimitAmount:    limit,
 			AlertThreshold: alertThreshold,

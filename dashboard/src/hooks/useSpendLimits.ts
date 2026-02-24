@@ -12,6 +12,7 @@ export interface SpendLimit {
   scope_type: string      // "account" | "api_key"
   scope_id: string
   period_type: string     // "monthly" | "weekly" | "daily"
+  provider: string        // "" = all, "anthropic", "openai"
   limit_amount: string    // decimal string (USD)
   alert_threshold: string // percentage as string
   action: string          // "alert" | "block"
@@ -25,6 +26,7 @@ export interface UpsertSpendLimitReq {
   scope_type: string
   scope_id: string
   period_type: string
+  provider: string
   limit_amount: string
   alert_threshold: string
   action: string

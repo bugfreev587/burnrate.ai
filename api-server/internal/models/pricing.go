@@ -91,6 +91,7 @@ type BudgetLimit struct {
 	ScopeType      string          `gorm:"uniqueIndex:idx_budget_tenant_scope;size:16;default:account"` // account|api_key
 	ScopeID        string          `gorm:"uniqueIndex:idx_budget_tenant_scope;size:64"`                 // "" for account, key_id for api_key
 	PeriodType     string          `gorm:"uniqueIndex:idx_budget_tenant_scope"`                         // monthly|weekly|daily
+	Provider       string          `gorm:"uniqueIndex:idx_budget_tenant_scope;size:32;default:''"`      // "" = all, "anthropic", "openai"
 	LimitAmount    decimal.Decimal `gorm:"type:numeric(20,8)"`
 	AlertThreshold decimal.Decimal `gorm:"type:numeric(5,2);default:80"` // percentage, e.g. 80 = warn at 80%
 	Action         string          `gorm:"default:alert"`                // alert|block

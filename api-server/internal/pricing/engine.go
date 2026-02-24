@@ -133,7 +133,7 @@ func (e *PricingEngine) resolveMarkups(ctx context.Context, event UsageEvent, re
 // Returns (*BudgetStatus, *ErrBudgetExceeded) — the status is non-nil when any
 // limit is at or above its alert threshold; the error is non-nil when a blocking
 // limit is exceeded.
-func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID string, now time.Time) (*BudgetStatus, error) {
+func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID string, provider string, now time.Time) (*BudgetStatus, error) {
 	var limits []models.BudgetLimit
 	query := e.db.WithContext(ctx).
 		Where("tenant_id = ? AND (scope_type = ? OR (scope_type = ? AND scope_id = ?))",
@@ -149,7 +149,12 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 	var nearestStatus *BudgetStatus
 
 	for _, limit := range limits {
-		spend := e.getSpend(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, now)
+		// Skip provider-scoped limits that don't match the current request's provider.
+		if limit.Provider != "" && limit.Provider != provider {
+			continue
+		}
+
+		spend := e.getSpend(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, limit.Provider, now)
 		reserved := e.getReserved(ctx, tenantID, keyID, limit.ScopeType, limit.ScopeID, limit.PeriodType, now)
 		effective := spend.Add(reserved)
 
@@ -316,12 +321,22 @@ func (e *PricingEngine) reservationRedisKeyForKey(keyID, periodType string, t ti
 }
 
 // getSpend returns the current spend for a budget limit scope from Redis (or DB fallback).
-func (e *PricingEngine) getSpend(ctx context.Context, tenantID uint, keyID, scopeType, scopeID, periodType string, t time.Time) decimal.Decimal {
+// When provider is non-empty, it reads from provider-scoped counters.
+func (e *PricingEngine) getSpend(ctx context.Context, tenantID uint, keyID, scopeType, scopeID, periodType, provider string, t time.Time) decimal.Decimal {
 	var key string
-	if scopeType == models.BudgetScopeAPIKey {
-		key = e.budgetRedisKeyForKey(scopeID, periodType, t)
+	if provider != "" {
+		// Provider-scoped counters
+		if scopeType == models.BudgetScopeAPIKey {
+			key = e.budgetRedisKeyForKeyProvider(scopeID, provider, periodType, t)
+		} else {
+			key = e.budgetRedisKeyForProvider(tenantID, provider, periodType, t)
+		}
 	} else {
-		key = e.budgetRedisKey(tenantID, periodType, t)
+		if scopeType == models.BudgetScopeAPIKey {
+			key = e.budgetRedisKeyForKey(scopeID, periodType, t)
+		} else {
+			key = e.budgetRedisKey(tenantID, periodType, t)
+		}
 	}
 
 	if e.rdb != nil {
@@ -334,7 +349,7 @@ func (e *PricingEngine) getSpend(ctx context.Context, tenantID uint, keyID, scop
 
 	// DB fallback (account-level only; key-level falls back to 0 if Redis missing)
 	if scopeType == models.BudgetScopeAccount {
-		return e.dbBudgetSpend(ctx, tenantID, periodType, t)
+		return e.dbBudgetSpend(ctx, tenantID, periodType, provider, t)
 	}
 	return decimal.Zero
 }
@@ -352,7 +367,12 @@ func (e *PricingEngine) checkBudget(ctx context.Context, event UsageEvent, final
 		Find(&limits)
 
 	for _, limit := range limits {
-		currentSpend := e.getSpend(ctx, event.TenantID, event.APIKeyRef, limit.ScopeType, limit.ScopeID, limit.PeriodType, event.Timestamp)
+		// Skip provider-scoped limits that don't match this event's provider.
+		if limit.Provider != "" && limit.Provider != event.Provider {
+			continue
+		}
+
+		currentSpend := e.getSpend(ctx, event.TenantID, event.APIKeyRef, limit.ScopeType, limit.ScopeID, limit.PeriodType, limit.Provider, event.Timestamp)
 
 		if currentSpend.Add(finalCost).GreaterThan(limit.LimitAmount) {
 			return &ErrBudgetExceeded{
@@ -367,14 +387,17 @@ func (e *PricingEngine) checkBudget(ctx context.Context, event UsageEvent, final
 }
 
 // dbBudgetSpend queries the cost ledger for spend in the current period.
-func (e *PricingEngine) dbBudgetSpend(ctx context.Context, tenantID uint, periodType string, t time.Time) decimal.Decimal {
+// When provider is non-empty, it joins to filter by provider name.
+func (e *PricingEngine) dbBudgetSpend(ctx context.Context, tenantID uint, periodType, provider string, t time.Time) decimal.Decimal {
 	start := periodStart(periodType, t)
 	var total decimal.Decimal
-	e.db.WithContext(ctx).
+	q := e.db.WithContext(ctx).
 		Model(&models.CostLedger{}).
-		Select("COALESCE(SUM(final_cost), 0)").
-		Where("tenant_id = ? AND timestamp >= ? AND api_usage_billed = ?", tenantID, start, true).
-		Scan(&total)
+		Where("tenant_id = ? AND timestamp >= ? AND api_usage_billed = ?", tenantID, start, true)
+	if provider != "" {
+		q = q.Where("provider_id IN (SELECT id FROM providers WHERE name = ?)", provider)
+	}
+	q.Select("COALESCE(SUM(final_cost), 0)").Scan(&total)
 	return total
 }
 
@@ -391,16 +414,32 @@ func (e *PricingEngine) incrementBudget(ctx context.Context, event UsageEvent, f
 	}
 	amount := finalCost.InexactFloat64()
 	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
-		// Account-level counter
+		exp := periodEnd(period, event.Timestamp)
+
+		// Account-level counter (all providers)
 		key := e.budgetRedisKey(event.TenantID, period, event.Timestamp)
 		e.rdb.IncrByFloat(ctx, key, amount)
-		e.rdb.ExpireAt(ctx, key, periodEnd(period, event.Timestamp))
+		e.rdb.ExpireAt(ctx, key, exp)
+
+		// Account-level counter (provider-scoped)
+		if event.Provider != "" {
+			provKey := e.budgetRedisKeyForProvider(event.TenantID, event.Provider, period, event.Timestamp)
+			e.rdb.IncrByFloat(ctx, provKey, amount)
+			e.rdb.ExpireAt(ctx, provKey, exp)
+		}
 
 		// API-key-level counter (if key ref is available)
 		if event.APIKeyRef != "" {
 			keyKey := e.budgetRedisKeyForKey(event.APIKeyRef, period, event.Timestamp)
 			e.rdb.IncrByFloat(ctx, keyKey, amount)
-			e.rdb.ExpireAt(ctx, keyKey, periodEnd(period, event.Timestamp))
+			e.rdb.ExpireAt(ctx, keyKey, exp)
+
+			// API-key-level counter (provider-scoped)
+			if event.Provider != "" {
+				keyProvKey := e.budgetRedisKeyForKeyProvider(event.APIKeyRef, event.Provider, period, event.Timestamp)
+				e.rdb.IncrByFloat(ctx, keyProvKey, amount)
+				e.rdb.ExpireAt(ctx, keyProvKey, exp)
+			}
 		}
 	}
 }
@@ -455,6 +494,36 @@ func (e *PricingEngine) budgetRedisKeyForKey(keyID, periodType string, t time.Ti
 		return fmt.Sprintf("budget:key:%s:%d-%02d-%02d", keyID, t.Year(), t.Month(), t.Day())
 	default:
 		return fmt.Sprintf("budget:key:%s:%s:%d-%02d", keyID, periodType, t.Year(), t.Month())
+	}
+}
+
+// budgetRedisKeyForProvider returns the Redis key for a tenant's provider-scoped budget counter.
+func (e *PricingEngine) budgetRedisKeyForProvider(tenantID uint, provider, periodType string, t time.Time) string {
+	switch periodType {
+	case models.PeriodMonthly:
+		return fmt.Sprintf("budget:%d:%s:%d-%02d", tenantID, provider, t.Year(), t.Month())
+	case models.PeriodWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("budget:%d:%s:w%d-%02d", tenantID, provider, year, week)
+	case models.PeriodDaily:
+		return fmt.Sprintf("budget:%d:%s:%d-%02d-%02d", tenantID, provider, t.Year(), t.Month(), t.Day())
+	default:
+		return fmt.Sprintf("budget:%d:%s:%s:%d-%02d", tenantID, provider, periodType, t.Year(), t.Month())
+	}
+}
+
+// budgetRedisKeyForKeyProvider returns the Redis key for an API key's provider-scoped budget counter.
+func (e *PricingEngine) budgetRedisKeyForKeyProvider(keyID, provider, periodType string, t time.Time) string {
+	switch periodType {
+	case models.PeriodMonthly:
+		return fmt.Sprintf("budget:key:%s:%s:%d-%02d", keyID, provider, t.Year(), t.Month())
+	case models.PeriodWeekly:
+		year, week := t.ISOWeek()
+		return fmt.Sprintf("budget:key:%s:%s:w%d-%02d", keyID, provider, year, week)
+	case models.PeriodDaily:
+		return fmt.Sprintf("budget:key:%s:%s:%d-%02d-%02d", keyID, provider, t.Year(), t.Month(), t.Day())
+	default:
+		return fmt.Sprintf("budget:key:%s:%s:%s:%d-%02d", keyID, provider, periodType, t.Year(), t.Month())
 	}
 }
 
