@@ -953,25 +953,34 @@ export default function ManagementPage() {
               </div>
               <div className="install-box">
                 <h3>Quick Setup</h3>
-                <div className="install-step">
-                  <h4>Set environment variables</h4>
-                  <div className="cmd-box">
-                    {createdKeyMode.startsWith('OPENAI_') ? (
-                      <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdKeyMode === 'OPENAI_API_BYOK' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
-                    ) : (
-                      <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${createdKeyMode === 'ANTHROPIC_API_BYOK' ? '\n# No ANTHROPIC_API_KEY needed — the gateway uses your stored provider key' : '\n# Claude Code will add its own auth automatically'}`}</pre>
-                    )}
-                    <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(
-                        createdKeyMode.startsWith('OPENAI_')
-                          ? `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`
-                          : `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
-                        'env'
-                      )}>
-                      {copiedID === 'env' ? 'Copied!' : 'Copy'}
-                    </button>
+                {createdKeyMode === 'ANTHROPIC_API_BYOK' ? (
+                  <div className="install-step">
+                    <div className="warn-box" style={{ marginTop: 0 }}>
+                      <span className="warn-icon">!</span>
+                      <p>Remember to add your <strong>Anthropic provider key</strong> in the Provider Keys section before using this gateway key.</p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="install-step">
+                    <h4>Set environment variables</h4>
+                    <div className="cmd-box">
+                      {createdKeyMode.startsWith('OPENAI_') ? (
+                        <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdKeyMode === 'OPENAI_API_BYOK' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
+                      ) : (
+                        <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${'\n# Claude Code will add its own auth automatically'}`}</pre>
+                      )}
+                      <button className="btn btn-small btn-secondary"
+                        onClick={() => copy(
+                          createdKeyMode.startsWith('OPENAI_')
+                            ? `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`
+                            : `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
+                          'env'
+                        )}>
+                        {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {createdKeyMode.endsWith('_API_BYOK') && (
                   <div className="install-step">
                     <h4>Test the gateway (example curl)</h4>
