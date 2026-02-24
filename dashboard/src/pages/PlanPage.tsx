@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useUserSync } from '../hooks/useUserSync'
 import './PlanPage.css'
@@ -106,48 +106,58 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null)
   const [switching, setSwitching] = useState<PlanKey | null>(null)
   const [planFlash, setPlanFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-  const [refreshTick] = useState(0)
-
   // Auth guard: wait until synced, then redirect non-owners
   if (isSynced && role !== 'owner') {
     return <Navigate to="/dashboard" replace />
   }
 
-  const navigate = useNavigate()
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   async function handleSwitchPlan(newPlan: PlanKey) {
     if (!userId) return
-
-    // Free plan can't be checked-out via Stripe; paid plans use the billing checkout flow
-    if (newPlan === 'free') {
-      setPlanFlash({ type: 'error', msg: 'To downgrade, go to the Billing page and manage your subscription.' })
-      return
-    }
-
-    // If already on a paid plan, redirect to billing portal for plan changes
-    if (currentPlan !== 'free') {
-      navigate('/billing')
-      return
-    }
-
-    // Free → Paid: use Stripe Checkout
     setSwitching(newPlan)
     setPlanFlash(null)
+
     try {
-      const res = await fetch(`${API_BASE}/v1/billing/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
-        body: JSON.stringify({
-          plan: newPlan,
-          success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${window.location.origin}/plan`,
-        }),
-      })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-      window.location.href = d.url
+      if (newPlan === 'free' && currentPlan !== 'free') {
+        // Paid → Free: cancel the Stripe subscription
+        const res = await fetch(`${API_BASE}/v1/billing/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+        })
+        const d = await res.json()
+        if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
+        setPlanFlash({ type: 'success', msg: 'Subscription canceled. You are now on the Free plan.' })
+        setRefreshTrigger(t => t + 1)
+      } else if (currentPlan === 'free' && newPlan !== 'free') {
+        // Free → Paid: Stripe Checkout
+        const res = await fetch(`${API_BASE}/v1/billing/checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+          body: JSON.stringify({
+            plan: newPlan,
+            success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${window.location.origin}/plan`,
+          }),
+        })
+        const d = await res.json()
+        if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
+        window.location.href = d.url
+        return // navigating away
+      } else if (currentPlan !== 'free' && newPlan !== 'free') {
+        // Paid → different Paid: update subscription via API
+        const res = await fetch(`${API_BASE}/v1/billing/change-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+          body: JSON.stringify({ plan: newPlan }),
+        })
+        const d = await res.json()
+        if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
+        setPlanFlash({ type: 'success', msg: `Switched to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
+        setRefreshTrigger(t => t + 1)
+      }
     } catch (err) {
-      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to start checkout' })
+      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to switch plan' })
     } finally {
       setSwitching(null)
     }
@@ -191,7 +201,7 @@ export default function PlanPage() {
     }
 
     load()
-  }, [isSynced, userId, refreshTick])
+  }, [isSynced, userId, refreshTrigger])
 
   const currentPlan = data?.settings.plan ?? 'free'
   const limits = data?.settings.plan_limits
@@ -202,7 +212,7 @@ export default function PlanPage() {
       <Navbar />
       <div className="page-content">
         <div className="plan-page-header">
-          <h1>Plan &amp; Billing</h1>
+          <h1>Plan</h1>
           {data && <PlanBadge plan={currentPlan} />}
         </div>
 

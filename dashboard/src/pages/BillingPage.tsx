@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import './BillingPage.css'
@@ -92,10 +92,10 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
 
+  const navigate = useNavigate()
   const isAdmin = isSynced && hasPermission(role, 'admin')
 
   // Handle Stripe return: verify checkout session to sync plan immediately
@@ -164,55 +164,8 @@ export default function BillingPage() {
     load()
   }, [isSynced, userId, refreshTick])
 
-  async function handleCheckout(plan: string) {
-    if (!userId) return
-    setActionLoading('checkout')
-    setFlash(null)
-    try {
-      const res = await fetch(`${API_BASE}/v1/billing/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
-        body: JSON.stringify({
-          plan,
-          success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${window.location.origin}/billing?canceled=true`,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`)
-      window.location.href = data.url
-    } catch (err) {
-      setFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to start checkout' })
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  async function handlePortal() {
-    if (!userId) return
-    setActionLoading('portal')
-    setFlash(null)
-    try {
-      const res = await fetch(`${API_BASE}/v1/billing/portal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
-        body: JSON.stringify({
-          return_url: `${window.location.origin}/billing`,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`)
-      window.location.href = data.url
-    } catch (err) {
-      setFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to open billing portal' })
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   const currentPlan = billingStatus?.plan ?? 'free'
   const hasSubscription = billingStatus?.has_subscription ?? false
-  const stripeConfigured = billingStatus?.stripe_configured ?? false
 
   return (
     <div className="page-container">
@@ -296,34 +249,14 @@ export default function BillingPage() {
               )}
 
               {/* Action Buttons */}
-              {isAdmin && stripeConfigured && (
+              {isAdmin && (
                 <div className="billing-actions">
-                  {hasSubscription ? (
-                    <button
-                      className="btn btn-primary"
-                      disabled={actionLoading !== null}
-                      onClick={handlePortal}
-                    >
-                      {actionLoading === 'portal' ? 'Loading...' : 'Manage Subscription'}
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        className="btn btn-primary"
-                        disabled={actionLoading !== null}
-                        onClick={() => handleCheckout('pro')}
-                      >
-                        {actionLoading === 'checkout' ? 'Loading...' : 'Upgrade to Pro — $15/mo'}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={actionLoading !== null}
-                        onClick={() => handleCheckout('team')}
-                      >
-                        {actionLoading === 'checkout' ? 'Loading...' : 'Upgrade to Team — $39/mo'}
-                      </button>
-                    </>
-                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => navigate('/plan')}
+                  >
+                    {hasSubscription ? 'Change Plan' : 'Upgrade Plan'}
+                  </button>
                 </div>
               )}
             </div>
@@ -379,7 +312,7 @@ export default function BillingPage() {
             </div>
 
             {/* ── Upgrade CTA for free plan ── */}
-            {currentPlan === 'free' && stripeConfigured && isAdmin && (
+            {currentPlan === 'free' && isAdmin && (
               <div className="billing-upgrade-cta" style={{ marginTop: '1.5rem' }}>
                 <div className="billing-upgrade-cta-text">
                   <p>Unlock more features</p>
@@ -387,10 +320,9 @@ export default function BillingPage() {
                 </div>
                 <button
                   className="btn btn-primary"
-                  disabled={actionLoading !== null}
-                  onClick={() => handleCheckout('pro')}
+                  onClick={() => navigate('/plan')}
                 >
-                  Upgrade Now
+                  View Plans
                 </button>
               </div>
             )}

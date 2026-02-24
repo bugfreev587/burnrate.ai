@@ -192,6 +192,110 @@ func (s *StripeService) VerifyCheckoutSession(ctx context.Context, tenantID uint
 	return s.HandleCheckoutCompleted(ctx, sess)
 }
 
+// CancelSubscription cancels the tenant's Stripe subscription immediately and
+// downgrades the tenant to the Free plan.
+func (s *StripeService) CancelSubscription(ctx context.Context, tenantID uint) error {
+	var tenant models.Tenant
+	if err := s.db.First(&tenant, tenantID).Error; err != nil {
+		return fmt.Errorf("fetch tenant: %w", err)
+	}
+
+	if tenant.StripeSubscriptionID == "" {
+		return errors.New("tenant has no active subscription")
+	}
+
+	// Cancel the subscription in Stripe immediately
+	params := &stripe.SubscriptionCancelParams{}
+	params.Context = ctx
+	if _, err := subscription.Cancel(tenant.StripeSubscriptionID, params); err != nil {
+		return fmt.Errorf("cancel stripe subscription: %w", err)
+	}
+
+	// Downgrade to Free in our DB
+	freeLimits := models.GetPlanLimits(models.PlanFree)
+	updates := map[string]any{
+		"plan":                   models.PlanFree,
+		"plan_status":            models.PlanStatusCanceled,
+		"stripe_subscription_id": "",
+		"current_period_end":     nil,
+		"max_api_keys":           freeLimits.MaxAPIKeys,
+	}
+	if err := s.db.WithContext(ctx).Model(&tenant).Updates(updates).Error; err != nil {
+		return fmt.Errorf("downgrade tenant to free: %w", err)
+	}
+
+	log.Printf("stripe: subscription canceled for tenant %d → downgraded to free", tenantID)
+	return nil
+}
+
+// ChangeSubscriptionPlan changes the price on an existing Stripe subscription
+// (Paid → different Paid). Uses proration and keeps the billing cycle anchor.
+func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uint, newPlan string) error {
+	var tenant models.Tenant
+	if err := s.db.First(&tenant, tenantID).Error; err != nil {
+		return fmt.Errorf("fetch tenant: %w", err)
+	}
+
+	if tenant.StripeSubscriptionID == "" {
+		return errors.New("tenant has no active subscription")
+	}
+
+	newPriceID, err := s.PriceIDForPlan(newPlan)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the current subscription to get the item ID
+	getParams := &stripe.SubscriptionParams{}
+	getParams.Context = ctx
+	sub, err := subscription.Get(tenant.StripeSubscriptionID, getParams)
+	if err != nil {
+		return fmt.Errorf("get subscription: %w", err)
+	}
+
+	if sub.Items == nil || len(sub.Items.Data) == 0 {
+		return errors.New("subscription has no items")
+	}
+
+	itemID := sub.Items.Data[0].ID
+
+	// Update the subscription with the new price
+	updateParams := &stripe.SubscriptionParams{
+		Items: []*stripe.SubscriptionItemsParams{
+			{
+				ID:    stripe.String(itemID),
+				Price: stripe.String(newPriceID),
+			},
+		},
+		ProrationBehavior: stripe.String("create_prorations"),
+	}
+	updateParams.AddMetadata("plan", newPlan)
+	updateParams.Context = ctx
+
+	updatedSub, err := subscription.Update(tenant.StripeSubscriptionID, updateParams)
+	if err != nil {
+		return fmt.Errorf("update subscription: %w", err)
+	}
+
+	// Update our DB
+	newLimits := models.GetPlanLimits(newPlan)
+	dbUpdates := map[string]any{
+		"plan":         newPlan,
+		"plan_status":  s.mapStripeStatus(updatedSub.Status),
+		"max_api_keys": newLimits.MaxAPIKeys,
+	}
+	if periodEnd := currentPeriodEndFromSub(updatedSub); periodEnd > 0 {
+		t := time.Unix(periodEnd, 0)
+		dbUpdates["current_period_end"] = &t
+	}
+	if err := s.db.WithContext(ctx).Model(&tenant).Updates(dbUpdates).Error; err != nil {
+		return fmt.Errorf("update tenant plan: %w", err)
+	}
+
+	log.Printf("stripe: subscription %s changed to plan=%s for tenant %d", tenant.StripeSubscriptionID, newPlan, tenantID)
+	return nil
+}
+
 // CreatePortalSession creates a Stripe Customer Portal session for managing the subscription.
 func (s *StripeService) CreatePortalSession(ctx context.Context, tenantID uint, returnURL string) (string, error) {
 	var tenant models.Tenant

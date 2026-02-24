@@ -199,6 +199,8 @@ func (s *Server) setupRoutes() {
 		billingAdmin.POST("/checkout", s.handleBillingCheckout)
 		billingAdmin.POST("/checkout/verify", s.handleBillingCheckoutVerify)
 		billingAdmin.POST("/portal", s.handleBillingPortal)
+		billingAdmin.POST("/cancel", s.handleBillingCancel)
+		billingAdmin.POST("/change-plan", s.handleBillingChangePlan)
 	}
 
 	// Billing webhook (public — signature-verified in handler)

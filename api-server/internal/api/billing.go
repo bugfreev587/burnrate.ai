@@ -196,6 +196,93 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// ── POST /v1/billing/cancel ──────────────────────────────────────────────────
+
+func (s *Server) handleBillingCancel(c *gin.Context) {
+	if !s.stripeSvc.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := s.stripeSvc.CancelSubscription(c.Request.Context(), caller.TenantID); err != nil {
+		log.Printf("billing: cancel error for tenant %d: %v", caller.TenantID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	c.JSON(http.StatusOK, gin.H{
+		"plan":        tenant.Plan,
+		"plan_status": tenant.PlanStatus,
+		"message":     "Subscription canceled. You are now on the Free plan.",
+	})
+}
+
+// ── POST /v1/billing/change-plan ─────────────────────────────────────────────
+
+type changeBillingPlanRequest struct {
+	Plan string `json:"plan" binding:"required"`
+}
+
+func (s *Server) handleBillingChangePlan(c *gin.Context) {
+	if !s.stripeSvc.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req changeBillingPlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !models.ValidPlan(req.Plan) || req.Plan == models.PlanFree {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan; must be pro, team, or business"})
+		return
+	}
+
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+
+	if tenant.StripeSubscriptionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no active subscription to change; use checkout instead"})
+		return
+	}
+
+	if tenant.Plan == req.Plan {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "already on this plan"})
+		return
+	}
+
+	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
+		log.Printf("billing: change-plan error for tenant %d: %v", caller.TenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change plan"})
+		return
+	}
+
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	c.JSON(http.StatusOK, gin.H{
+		"plan":        tenant.Plan,
+		"plan_status": tenant.PlanStatus,
+	})
+}
+
 // ── GET /v1/billing/invoices ─────────────────────────────────────────────────
 
 func (s *Server) handleBillingInvoices(c *gin.Context) {
