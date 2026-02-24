@@ -63,8 +63,8 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
               <span className="budget-scope"> · key {b.scope_id.slice(0, 8)}…</span>
             )}
           </span>
-          <span className="budget-action" style={{ color: b.action === 'block' ? 'var(--color-danger)' : '#f59e0b' }}>
-            {b.action === 'block' ? ' · Hard Block' : ' · Alert only'}
+          <span className="budget-action" style={{ color: b.action === 'block' || b.action === 'alert_block' ? 'var(--color-danger)' : '#f59e0b' }}>
+            {b.action === 'alert_block' ? ' · Alert + Block' : b.action === 'block' ? ' · Block' : ' · Alert'}
           </span>
         </div>
         <span className="budget-amounts">
