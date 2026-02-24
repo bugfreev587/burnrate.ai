@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed IANA timezone database for containers without system tzdata
 
 	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
