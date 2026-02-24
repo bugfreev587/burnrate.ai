@@ -375,7 +375,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		}
 
 		q := s.postgresDB.GetDB().Model(&models.UsageLog{}).
-			Where("tenant_id = ? AND created_at >= ? AND api_usage_billed = ?", tenantID, periodStart, true)
+			Where("tenant_id = ? AND created_at >= ?", tenantID, periodStart)
 		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
 			q = q.Where("request_id IN (SELECT request_id FROM usage_logs WHERE tenant_id = ?)", tenantID)
 			// scope to key: UsageLog doesn't store key_id, so account-level spend is the best proxy
