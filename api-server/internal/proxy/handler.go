@@ -57,7 +57,7 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 
 // determineBillable returns true when the request should be recorded as billable API usage.
 func determineBillable(mode string, headers http.Header) bool {
-	if mode == models.AnthropicModeAPIBYOK {
+	if models.IsBYOKMode(mode) {
 		return true
 	}
 	if v := headers.Get("x-api-key"); strings.HasPrefix(v, "sk-ant-api") {
@@ -128,7 +128,7 @@ func (h *ProxyHandler) preCheckBudget(c *gin.Context, tenantID uint, keyID strin
 // resolveAuth fetches the BYOK key for API_BYOK mode. For passthrough mode it
 // returns nil. Returns ok=false (and writes a 500 response) on internal errors.
 func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provider, mode string) (byokKey []byte, ok bool) {
-	if mode != models.AnthropicModeAPIBYOK {
+	if !models.IsBYOKMode(mode) {
 		return nil, true
 	}
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
@@ -384,7 +384,7 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 
 	// Resolve API key based on mode.
 	var resolvedKey string
-	if mode == models.AnthropicModeAPIBYOK {
+	if models.IsBYOKMode(mode) {
 		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
 		if err != nil {
 			if !errors.Is(err, services.ErrNoActiveKey) {

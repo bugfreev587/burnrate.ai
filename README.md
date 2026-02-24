@@ -15,7 +15,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
-- **API key management** – Admins create and revoke agent API keys with provider and mode selection (e.g., `CLAUDE_CODE_PASSTHROUGH` for browser auth pass-through, `API_BYOK` for direct API access). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
+- **API key management** – Admins create and revoke agent API keys with provider and mode selection (e.g., `CLAUDE_CODE_PASSTHROUGH` / `ANTHROPIC_API_BYOK` for Anthropic, `OPENAI_CODEX_PASSTHROUGH` / `OPENAI_API_BYOK` for OpenAI). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
@@ -24,18 +24,18 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 | Provider | Mode | Auth Flow | Billing | Description |
 |---|---|---|---|---|
 | **Anthropic** | `CLAUDE_CODE_PASSTHROUGH` | Browser auth (Claude monthly subscription) | API usage billed to Anthropic subscription | User authenticates via Claude Code's browser login. The gateway passes through the user's session credentials to Anthropic. Usage is tracked but billed through the user's existing Anthropic subscription. |
-| **Anthropic** | `API_BYOK` | Bring Your Own Key | API usage billed to tenant's Anthropic API key | Tenant stores their Anthropic API key in the encrypted vault. The gateway injects the stored key on every request. Full cost tracking, budget enforcement, and rate limiting apply. |
-| **OpenAI** | `API_BYOK` | Bring Your Own Key | API usage billed to tenant's OpenAI API key | Tenant stores their OpenAI API key in the encrypted vault. Requests to `/v1/responses` and `/v1/openai/*` are forwarded to OpenAI with the stored key. Supports Codex CLI and other OpenAI-compatible clients. |
+| **Anthropic** | `ANTHROPIC_API_BYOK` | Bring Your Own Key | API usage billed to tenant's Anthropic API key | Tenant stores their Anthropic API key in the encrypted vault. The gateway injects the stored key on every request. Full cost tracking, budget enforcement, and rate limiting apply. |
+| **OpenAI** | `OPENAI_CODEX_PASSTHROUGH` | Client credentials (OpenAI subscription) | API usage billed to user's OpenAI account | User runs Codex CLI with their own OpenAI credentials. The gateway passes through the client's auth to OpenAI. Usage is tracked but billed through the user's existing OpenAI account. |
+| **OpenAI** | `OPENAI_API_BYOK` | Bring Your Own Key | API usage billed to tenant's OpenAI API key | Tenant stores their OpenAI API key in the encrypted vault. Requests to `/v1/responses` and `/v1/openai/*` are forwarded to OpenAI with the stored key. Supports Codex CLI and other OpenAI-compatible clients. |
 
 ### How each mode works
 
-**`CLAUDE_CODE_PASSTHROUGH` (Anthropic only)**
-- The user runs `claude` with browser-based login (monthly subscription).
-- Claude Code sends requests with the user's Anthropic session token.
-- The gateway validates the `tg_xxx` key, passes the session token through to `api.anthropic.com`, and extracts token usage from the response.
-- Cost is tracked for visibility but billed through the user's Anthropic subscription.
+**Passthrough modes (`CLAUDE_CODE_PASSTHROUGH`, `OPENAI_CODEX_PASSTHROUGH`)**
+- The user runs the CLI tool (Claude Code or Codex CLI) with their own credentials.
+- The gateway validates the `tg_xxx` key and passes the client's auth through to the upstream provider.
+- Cost is tracked for visibility but billed through the user's own provider subscription.
 
-**`API_BYOK` (Anthropic & OpenAI)**
+**BYOK modes (`ANTHROPIC_API_BYOK`, `OPENAI_API_BYOK`)**
 - The admin stores a provider API key in the encrypted vault via the Management dashboard.
 - The gateway validates the `tg_xxx` key, fetches the stored provider key from the vault, and injects it into the upstream request.
 - The user never sees or handles the raw provider key.
@@ -257,7 +257,7 @@ api-server/
 |---|---|
 | `Tenant` | `id`, `name`, `plan` (free\|pro\|team\|business, default free), `max_api_keys` (derived from plan) |
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
-| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `mode` (CLAUDE_CODE_PASSTHROUGH\|API_BYOK), `expires_at` |
+| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `mode` (CLAUDE_CODE_PASSTHROUGH\|ANTHROPIC_API_BYOK\|OPENAI_CODEX_PASSTHROUGH\|OPENAI_API_BYOK), `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
 | `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id`, `policy_version` (bumped on every activate/rotate) |
 | `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id` |
@@ -757,7 +757,7 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Budget enforcement (alert / block / alert+block) | ✅ Live |
 | Rate limits (RPM / ITPM / OTPM, model-scoped) | ✅ Live |
 | Dashboard date range selection (plan-aware retention) | ✅ Live |
-| API key provider + mode (CLAUDE_CODE_PASSTHROUGH / API_BYOK) | ✅ Live |
+| API key provider + mode (4 provider-specific modes) | ✅ Live |
 | Monthly spend forecast | ✅ Live |
 | Provider key vault (AES-256-GCM envelope encryption) | ✅ Live |
 | Anthropic reverse proxy (`/v1/messages`) | ✅ Live |

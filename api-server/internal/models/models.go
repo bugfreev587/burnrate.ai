@@ -68,16 +68,28 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
-// Anthropic API key modes
+// API key modes
 const (
 	AnthropicModeClaudeCodePassthrough = "CLAUDE_CODE_PASSTHROUGH"
-	AnthropicModeAPIBYOK               = "API_BYOK"
+	AnthropicModeAPIBYOK               = "ANTHROPIC_API_BYOK"
+	OpenAIModeCodexPassthrough         = "OPENAI_CODEX_PASSTHROUGH"
+	OpenAIModeAPIBYOK                  = "OPENAI_API_BYOK"
 )
+
+// IsBYOKMode returns true when the mode is a Bring Your Own Key mode (any provider).
+func IsBYOKMode(mode string) bool {
+	return mode == AnthropicModeAPIBYOK || mode == OpenAIModeAPIBYOK
+}
+
+// IsPassthroughMode returns true when the mode is a passthrough mode (any provider).
+func IsPassthroughMode(mode string) bool {
+	return mode == AnthropicModeClaudeCodePassthrough || mode == OpenAIModeCodexPassthrough
+}
 
 // SupportedAPIKeyModes maps provider → valid modes.
 var SupportedAPIKeyModes = map[string][]string{
 	"anthropic": {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
-	"openai":    {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
+	"openai":    {OpenAIModeCodexPassthrough, OpenAIModeAPIBYOK},
 }
 
 // ValidAPIKeyMode returns true when mode is valid for provider.

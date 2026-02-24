@@ -35,9 +35,21 @@ const PROVIDER_MODES: Record<string, { value: string; label: string; description
       description: 'For Claude Code CLI. Forwards browser auth / ephemeral credentials.',
     },
     {
-      value: 'API_BYOK',
+      value: 'ANTHROPIC_API_BYOK',
       label: 'API — Bring Your Own Key',
       description: 'For direct API access. Gateway uses your stored Anthropic provider key.',
+    },
+  ],
+  openai: [
+    {
+      value: 'OPENAI_CODEX_PASSTHROUGH',
+      label: 'Codex CLI (Pass-Through)',
+      description: 'For OpenAI Codex CLI. Forwards the client\'s own OpenAI credentials.',
+    },
+    {
+      value: 'OPENAI_API_BYOK',
+      label: 'API — Bring Your Own Key',
+      description: 'For direct API access. Gateway uses your stored OpenAI provider key.',
     },
   ],
 }
@@ -944,14 +956,23 @@ export default function ManagementPage() {
                 <div className="install-step">
                   <h4>Set environment variables</h4>
                   <div className="cmd-box">
-                    <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${createdKeyMode === 'API_BYOK' ? '\n# No ANTHROPIC_API_KEY needed — the gateway uses your stored provider key' : '\n# Claude Code will add its own auth automatically'}`}</pre>
+                    {createdKeyMode.startsWith('OPENAI_') ? (
+                      <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdKeyMode === 'OPENAI_API_BYOK' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
+                    ) : (
+                      <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${createdKeyMode === 'ANTHROPIC_API_BYOK' ? '\n# No ANTHROPIC_API_KEY needed — the gateway uses your stored provider key' : '\n# Claude Code will add its own auth automatically'}`}</pre>
+                    )}
                     <button className="btn btn-small btn-secondary"
-                      onClick={() => copy(`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`, 'env')}>
+                      onClick={() => copy(
+                        createdKeyMode.startsWith('OPENAI_')
+                          ? `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`
+                          : `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
+                        'env'
+                      )}>
                       {copiedID === 'env' ? 'Copied!' : 'Copy'}
                     </button>
                   </div>
                 </div>
-                {createdKeyMode !== 'CLAUDE_CODE_PASSTHROUGH' && (
+                {createdKeyMode.endsWith('_API_BYOK') && (
                   <div className="install-step">
                     <h4>Test the gateway (example curl)</h4>
                     <div className="cmd-box">

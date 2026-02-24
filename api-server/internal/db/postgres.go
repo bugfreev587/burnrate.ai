@@ -88,6 +88,14 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("ensure missing models: %w", err)
 	}
 
+	// One-time migration: rename legacy API_BYOK mode to provider-specific ANTHROPIC_API_BYOK.
+	migrateModesSQL := `UPDATE api_keys SET mode = 'ANTHROPIC_API_BYOK' WHERE provider = 'anthropic' AND mode = 'API_BYOK'`
+	if res := db.Exec(migrateModesSQL); res.Error != nil {
+		log.Printf("migrate api_key modes: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		log.Printf("migrate api_key modes: updated %d rows from API_BYOK to ANTHROPIC_API_BYOK", res.RowsAffected)
+	}
+
 	// One-time backfill: copy final_cost from cost_ledgers into usage_logs
 	// where cost was never set (zero). Safe to run repeatedly — the WHERE
 	// clause ensures already-backfilled rows are skipped.
