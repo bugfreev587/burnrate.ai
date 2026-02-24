@@ -436,7 +436,7 @@ export default function Dashboard() {
             {/* ── Cost Overview ── */}
             <div className="dash-section-title">Cost Overview</div>
             <p className="section-note">
-              Cost is calculated based on model usage, token consumption and for API usage billed users only. Pricing varies by model.{' '}
+              Cost is calculated based on model usage, token consumption and for <span style={{ fontWeight: 'bold', color: '#ffffe0' }}>API usage billed users</span> only. Pricing varies by model.{' '}
               <a href="/pricing-config" className="section-note-link">Refer to the Pricing Config page</a>{' '}
               for detailed rates. These figures reflect token usage costs only and do not represent
               TokenGate subscription fees, invoices, or Stripe billing totals.
