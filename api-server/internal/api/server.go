@@ -124,9 +124,9 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
 	}
 
-	// ─── Admin+ ──────────────────────────────────────────────────────────────
+	// ─── Editor+ (Management, Limits, Pricing Config) ───────────────────────
 	admin := s.router.Group("/v1/admin")
-	admin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
+	admin.Use(s.rbac.RequireUser(), s.rbac.RequireEditor())
 	{
 		// User management
 		admin.GET("/users", s.handleListUsers)
