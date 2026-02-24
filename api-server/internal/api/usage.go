@@ -314,7 +314,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Requests    int64
 	}
 	var tokens tokenRow
-	tokenQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	tokenQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
 	if rangeQueryStart != nil {
 		tokenQ = tokenQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
 	}
@@ -337,7 +337,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Requests     int64
 	}
 	var byModel []modelRow
-	byModelQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	byModelQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
 	if rangeQueryStart != nil {
 		byModelQ = byModelQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
 	} else {
@@ -368,7 +368,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Tokens int64
 	}
 	var daily []dailyRow
-	dailyQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	dailyQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
 	if rangeQueryStart != nil {
 		dailyQ = dailyQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
 	} else {
