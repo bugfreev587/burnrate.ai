@@ -59,6 +59,7 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
         <div>
           <span className="budget-label">
             {b.period_type.charAt(0).toUpperCase() + b.period_type.slice(1)} Budget
+            {b.provider ? ` · ${b.provider.charAt(0).toUpperCase() + b.provider.slice(1)}` : ' · All Providers'}
             {b.scope_type === 'api_key' && b.scope_id && (
               <span className="budget-scope"> · key {b.scope_id.slice(0, 8)}…</span>
             )}
@@ -429,6 +430,16 @@ export default function Dashboard() {
               <div className="budget-bars">
                 {budgets
                   .filter(b => b.scope_type === 'account')
+                  .sort((a, b) => {
+                    const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
+                    const pa = periodOrder[a.period_type] ?? 9
+                    const pb = periodOrder[b.period_type] ?? 9
+                    if (pa !== pb) return pa - pb
+                    // "" (All Providers) sorts first, then alphabetical
+                    if (!a.provider && b.provider) return -1
+                    if (a.provider && !b.provider) return 1
+                    return a.provider.localeCompare(b.provider)
+                  })
                   .map(b => <BudgetBar key={b.id} b={b} />)}
               </div>
             )}

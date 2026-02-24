@@ -105,6 +105,7 @@ export interface BudgetStatus {
   scope_type: string
   scope_id: string
   period_type: string
+  provider: string
   limit_amount: string
   alert_threshold: string
   action: string
