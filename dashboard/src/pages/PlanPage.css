@@ -278,3 +278,109 @@
   color: var(--color-text);
   margin: 0 0 1rem 0;
 }
+
+/* ─── Modal Overlay & Box (self-contained for PlanPage) ─────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.modal-box {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* ─── Plan Modal (centered popup card) ──────────────────────────────────── */
+
+.plan-modal {
+  max-width: 420px;
+  text-align: center;
+  padding: 2rem;
+}
+
+.plan-modal-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  line-height: 1;
+}
+
+.plan-modal-icon-success { color: #22c55e; }
+.plan-modal-icon-error   { color: #ef4444; }
+.plan-modal-icon-warning { color: #fb923c; }
+
+.plan-modal-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.plan-modal-message {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+  line-height: 1.5;
+}
+
+.plan-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* ─── Pending Downgrade Card ────────────────────────────────────────────── */
+
+.pending-downgrade-card {
+  background: var(--color-surface);
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.pending-downgrade-plans {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pending-downgrade-arrow {
+  font-size: 1.25rem;
+  color: var(--color-text-muted);
+}
+
+.pending-downgrade-message {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.pending-downgrade-message strong {
+  color: var(--color-text);
+}
+
+.pending-downgrade-countdown {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0 0 1rem;
+  font-variant-numeric: tabular-nums;
+}

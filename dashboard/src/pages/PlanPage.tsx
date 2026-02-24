@@ -121,6 +121,68 @@ function PlanBadge({ plan }: { plan: PlanKey }) {
   )
 }
 
+function useCountdown(targetDate: string | null) {
+  const [remaining, setRemaining] = useState<{ days: number; hours: number; minutes: number } | null>(null)
+
+  useEffect(() => {
+    if (!targetDate) { setRemaining(null); return }
+
+    function compute() {
+      const diff = new Date(targetDate!).getTime() - Date.now()
+      if (diff <= 0) { setRemaining(null); return }
+      const days = Math.floor(diff / 86_400_000)
+      const hours = Math.floor((diff % 86_400_000) / 3_600_000)
+      const minutes = Math.floor((diff % 3_600_000) / 60_000)
+      setRemaining({ days, hours, minutes })
+    }
+
+    compute()
+    const id = setInterval(compute, 60_000)
+    return () => clearInterval(id)
+  }, [targetDate])
+
+  if (!remaining) return null
+  const parts: string[] = []
+  if (remaining.days > 0) parts.push(`${remaining.days} day${remaining.days !== 1 ? 's' : ''}`)
+  if (remaining.hours > 0) parts.push(`${remaining.hours} hour${remaining.hours !== 1 ? 's' : ''}`)
+  if (remaining.days === 0 && remaining.minutes > 0) parts.push(`${remaining.minutes} minute${remaining.minutes !== 1 ? 's' : ''}`)
+  return parts.length > 0 ? parts.join(', ') + ' remaining' : null
+}
+
+function PendingDowngradeCard({ currentPlan, pendingPlan, planEffectiveAt, switching, onCancel }: {
+  currentPlan: PlanKey
+  pendingPlan: PlanKey
+  planEffectiveAt: string | null
+  switching: boolean
+  onCancel: () => void
+}) {
+  const countdown = useCountdown(planEffectiveAt)
+
+  return (
+    <div className="pending-downgrade-card">
+      <div className="pending-downgrade-plans">
+        <PlanBadge plan={currentPlan} />
+        <span className="pending-downgrade-arrow">→</span>
+        <PlanBadge plan={pendingPlan} />
+      </div>
+      <p className="pending-downgrade-message">
+        Your <strong>{planLabel(currentPlan)}</strong> features remain active until <strong>{formatDate(planEffectiveAt)}</strong>.
+        After that, your plan will switch to <strong>{planLabel(pendingPlan)}</strong>.
+      </p>
+      {countdown && (
+        <p className="pending-downgrade-countdown">{countdown}</p>
+      )}
+      <button
+        className="btn btn-secondary"
+        disabled={switching}
+        onClick={onCancel}
+      >
+        Cancel Downgrade
+      </button>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function PlanPage() {
@@ -129,7 +191,7 @@ export default function PlanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [switching, setSwitching] = useState<PlanKey | null>(null)
-  const [planFlash, setPlanFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [resultModal, setResultModal] = useState<{ type: 'success' | 'error' | 'warning'; title: string; message: string } | null>(null)
   const [confirmDowngrade, setConfirmDowngrade] = useState<PlanKey | null>(null)
 
   // Auth guard: wait until synced, then redirect non-owners
@@ -146,7 +208,7 @@ export default function PlanPage() {
   async function handleSwitchPlan(newPlan: PlanKey) {
     if (!userId) return
     setSwitching(newPlan)
-    setPlanFlash(null)
+    setResultModal(null)
 
     try {
       if (isDowngrade(currentPlan, newPlan)) {
@@ -159,7 +221,7 @@ export default function PlanPage() {
         const d = await res.json()
         if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
         const effectiveDate = d.plan_effective_at ? formatDate(d.plan_effective_at) : 'end of billing period'
-        setPlanFlash({ type: 'success', msg: `Downgrade to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} scheduled for ${effectiveDate}. You keep your current features until then.` })
+        setResultModal({ type: 'success', title: 'Downgrade Scheduled', message: `Downgrade to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} scheduled for ${effectiveDate}. You keep your current features until then.` })
         setRefreshTrigger(t => t + 1)
       } else if (currentPlan === 'free' && newPlan !== 'free') {
         // Free → Paid: Stripe Checkout
@@ -185,11 +247,11 @@ export default function PlanPage() {
         })
         const d = await res.json()
         if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-        setPlanFlash({ type: 'success', msg: `Upgraded to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
+        setResultModal({ type: 'success', title: 'Plan Upgraded', message: `Upgraded to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
         setRefreshTrigger(t => t + 1)
       }
     } catch (err) {
-      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to switch plan' })
+      setResultModal({ type: 'error', title: 'Something Went Wrong', message: err instanceof Error ? err.message : 'Failed to switch plan' })
     } finally {
       setSwitching(null)
       setConfirmDowngrade(null)
@@ -199,7 +261,7 @@ export default function PlanPage() {
   async function handleCancelDowngrade() {
     if (!userId) return
     setSwitching('free' as PlanKey) // just to show loading state
-    setPlanFlash(null)
+    setResultModal(null)
 
     try {
       const res = await fetch(`${API_BASE}/v1/billing/downgrade/cancel`, {
@@ -208,10 +270,10 @@ export default function PlanPage() {
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-      setPlanFlash({ type: 'success', msg: 'Scheduled downgrade has been canceled. You will stay on your current plan.' })
+      setResultModal({ type: 'success', title: 'Downgrade Canceled', message: 'Scheduled downgrade has been canceled. You will stay on your current plan.' })
       setRefreshTrigger(t => t + 1)
     } catch (err) {
-      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to cancel downgrade' })
+      setResultModal({ type: 'error', title: 'Something Went Wrong', message: err instanceof Error ? err.message : 'Failed to cancel downgrade' })
     } finally {
       setSwitching(null)
     }
@@ -352,38 +414,42 @@ export default function PlanPage() {
           </div>
         )}
 
-        {planFlash && (
-          <div className={`flash ${planFlash.type === 'success' ? 'flash-success' : 'flash-error'}`}
-               style={{ marginBottom: '1rem' }}>
-            {planFlash.msg}
+        {/* ── Result Modal ── */}
+        {resultModal && (
+          <div className="modal-overlay" onClick={() => setResultModal(null)}>
+            <div className="modal-box plan-modal" onClick={e => e.stopPropagation()}>
+              <div className={`plan-modal-icon plan-modal-icon-${resultModal.type}`}>
+                {resultModal.type === 'success' ? '✓' : resultModal.type === 'error' ? '✕' : '⚠'}
+              </div>
+              <h2 className="plan-modal-title">{resultModal.title}</h2>
+              <p className="plan-modal-message">{resultModal.message}</p>
+              <button className="btn btn-primary" onClick={() => setResultModal(null)}>
+                OK
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Downgrade confirmation dialog */}
+        {/* ── Downgrade Confirmation Modal ── */}
         {confirmDowngrade && (
-          <div className="flash flash-warning" style={{ marginBottom: '1rem' }}>
-            <div>
-              <strong>Confirm downgrade to {confirmDowngrade.charAt(0).toUpperCase() + confirmDowngrade.slice(1)}</strong>
-              <p style={{ margin: '0.5rem 0', fontSize: '0.85rem' }}>
-                Your {planLabel(currentPlan)} features will remain active until the end of your current billing period
-                {planEffectiveAt ? ` (${formatDate(planEffectiveAt)})` : ''}.
-                After that, your plan will switch to {planLabel(confirmDowngrade as PlanKey)}.
+          <div className="modal-overlay" onClick={() => setConfirmDowngrade(null)}>
+            <div className="modal-box plan-modal" onClick={e => e.stopPropagation()}>
+              <div className="plan-modal-icon plan-modal-icon-warning">⚠</div>
+              <h2 className="plan-modal-title">Confirm Downgrade</h2>
+              <p className="plan-modal-message">
+                Your {planLabel(currentPlan)} features remain active until the end of your billing period.
+                After that, you'll switch to {planLabel(confirmDowngrade as PlanKey)}.
               </p>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <div className="plan-modal-actions">
+                <button className="btn btn-secondary" onClick={() => setConfirmDowngrade(null)}>
+                  Cancel
+                </button>
                 <button
                   className="btn btn-primary"
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
                   disabled={switching !== null}
                   onClick={() => handleSwitchPlan(confirmDowngrade)}
                 >
                   {switching === confirmDowngrade ? 'Scheduling…' : 'Confirm Downgrade'}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-                  onClick={() => setConfirmDowngrade(null)}
-                >
-                  Cancel
                 </button>
               </div>
             </div>
@@ -392,24 +458,6 @@ export default function PlanPage() {
 
         {!loading && !error && data && (
           <>
-            {/* ── Pending Downgrade Banner ── */}
-            {pendingPlan && (
-              <div className="flash flash-warning" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>
-                  Downgrade to <strong>{pendingPlan.charAt(0).toUpperCase() + pendingPlan.slice(1)}</strong> scheduled for <strong>{formatDate(planEffectiveAt)}</strong>.
-                  You keep your current {planLabel(currentPlan)} features until then.
-                </span>
-                <button
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', marginLeft: '1rem', whiteSpace: 'nowrap' }}
-                  disabled={switching !== null}
-                  onClick={handleCancelDowngrade}
-                >
-                  Cancel Downgrade
-                </button>
-              </div>
-            )}
-
             {/* ── Current Plan Card ── */}
             <div className="card plan-section">
               <div className="plan-hero">
@@ -447,6 +495,17 @@ export default function PlanPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Pending Downgrade Card ── */}
+            {pendingPlan && (
+              <PendingDowngradeCard
+                currentPlan={currentPlan}
+                pendingPlan={pendingPlan as PlanKey}
+                planEffectiveAt={planEffectiveAt}
+                switching={switching !== null}
+                onCancel={handleCancelDowngrade}
+              />
+            )}
 
             {/* ── Comparison Table ── */}
             <div className="card plan-section">
