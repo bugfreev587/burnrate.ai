@@ -165,6 +165,33 @@ func (s *StripeService) CreateCheckoutSession(ctx context.Context, tenantID uint
 	return sess.URL, nil
 }
 
+// VerifyCheckoutSession fetches a completed Checkout session from Stripe and
+// applies the plan change to the tenant. This is the synchronous fallback that
+// runs when the user is redirected back after payment, ensuring the plan is
+// updated even if the webhook hasn't arrived yet.
+func (s *StripeService) VerifyCheckoutSession(ctx context.Context, tenantID uint, sessionID string) error {
+	params := &stripe.CheckoutSessionParams{}
+	params.AddExpand("subscription")
+	params.Context = ctx
+
+	sess, err := checkoutsession.Get(sessionID, params)
+	if err != nil {
+		return fmt.Errorf("fetch checkout session: %w", err)
+	}
+
+	if sess.Status != stripe.CheckoutSessionStatusComplete {
+		return fmt.Errorf("checkout session not complete (status=%s)", sess.Status)
+	}
+
+	// Verify this session belongs to the requesting tenant
+	if sess.Metadata["tenant_id"] != fmt.Sprintf("%d", tenantID) {
+		return fmt.Errorf("session tenant_id mismatch")
+	}
+
+	// Apply via the same handler used by the webhook
+	return s.HandleCheckoutCompleted(ctx, sess)
+}
+
 // CreatePortalSession creates a Stripe Customer Portal session for managing the subscription.
 func (s *StripeService) CreatePortalSession(ctx context.Context, tenantID uint, returnURL string) (string, error) {
 	var tenant models.Tenant

@@ -197,6 +197,7 @@ func (s *Server) setupRoutes() {
 	billingAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
 	{
 		billingAdmin.POST("/checkout", s.handleBillingCheckout)
+		billingAdmin.POST("/checkout/verify", s.handleBillingCheckoutVerify)
 		billingAdmin.POST("/portal", s.handleBillingPortal)
 	}
 

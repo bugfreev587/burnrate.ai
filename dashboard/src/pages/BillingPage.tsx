@@ -98,17 +98,37 @@ export default function BillingPage() {
 
   const isAdmin = isSynced && hasPermission(role, 'admin')
 
-  // Handle Stripe return query params
+  // Handle Stripe return: verify checkout session to sync plan immediately
   useEffect(() => {
-    if (searchParams.get('success') === 'true') {
-      setFlash({ type: 'success', msg: 'Subscription activated! Your plan has been updated.' })
+    const sessionId = searchParams.get('session_id')
+    const canceled = searchParams.get('canceled')
+
+    if (sessionId && userId) {
+      // Verify the checkout session with the backend to sync plan
       setSearchParams({}, { replace: true })
-      setRefreshTick(t => t + 1)
-    } else if (searchParams.get('canceled') === 'true') {
+      fetch(`${API_BASE}/v1/billing/checkout/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.plan && data.plan !== 'free') {
+            setFlash({ type: 'success', msg: `Subscription activated! You are now on the ${data.plan.charAt(0).toUpperCase() + data.plan.slice(1)} plan.` })
+          } else {
+            setFlash({ type: 'success', msg: 'Subscription activated! Your plan has been updated.' })
+          }
+          setRefreshTick(t => t + 1)
+        })
+        .catch(() => {
+          setFlash({ type: 'success', msg: 'Payment received! Your plan will update shortly.' })
+          setRefreshTick(t => t + 1)
+        })
+    } else if (canceled === 'true') {
       setFlash({ type: 'error', msg: 'Checkout was canceled. No changes were made.' })
       setSearchParams({}, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, userId])
 
   // Fetch billing data
   useEffect(() => {
@@ -154,7 +174,7 @@ export default function BillingPage() {
         headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
         body: JSON.stringify({
           plan,
-          success_url: `${window.location.origin}/billing?success=true`,
+          success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/billing?canceled=true`,
         }),
       })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useUserSync } from '../hooks/useUserSync'
 import './PlanPage.css'
@@ -106,29 +106,48 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null)
   const [switching, setSwitching] = useState<PlanKey | null>(null)
   const [planFlash, setPlanFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-  const [refreshTick, setRefreshTick] = useState(0)
+  const [refreshTick] = useState(0)
 
   // Auth guard: wait until synced, then redirect non-owners
   if (isSynced && role !== 'owner') {
     return <Navigate to="/dashboard" replace />
   }
 
+  const navigate = useNavigate()
+
   async function handleSwitchPlan(newPlan: PlanKey) {
     if (!userId) return
+
+    // Free plan can't be checked-out via Stripe; paid plans use the billing checkout flow
+    if (newPlan === 'free') {
+      setPlanFlash({ type: 'error', msg: 'To downgrade, go to the Billing page and manage your subscription.' })
+      return
+    }
+
+    // If already on a paid plan, redirect to billing portal for plan changes
+    if (currentPlan !== 'free') {
+      navigate('/billing')
+      return
+    }
+
+    // Free → Paid: use Stripe Checkout
     setSwitching(newPlan)
     setPlanFlash(null)
     try {
-      const res = await fetch(`${API_BASE}/v1/owner/plan`, {
-        method: 'PATCH',
+      const res = await fetch(`${API_BASE}/v1/billing/checkout`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
-        body: JSON.stringify({ plan: newPlan }),
+        body: JSON.stringify({
+          plan: newPlan,
+          success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${window.location.origin}/plan`,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-      setPlanFlash({ type: 'success', msg: `Switched to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
-      setRefreshTick(t => t + 1)
+      window.location.href = d.url
     } catch (err) {
-      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to switch plan' })
+      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to start checkout' })
     } finally {
       setSwitching(null)
     }

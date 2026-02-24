@@ -113,6 +113,45 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// ── POST /v1/billing/checkout/verify ─────────────────────────────────────────
+
+type verifyCheckoutRequest struct {
+	SessionID string `json:"session_id" binding:"required"`
+}
+
+func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
+	if !s.stripeSvc.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req verifyCheckoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := s.stripeSvc.VerifyCheckoutSession(c.Request.Context(), caller.TenantID, req.SessionID); err != nil {
+		log.Printf("billing: checkout verify error for tenant %d: %v", caller.TenantID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to verify checkout session"})
+		return
+	}
+
+	// Return updated tenant info
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	c.JSON(http.StatusOK, gin.H{
+		"plan":        tenant.Plan,
+		"plan_status": tenant.PlanStatus,
+	})
+}
+
 // ── POST /v1/billing/portal ──────────────────────────────────────────────────
 
 type portalRequest struct {
