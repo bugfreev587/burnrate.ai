@@ -93,6 +93,9 @@ export default function ManagementPage() {
   const [copiedID, setCopiedID] = useState<string | null>(null)
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
+  // Limit-reached modal
+  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'members' } | null>(null)
+
   // Invite modal
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -481,6 +484,10 @@ export default function ManagementPage() {
                 <p className="section-desc">Manage who has access to your workspace.</p>
               </div>
               <button className="btn btn-primary" onClick={() => {
+                if (memberLimit !== null && users.length >= memberLimit) {
+                  setLimitModal({ type: 'members' })
+                  return
+                }
                 setInviteEmail(''); setInviteName(''); setInviteRole('viewer')
                 setInviteError(null); setShowInviteModal(true)
               }}>
@@ -583,7 +590,13 @@ export default function ManagementPage() {
                   Keys used by the AI code agent to report usage through the TokenGate gateway.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true) }}>
+              <button className="btn btn-primary" onClick={() => {
+                if (keyLimit !== null && apiKeys.length >= keyLimit) {
+                  setLimitModal({ type: 'keys' })
+                  return
+                }
+                setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true)
+              }}>
                 Create Key
               </button>
             </div>
@@ -927,6 +940,28 @@ export default function ManagementPage() {
                 disabled={!addKeyLabel.trim() || !addKeyValue.trim() || addingKey}>
                 {addingKey ? 'Adding…' : 'Add Key'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Limit Reached Modal ──────────────────────────────────────────── */}
+      {limitModal && (
+        <div className="modal-overlay" onClick={() => setLimitModal(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>{limitModal.type === 'keys' ? 'API Key Limit Reached' : 'Member Limit Reached'}</h2>
+            </div>
+            <div className="modal-body">
+              <p>
+                {limitModal.type === 'keys'
+                  ? `You've reached the maximum of ${keyLimit} API key${keyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to create more API keys.`
+                  : `You've reached the maximum of ${memberLimit} member${memberLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to invite more members.`}
+              </p>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setLimitModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => navigate('/plan')}>Go to Plan</button>
             </div>
           </div>
         </div>
