@@ -59,7 +59,7 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
         <div>
           <span className="budget-label">
             {b.period_type.charAt(0).toUpperCase() + b.period_type.slice(1)} Budget
-            {b.provider ? ` · ${b.provider.charAt(0).toUpperCase() + b.provider.slice(1)}` : ' · All Providers'}
+            <span style={{ color, fontSize: '0.85em' }}>{b.provider ? ` · ${b.provider.charAt(0).toUpperCase() + b.provider.slice(1)}` : ' · All Providers'}</span>
             {b.scope_type === 'api_key' && b.scope_id && (
               <span className="budget-scope"> · key {b.scope_id.slice(0, 8)}…</span>
             )}

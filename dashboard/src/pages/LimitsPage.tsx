@@ -222,7 +222,15 @@ export default function LimitsPage() {
                         </div>
                       </td>
                     </tr>
-                  ) : spendLimits.map(l => {
+                  ) : [...spendLimits].sort((a, b) => {
+                    const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
+                    const pa = periodOrder[a.period_type] ?? 9
+                    const pb = periodOrder[b.period_type] ?? 9
+                    if (pa !== pb) return pa - pb
+                    if (!a.provider && b.provider) return -1
+                    if (a.provider && !b.provider) return 1
+                    return a.provider.localeCompare(b.provider)
+                  }).map(l => {
                     const pct = l.pct_used
                     const thresholdNum = parseFloat(l.alert_threshold) || 80
                     const barClass = pct >= 100 ? 'usage-exceeded' : pct >= thresholdNum ? 'usage-high' : ''
