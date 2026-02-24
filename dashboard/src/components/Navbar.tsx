@@ -41,6 +41,10 @@ export default function Navbar() {
           ) : isSignedIn ? (
             <>
               <Link to="/dashboard" className="navbar-link">Dashboard</Link>
+              {canAccessAdmin && <Link to="/management" className="navbar-link">Management</Link>}
+              {canAccessAdmin && <Link to="/limits" className="navbar-link">Limits</Link>}
+              {canAccessAdmin && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
+              {isOwner && <Link to="/plan" className="navbar-link">Plan</Link>}
               <div className="user-menu" ref={menuRef}>
                 <button
                   className="user-avatar-btn"
@@ -69,26 +73,6 @@ export default function Navbar() {
                     <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
                       Profile
                     </Link>
-                    {canAccessAdmin && (
-                      <Link to="/management" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                        Management
-                      </Link>
-                    )}
-                    {canAccessAdmin && (
-                      <Link to="/limits" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                        Limits
-                      </Link>
-                    )}
-                    {canAccessAdmin && (
-                      <Link to="/pricing" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                        Pricing Config
-                      </Link>
-                    )}
-                    {isOwner && (
-                      <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                        Plan
-                      </Link>
-                    )}
                     <div className="dropdown-divider" />
                     <SignOutButton>
                       <button className="dropdown-item dropdown-signout">Sign Out</button>
