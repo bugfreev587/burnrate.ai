@@ -10,13 +10,18 @@ import (
 // Tenant is the top-level multi-tenant boundary.
 // Every user, API key, provider key, and usage log belongs to exactly one tenant.
 type Tenant struct {
-	ID         uint      `gorm:"primaryKey"`
-	Name       string
-	Slug       string    `gorm:"uniqueIndex;size:40"`   // path slug e.g. "acme"; 3–40 chars, ^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$
-	Status     string    `gorm:"default:active"`        // active | suspended
-	Plan       string    `gorm:"default:free"` // free | pro | team | business
-	MaxAPIKeys int       `gorm:"default:1"`    // plan-derived; use GetPlanLimits for enforcement
-	CreatedAt  time.Time
+	ID                   uint       `gorm:"primaryKey"`
+	Name                 string
+	Slug                 string     `gorm:"uniqueIndex;size:40"`   // path slug e.g. "acme"; 3–40 chars, ^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$
+	Status               string     `gorm:"default:active"`        // active | suspended
+	Plan                 string     `gorm:"default:free"` // free | pro | team | business
+	MaxAPIKeys           int        `gorm:"default:1"`    // plan-derived; use GetPlanLimits for enforcement
+	StripeCustomerID     string     `gorm:"column:stripe_customer_id;index"`
+	StripeSubscriptionID string     `gorm:"column:stripe_subscription_id"`
+	PlanStatus           string     `gorm:"column:plan_status;default:active"`
+	CurrentPeriodEnd     *time.Time `gorm:"column:current_period_end"`
+	BillingEmail         string     `gorm:"column:billing_email"`
+	CreatedAt            time.Time
 }
 
 // User represents a dashboard user synced from Clerk on first sign-in.
@@ -44,6 +49,21 @@ const (
 	StatusSuspended = "suspended"
 	StatusPending   = "pending"
 )
+
+// PlanStatus constants (billing subscription status, independent from tenant Status).
+const (
+	PlanStatusActive     = "active"
+	PlanStatusIncomplete = "incomplete"
+	PlanStatusPastDue    = "past_due"
+	PlanStatusCanceled   = "canceled"
+)
+
+// ProcessedStripeEvent records webhook events already handled (idempotency guard).
+type ProcessedStripeEvent struct {
+	ID          uint      `gorm:"primaryKey"`
+	EventID     string    `gorm:"column:event_id;uniqueIndex;size:255"`
+	ProcessedAt time.Time `gorm:"autoCreateTime"`
+}
 
 func RoleLevel(role string) int {
 	switch role {

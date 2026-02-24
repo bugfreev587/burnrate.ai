@@ -99,11 +99,19 @@ func main() {
 	// Rate limiter
 	rateLimiter := ratelimit.NewLimiter(postgresDB.GetDB(), rdb)
 
+	// Stripe billing service
+	stripeSvc := services.NewStripeService(postgresDB.GetDB(), cfg.Stripe)
+	if stripeSvc.IsConfigured() {
+		log.Println("✓ Stripe billing configured")
+	} else {
+		log.Println("⚠ Stripe not configured — billing endpoints will return 503/empty")
+	}
+
 	// Proxy handler
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)

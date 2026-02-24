@@ -32,12 +32,22 @@ type SecurityCfg struct {
 	FingerprintTTLDays       int    `yaml:"fingerprint_ttl_days"`
 }
 
+type StripeCfg struct {
+	SecretKey             string `yaml:"secret_key"`
+	WebhookSecret         string `yaml:"webhook_secret"`
+	PriceProMonthly       string `yaml:"price_pro_monthly"`
+	PriceTeamMonthly      string `yaml:"price_team_monthly"`
+	PriceBusinessMonthly  string `yaml:"price_business_monthly"`
+	PortalConfigurationID string `yaml:"portal_configuration_id"`
+}
+
 type Config struct {
 	Environment string      `yaml:"environment"`
 	Server      ServerCfg   `yaml:"server"`
 	Postgres    PostgresCfg `yaml:"postgres"`
 	Redis       RedisCfg    `yaml:"redis"`
 	Security    SecurityCfg `yaml:"security"`
+	Stripe      StripeCfg   `yaml:"stripe"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -65,6 +75,24 @@ func applyEnvOverrides(cfg *Config) {
 	// Setting it to "*" allows all origins (useful during development).
 	if v := os.Getenv("PROVIDER_KEY_ENCRYPTION_KEY"); v != "" {
 		cfg.Security.ProviderKeyEncryptionKey = v
+	}
+	if v := os.Getenv("STRIPE_SECRET_KEY"); v != "" {
+		cfg.Stripe.SecretKey = v
+	}
+	if v := os.Getenv("STRIPE_WEBHOOK_SECRET"); v != "" {
+		cfg.Stripe.WebhookSecret = v
+	}
+	if v := os.Getenv("STRIPE_PRICE_PRO_MONTHLY"); v != "" {
+		cfg.Stripe.PriceProMonthly = v
+	}
+	if v := os.Getenv("STRIPE_PRICE_TEAM_MONTHLY"); v != "" {
+		cfg.Stripe.PriceTeamMonthly = v
+	}
+	if v := os.Getenv("STRIPE_PRICE_BUSINESS_MONTHLY"); v != "" {
+		cfg.Stripe.PriceBusinessMonthly = v
+	}
+	if v := os.Getenv("STRIPE_PORTAL_CONFIGURATION_ID"); v != "" {
+		cfg.Stripe.PortalConfigurationID = v
 	}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		if v == "*" {

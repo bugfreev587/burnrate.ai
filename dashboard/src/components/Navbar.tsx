@@ -81,6 +81,9 @@ export default function Navbar() {
                       Plan
                     </Link>
                   )}
+                  <Link to="/billing" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                    Billing
+                  </Link>
                   <div className="dropdown-divider" />
                   <SignOutButton>
                     <button className="dropdown-item dropdown-signout">Sign Out</button>

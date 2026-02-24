@@ -27,6 +27,7 @@ type Server struct {
 	providerKeySvc *services.ProviderKeyService
 	proxyHandler   *proxy.ProxyHandler
 	rateLimiter    *ratelimit.Limiter
+	stripeSvc      *services.StripeService
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
 	httpServer     *http.Server
@@ -43,6 +44,7 @@ func NewServer(
 	providerKeySvc *services.ProviderKeyService,
 	proxyHandler *proxy.ProxyHandler,
 	rateLimiter *ratelimit.Limiter,
+	stripeSvc *services.StripeService,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -60,6 +62,7 @@ func NewServer(
 		providerKeySvc: providerKeySvc,
 		proxyHandler:   proxyHandler,
 		rateLimiter:    rateLimiter,
+		stripeSvc:      stripeSvc,
 		rbac:           rbac,
 		router:         router,
 		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
@@ -182,6 +185,24 @@ func (s *Server) setupRoutes() {
 		admin.DELETE("/rate-limits/:id", s.handleDeleteRateLimit)
 	}
 
+	// ─── Billing (viewer+ for read, admin+ for mutations) ───────────────────
+	billingViewer := s.router.Group("/v1/billing")
+	billingViewer.Use(s.rbac.RequireUser(), s.rbac.RequireViewer())
+	{
+		billingViewer.GET("/status", s.handleBillingStatus)
+		billingViewer.GET("/invoices", s.handleBillingInvoices)
+	}
+
+	billingAdmin := s.router.Group("/v1/billing")
+	billingAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
+	{
+		billingAdmin.POST("/checkout", s.handleBillingCheckout)
+		billingAdmin.POST("/portal", s.handleBillingPortal)
+	}
+
+	// Billing webhook (public — signature-verified in handler)
+	s.router.POST("/v1/billing/webhook", s.handleBillingWebhook)
+
 	// ─── Owner only ──────────────────────────────────────────────────────────
 	owner := s.router.Group("/v1/owner")
 	owner.Use(s.rbac.RequireUser(), s.rbac.RequireOwner())
@@ -191,7 +212,13 @@ func (s *Server) setupRoutes() {
 		owner.POST("/transfer-ownership", s.handleTransferOwnership)
 		owner.GET("/settings", s.handleGetTenantSettings)
 		owner.PATCH("/settings", s.handleUpdateTenantSettings)
-		owner.PATCH("/plan", s.handleChangePlan)
+		// Deprecated: use POST /v1/billing/checkout for plan changes via Stripe
+		owner.PATCH("/plan", func(c *gin.Context) {
+			c.JSON(http.StatusGone, gin.H{
+				"error":   "deprecated",
+				"message": "Plan changes are now managed via Stripe billing. Use POST /v1/billing/checkout to subscribe or POST /v1/billing/portal to manage your subscription.",
+			})
+		})
 	}
 
 	// ─── Internal / platform-admin ───────────────────────────────────────────
