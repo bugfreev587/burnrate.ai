@@ -41,7 +41,6 @@ export default function Navbar() {
             {canAccessAdmin && <Link to="/management" className="navbar-link">Management</Link>}
             {canAccessAdmin && <Link to="/limits" className="navbar-link">Limits</Link>}
             {canAccessAdmin && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
-            {isOwner && <Link to="/plan" className="navbar-link">Plan</Link>}
           </div>
         )}
 
@@ -77,6 +76,11 @@ export default function Navbar() {
                   <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
                     Profile
                   </Link>
+                  {isOwner && (
+                    <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                      Plan
+                    </Link>
+                  )}
                   <div className="dropdown-divider" />
                   <SignOutButton>
                     <button className="dropdown-item dropdown-signout">Sign Out</button>
