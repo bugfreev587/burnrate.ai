@@ -35,52 +35,55 @@ export default function Navbar() {
           TokenGate
         </Link>
 
+        {isLoaded && isSignedIn && (
+          <div className="navbar-center">
+            <Link to="/dashboard" className="navbar-link">Dashboard</Link>
+            {canAccessAdmin && <Link to="/management" className="navbar-link">Management</Link>}
+            {canAccessAdmin && <Link to="/limits" className="navbar-link">Limits</Link>}
+            {canAccessAdmin && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
+            {isOwner && <Link to="/plan" className="navbar-link">Plan</Link>}
+          </div>
+        )}
+
         <div className="navbar-right">
           {!isLoaded ? (
             <span className="navbar-text-muted">Loading...</span>
           ) : isSignedIn ? (
-            <>
-              <Link to="/dashboard" className="navbar-link">Dashboard</Link>
-              {canAccessAdmin && <Link to="/management" className="navbar-link">Management</Link>}
-              {canAccessAdmin && <Link to="/limits" className="navbar-link">Limits</Link>}
-              {canAccessAdmin && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
-              {isOwner && <Link to="/plan" className="navbar-link">Plan</Link>}
-              <div className="user-menu" ref={menuRef}>
-                <button
-                  className="user-avatar-btn"
-                  onClick={() => setShowMenu(v => !v)}
-                  aria-label="User menu"
-                >
-                  {user?.imageUrl ? (
-                    <img src={user.imageUrl} alt="avatar" className="avatar-img" />
-                  ) : (
-                    <div className="avatar-placeholder">
-                      {user?.firstName?.[0] ?? user?.emailAddresses[0]?.emailAddress?.[0] ?? 'U'}
-                    </div>
-                  )}
-                </button>
-                {showMenu && (
-                  <div className="dropdown">
-                    <div className="dropdown-header">
-                      <p className="dropdown-name">
-                        {user?.firstName && user?.lastName
-                          ? `${user.firstName} ${user.lastName}`
-                          : user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? 'User'}
-                      </p>
-                      <p className="dropdown-email">{user?.emailAddresses[0]?.emailAddress}</p>
-                    </div>
-                    <div className="dropdown-divider" />
-                    <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                      Profile
-                    </Link>
-                    <div className="dropdown-divider" />
-                    <SignOutButton>
-                      <button className="dropdown-item dropdown-signout">Sign Out</button>
-                    </SignOutButton>
+            <div className="user-menu" ref={menuRef}>
+              <button
+                className="user-avatar-btn"
+                onClick={() => setShowMenu(v => !v)}
+                aria-label="User menu"
+              >
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt="avatar" className="avatar-img" />
+                ) : (
+                  <div className="avatar-placeholder">
+                    {user?.firstName?.[0] ?? user?.emailAddresses[0]?.emailAddress?.[0] ?? 'U'}
                   </div>
                 )}
-              </div>
-            </>
+              </button>
+              {showMenu && (
+                <div className="dropdown">
+                  <div className="dropdown-header">
+                    <p className="dropdown-name">
+                      {user?.firstName && user?.lastName
+                        ? `${user.firstName} ${user.lastName}`
+                        : user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? 'User'}
+                    </p>
+                    <p className="dropdown-email">{user?.emailAddresses[0]?.emailAddress}</p>
+                  </div>
+                  <div className="dropdown-divider" />
+                  <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                    Profile
+                  </Link>
+                  <div className="dropdown-divider" />
+                  <SignOutButton>
+                    <button className="dropdown-item dropdown-signout">Sign Out</button>
+                  </SignOutButton>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <Link to="/sign-in" className="navbar-link">Sign In</Link>
