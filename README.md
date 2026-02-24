@@ -260,7 +260,7 @@ api-server/
 | `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `mode` (CLAUDE_CODE_PASSTHROUGH\|ANTHROPIC_API_BYOK\|OPENAI_CODEX_PASSTHROUGH\|OPENAI_API_BYOK), `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
 | `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id`, `policy_version` (bumped on every activate/rotate) |
-| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id` |
+| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id`, `api_usage_billed` (bool — `true` for BYOK billable requests, `false` for passthrough/subscription) |
 | `Provider` | `id`, `name`, `display_name`, `currency` |
 | `ModelDef` | `id`, `provider_id`, `model_name`, `billing_unit_type` |
 | `ModelPricing` | `id`, `model_id`, `price_type`, `price_per_unit` (decimal/1M tokens), `effective_from`, `effective_to` |
@@ -449,7 +449,7 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | Method | Path | Description |
 |---|---|---|
 | GET | `/v1/usage` | List tenant usage logs |
-| GET | `/v1/usage/summary` | Aggregated stats *(not yet implemented)* |
+| GET | `/v1/usage/summary` | Aggregated stats: cost overview (today/yesterday/this_month/last_month/cumulative), token totals, by-model breakdown, daily trend. Cost overview cards, token totals, by-model breakdown, and daily trend filter by `api_usage_billed=true` (BYOK requests only). Supports `start_date`/`end_date` query params + `tz` timezone. |
 | GET | `/v1/cost-ledger` | Paginated cost ledger (`?page=1&limit=50&from=&to=`) |
 | GET | `/v1/usage/forecast` | Projected monthly spend based on daily average |
 | GET | `/v1/dashboard/config` | Dashboard config (plan-aware data retention window) |
@@ -568,7 +568,7 @@ dashboard/
 │   │   ├── PublicPricingPage.css
 │   │   └── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
 │   ├── components/
-│   │   ├── Navbar.tsx           # Dashboard top nav + user menu (dark theme, logo-dark.svg)
+│   │   ├── Navbar.tsx           # Dashboard top nav + user avatar dropdown (Profile, Plan [owner], Sign Out)
 │   │   ├── APIKeyModal.tsx      # One-time secret display
 │   │   ├── DateRangeSelector.tsx# Plan-aware date range picker (presets: 1d–90d + custom)
 │   │   ├── InactivityGuard.tsx  # Auto sign-out after 10 min idle; 2-min warning modal
@@ -604,9 +604,9 @@ dashboard/
 
 - **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
-- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note, and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle).
+- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note (filters by BYOK billable requests only), budget status bars sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical) showing provider name and correct action labels (Alert only / Block only / Alert + Block), and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Non-billable (subscription) requests display $0.00 cost.
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is hidden for `CLAUDE_CODE_PASSTHROUGH` mode keys.
-- **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (Anthropic / OpenAI). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
+- **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (All Providers / Anthropic / OpenAI) via dropdown selectors. Spend limits table is sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
 - **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
@@ -614,7 +614,7 @@ dashboard/
 ### Key hooks
 
 - **`useUserSync`** – Runs once after Clerk sign-in. Calls `POST /v1/auth/sync`, stores `userId`, `tenantId`, `role`, and `status` in state and `localStorage`. Handles three cases: existing user, pending email invitation, and brand-new user (creates tenant).
-- **`useUsageData`** – Calls `GET /v1/usage` with date range parameters, returns logs + refresh function. Supports `from`/`to` date filtering.
+- **`useUsageData`** – Calls `GET /v1/usage`, `GET /v1/usage/summary`, and `GET /v1/admin/budget` in parallel with date range and timezone parameters. Returns logs, summary (cost periods, token totals, by-model breakdown, daily trend), budget statuses, and a refresh function.
 - **`useDashboardConfig`** – Fetches plan-aware dashboard config (`GET /v1/dashboard/config`) including data retention window for the tenant's plan tier.
 - **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend, percentage used, and optional provider scope.
 - **`useRateLimits`** – CRUD hook for rate limits (`GET/PUT/DELETE /v1/admin/rate-limits`). Includes current usage from Redis counters.
@@ -767,4 +767,4 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Provider-aware model routing (OpenAI / Anthropic / Gemini) | ✅ Live |
 | SSE streaming proxy with token extraction | ✅ Live |
 | Async usage processing via Redis Streams | ✅ Live |
-| Usage summary / aggregation | 🚧 Not implemented |
+| Usage summary / aggregation (`/v1/usage/summary`) | ✅ Live |
