@@ -243,25 +243,58 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
 
 const RECENT_DEFAULT_LIMIT = 10
 
+type BillingFilter = 'all' | 'api_billed' | 'subscription'
+
 function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'] }) {
   const [expanded, setExpanded] = useState(false)
+  const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
 
-  if (logs.length === 0) {
+  const filtered = logs.filter(l => {
+    if (billingFilter === 'api_billed') return l.api_usage_billed
+    if (billingFilter === 'subscription') return !l.api_usage_billed
+    return true
+  })
+
+  if (filtered.length === 0) {
     return (
-      <div className="empty-state">
-        <p>No recent requests.</p>
-        <p className="empty-hint">
-          Configure your Claude Code client to report usage via the gateway API.
-        </p>
-      </div>
+      <>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+          <select
+            value={billingFilter}
+            onChange={e => { setBillingFilter(e.target.value as BillingFilter); setExpanded(false) }}
+            style={{ fontSize: '0.85rem' }}
+          >
+            <option value="all">All Requests</option>
+            <option value="api_billed">API Usage Billed</option>
+            <option value="subscription">Monthly Subscription</option>
+          </select>
+        </div>
+        <div className="empty-state">
+          <p>No recent requests.</p>
+          <p className="empty-hint">
+            Configure your Claude Code client to report usage via the gateway API.
+          </p>
+        </div>
+      </>
     )
   }
 
-  const hasMore = logs.length > RECENT_DEFAULT_LIMIT
-  const visible = expanded ? logs : logs.slice(0, RECENT_DEFAULT_LIMIT)
+  const hasMore = filtered.length > RECENT_DEFAULT_LIMIT
+  const visible = expanded ? filtered : filtered.slice(0, RECENT_DEFAULT_LIMIT)
 
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+        <select
+          value={billingFilter}
+          onChange={e => { setBillingFilter(e.target.value as BillingFilter); setExpanded(false) }}
+          style={{ fontSize: '0.85rem' }}
+        >
+          <option value="all">All Requests</option>
+          <option value="api_billed">API Usage Billed</option>
+          <option value="subscription">Monthly Subscription</option>
+        </select>
+      </div>
       <div className="table-wrapper">
         <table className="usage-table">
           <thead>
@@ -292,13 +325,13 @@ function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'
       {hasMore && (
         <div className="recent-footer">
           <span className="recent-count">
-            Showing {visible.length} of {logs.length}
+            Showing {visible.length} of {filtered.length}
           </span>
           <button
             className="btn-link"
             onClick={() => setExpanded(e => !e)}
           >
-            {expanded ? '↑ Show less' : `↓ Show all ${logs.length}`}
+            {expanded ? '↑ Show less' : `↓ Show all ${filtered.length}`}
           </button>
         </div>
       )}
@@ -522,6 +555,7 @@ export default function Dashboard() {
             <div className="card">
               <RecentRequests logs={logs} />
             </div>
+
           </>
         )}
       </div>
