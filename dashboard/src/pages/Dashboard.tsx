@@ -245,9 +245,8 @@ const RECENT_DEFAULT_LIMIT = 10
 
 type BillingFilter = 'all' | 'api_billed' | 'subscription'
 
-function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'] }) {
+function RecentRequests({ logs, billingFilter }: { logs: ReturnType<typeof useUsageData>['logs']; billingFilter: BillingFilter }) {
   const [expanded, setExpanded] = useState(false)
-  const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
 
   const filtered = logs.filter(l => {
     if (billingFilter === 'api_billed') return l.api_usage_billed
@@ -257,25 +256,12 @@ function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'
 
   if (filtered.length === 0) {
     return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-          <select
-            value={billingFilter}
-            onChange={e => { setBillingFilter(e.target.value as BillingFilter); setExpanded(false) }}
-            style={{ fontSize: '0.85rem' }}
-          >
-            <option value="all">All Requests</option>
-            <option value="api_billed">API Usage Billed</option>
-            <option value="subscription">Monthly Subscription</option>
-          </select>
-        </div>
-        <div className="empty-state">
-          <p>No recent requests.</p>
-          <p className="empty-hint">
-            Configure your Claude Code client to report usage via the gateway API.
-          </p>
-        </div>
-      </>
+      <div className="empty-state">
+        <p>No recent requests.</p>
+        <p className="empty-hint">
+          Configure your Claude Code client to report usage via the gateway API.
+        </p>
+      </div>
     )
   }
 
@@ -284,17 +270,6 @@ function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-        <select
-          value={billingFilter}
-          onChange={e => { setBillingFilter(e.target.value as BillingFilter); setExpanded(false) }}
-          style={{ fontSize: '0.85rem' }}
-        >
-          <option value="all">All Requests</option>
-          <option value="api_billed">API Usage Billed</option>
-          <option value="subscription">Monthly Subscription</option>
-        </select>
-      </div>
       <div className="table-wrapper">
         <table className="usage-table">
           <thead>
@@ -315,7 +290,7 @@ function RecentRequests({ logs }: { logs: ReturnType<typeof useUsageData>['logs'
                 <td className="text-muted">{log.provider || '—'}</td>
                 <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
                 <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
-                <td className="num-cell">{fmt$(log.cost)}</td>
+                <td className="num-cell">{log.api_usage_billed ? fmt$(log.cost) : '$0.00'}</td>
               </tr>
             ))}
           </tbody>
@@ -394,6 +369,7 @@ export default function Dashboard() {
   const { user } = useUser()
   const { config } = useDashboardConfig()
   const [dateRange, setDateRange] = useState<DateRange>({ preset: '30d' })
+  const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const { logs, summary, budgets, appliedRange, loading, error, refresh } = useUsageData(dateRange)
 
   const s = summary
@@ -551,9 +527,27 @@ export default function Dashboard() {
             </div>
 
             {/* ── Recent Requests ── */}
-            <div className="dash-section-title">Recent Requests</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="dash-section-title" style={{ margin: '1.75rem 0 0.75rem' }}>Recent Requests</div>
+              <select
+                value={billingFilter}
+                onChange={e => setBillingFilter(e.target.value as BillingFilter)}
+                style={{
+                  fontSize: '0.75rem',
+                  background: 'var(--color-bg)',
+                  color: 'var(--color-text-muted)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '4px',
+                  padding: '0.25rem 0.5rem',
+                }}
+              >
+                <option value="all">All Requests</option>
+                <option value="api_billed">API Usage Billed</option>
+                <option value="subscription">Monthly Subscription</option>
+              </select>
+            </div>
             <div className="card">
-              <RecentRequests logs={logs} />
+              <RecentRequests logs={logs} billingFilter={billingFilter} />
             </div>
 
           </>
