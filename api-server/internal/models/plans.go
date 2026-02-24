@@ -93,3 +93,30 @@ func ValidPlan(plan string) bool {
 func AllPlans() []string {
 	return []string{PlanFree, PlanPro, PlanTeam, PlanBusiness}
 }
+
+// PlanLevel returns the numeric tier level for a plan (higher = more features).
+// Used to determine whether a plan change is an upgrade or downgrade.
+func PlanLevel(plan string) int {
+	switch plan {
+	case PlanFree:
+		return 0
+	case PlanPro:
+		return 1
+	case PlanTeam:
+		return 2
+	case PlanBusiness:
+		return 3
+	default:
+		return 0
+	}
+}
+
+// IsUpgrade returns true when changing from currentPlan to newPlan is an upgrade.
+func IsUpgrade(currentPlan, newPlan string) bool {
+	return PlanLevel(newPlan) > PlanLevel(currentPlan)
+}
+
+// IsDowngrade returns true when changing from currentPlan to newPlan is a downgrade.
+func IsDowngrade(currentPlan, newPlan string) bool {
+	return PlanLevel(newPlan) < PlanLevel(currentPlan)
+}

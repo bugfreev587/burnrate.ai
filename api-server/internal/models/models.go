@@ -21,6 +21,8 @@ type Tenant struct {
 	PlanStatus           string     `gorm:"column:plan_status;default:active"`
 	CurrentPeriodEnd     *time.Time `gorm:"column:current_period_end"`
 	BillingEmail         string     `gorm:"column:billing_email"`
+	PendingPlan          string     `gorm:"column:pending_plan"`           // scheduled downgrade target (empty = no pending change)
+	PlanEffectiveAt      *time.Time `gorm:"column:plan_effective_at"`      // when the pending plan change takes effect
 	CreatedAt            time.Time
 }
 

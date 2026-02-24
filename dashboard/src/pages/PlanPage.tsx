@@ -10,6 +10,8 @@ const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 type PlanKey = 'free' | 'pro' | 'team' | 'business'
 
+const PLAN_LEVELS: Record<PlanKey, number> = { free: 0, pro: 1, team: 2, business: 3 }
+
 interface PlanLimits {
   max_api_keys: number
   max_members: number
@@ -25,10 +27,18 @@ interface OwnerSettings {
   plan_limits: PlanLimits
 }
 
+interface BillingStatus {
+  plan: string
+  pending_plan: string
+  plan_effective_at: string | null
+  has_subscription: boolean
+}
+
 interface PlanData {
   settings: OwnerSettings
   keyCount: number
   memberCount: number
+  billing: BillingStatus | null
 }
 
 // ─── Static plan comparison data ─────────────────────────────────────────
@@ -60,6 +70,20 @@ function formatRetention(days: number): string {
   if (days === -1) return 'Unlimited'
   if (days === 365) return '1 year'
   return `${days}d`
+}
+
+function formatDate(ts: string | null | undefined): string {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function isUpgrade(from: PlanKey, to: PlanKey): boolean {
+  return PLAN_LEVELS[to] > PLAN_LEVELS[from]
+}
+
+function isDowngrade(from: PlanKey, to: PlanKey): boolean {
+  return PLAN_LEVELS[to] < PLAN_LEVELS[from]
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────
@@ -106,6 +130,8 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null)
   const [switching, setSwitching] = useState<PlanKey | null>(null)
   const [planFlash, setPlanFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [confirmDowngrade, setConfirmDowngrade] = useState<PlanKey | null>(null)
+
   // Auth guard: wait until synced, then redirect non-owners
   if (isSynced && role !== 'owner') {
     return <Navigate to="/dashboard" replace />
@@ -113,21 +139,27 @@ export default function PlanPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
+  const currentPlan = (data?.settings.plan ?? 'free') as PlanKey
+  const pendingPlan = data?.billing?.pending_plan || ''
+  const planEffectiveAt = data?.billing?.plan_effective_at || null
+
   async function handleSwitchPlan(newPlan: PlanKey) {
     if (!userId) return
     setSwitching(newPlan)
     setPlanFlash(null)
 
     try {
-      if (newPlan === 'free' && currentPlan !== 'free') {
-        // Paid → Free: cancel the Stripe subscription
-        const res = await fetch(`${API_BASE}/v1/billing/cancel`, {
+      if (isDowngrade(currentPlan, newPlan)) {
+        // Schedule downgrade at period end
+        const res = await fetch(`${API_BASE}/v1/billing/downgrade`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+          body: JSON.stringify({ plan: newPlan }),
         })
         const d = await res.json()
         if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-        setPlanFlash({ type: 'success', msg: 'Subscription canceled. You are now on the Free plan.' })
+        const effectiveDate = d.plan_effective_at ? formatDate(d.plan_effective_at) : 'end of billing period'
+        setPlanFlash({ type: 'success', msg: `Downgrade to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} scheduled for ${effectiveDate}. You keep your current features until then.` })
         setRefreshTrigger(t => t + 1)
       } else if (currentPlan === 'free' && newPlan !== 'free') {
         // Free → Paid: Stripe Checkout
@@ -144,8 +176,8 @@ export default function PlanPage() {
         if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
         window.location.href = d.url
         return // navigating away
-      } else if (currentPlan !== 'free' && newPlan !== 'free') {
-        // Paid → different Paid: update subscription via API
+      } else if (isUpgrade(currentPlan, newPlan)) {
+        // Paid → higher Paid: immediate upgrade via API
         const res = await fetch(`${API_BASE}/v1/billing/change-plan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
@@ -153,11 +185,33 @@ export default function PlanPage() {
         })
         const d = await res.json()
         if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
-        setPlanFlash({ type: 'success', msg: `Switched to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
+        setPlanFlash({ type: 'success', msg: `Upgraded to ${newPlan.charAt(0).toUpperCase() + newPlan.slice(1)} plan.` })
         setRefreshTrigger(t => t + 1)
       }
     } catch (err) {
       setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to switch plan' })
+    } finally {
+      setSwitching(null)
+      setConfirmDowngrade(null)
+    }
+  }
+
+  async function handleCancelDowngrade() {
+    if (!userId) return
+    setSwitching('free' as PlanKey) // just to show loading state
+    setPlanFlash(null)
+
+    try {
+      const res = await fetch(`${API_BASE}/v1/billing/downgrade/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
+      setPlanFlash({ type: 'success', msg: 'Scheduled downgrade has been canceled. You will stay on your current plan.' })
+      setRefreshTrigger(t => t + 1)
+    } catch (err) {
+      setPlanFlash({ type: 'error', msg: err instanceof Error ? err.message : 'Failed to cancel downgrade' })
     } finally {
       setSwitching(null)
     }
@@ -172,10 +226,11 @@ export default function PlanPage() {
       setLoading(true)
       setError(null)
       try {
-        const [settingsRes, keysRes, usersRes] = await Promise.all([
+        const [settingsRes, keysRes, usersRes, billingRes] = await Promise.all([
           fetch(`${API_BASE}/v1/owner/settings`, { headers }),
           fetch(`${API_BASE}/v1/admin/api_keys`, { headers }),
           fetch(`${API_BASE}/v1/admin/users`, { headers }),
+          fetch(`${API_BASE}/v1/billing/status`, { headers }),
         ])
 
         if (!settingsRes.ok) throw new Error(`Settings fetch failed: HTTP ${settingsRes.status}`)
@@ -188,10 +243,13 @@ export default function PlanPage() {
           usersRes.json(),
         ])
 
+        const billingData = billingRes.ok ? await billingRes.json() : null
+
         setData({
           settings,
           keyCount: Array.isArray(keysData) ? keysData.length : (keysData.count ?? keysData.total ?? 0),
           memberCount: Array.isArray(usersData) ? usersData.length : (usersData.total ?? usersData.count ?? 0),
+          billing: billingData,
         })
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load plan data')
@@ -203,9 +261,68 @@ export default function PlanPage() {
     load()
   }, [isSynced, userId, refreshTrigger])
 
-  const currentPlan = data?.settings.plan ?? 'free'
   const limits = data?.settings.plan_limits
   const isNotBusiness = currentPlan !== 'business'
+
+  // Button renderer for the comparison table
+  function renderPlanButton(planKey: PlanKey) {
+    if (planKey === currentPlan && !pendingPlan) {
+      return <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current</span>
+    }
+
+    if (planKey === 'business') {
+      return (
+        <a href="mailto:sales@tokengate.to"
+           className="btn btn-secondary"
+           style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'inline-block' }}>
+          Contact Sales
+        </a>
+      )
+    }
+
+    // If this plan is the pending downgrade target
+    if (pendingPlan && planKey === pendingPlan) {
+      return (
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-warning, #fb923c)' }}>
+          Switching {formatDate(planEffectiveAt)}
+        </span>
+      )
+    }
+
+    // If there's a pending downgrade and this is the current plan
+    if (pendingPlan && planKey === currentPlan) {
+      return <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current (until {formatDate(planEffectiveAt)})</span>
+    }
+
+    // Determine if upgrade or downgrade
+    const isDown = isDowngrade(currentPlan, planKey)
+
+    if (isDown) {
+      // Downgrade button — requires confirmation
+      return (
+        <button
+          className="btn btn-secondary"
+          style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+          disabled={switching !== null || !!pendingPlan}
+          onClick={() => setConfirmDowngrade(planKey)}
+        >
+          {switching === planKey ? 'Scheduling…' : `Downgrade to ${PLANS.find(p => p.key === planKey)!.label}`}
+        </button>
+      )
+    }
+
+    // Upgrade button
+    return (
+      <button
+        className="btn btn-primary"
+        style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+        disabled={switching !== null}
+        onClick={() => handleSwitchPlan(planKey)}
+      >
+        {switching === planKey ? 'Upgrading…' : `Upgrade to ${PLANS.find(p => p.key === planKey)!.label}`}
+      </button>
+    )
+  }
 
   return (
     <div className="page-container">
@@ -242,8 +359,57 @@ export default function PlanPage() {
           </div>
         )}
 
+        {/* Downgrade confirmation dialog */}
+        {confirmDowngrade && (
+          <div className="flash flash-warning" style={{ marginBottom: '1rem' }}>
+            <div>
+              <strong>Confirm downgrade to {confirmDowngrade.charAt(0).toUpperCase() + confirmDowngrade.slice(1)}</strong>
+              <p style={{ margin: '0.5rem 0', fontSize: '0.85rem' }}>
+                Your {planLabel(currentPlan)} features will remain active until the end of your current billing period
+                {planEffectiveAt ? ` (${formatDate(planEffectiveAt)})` : ''}.
+                After that, your plan will switch to {planLabel(confirmDowngrade as PlanKey)}.
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                  disabled={switching !== null}
+                  onClick={() => handleSwitchPlan(confirmDowngrade)}
+                >
+                  {switching === confirmDowngrade ? 'Scheduling…' : 'Confirm Downgrade'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                  onClick={() => setConfirmDowngrade(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!loading && !error && data && (
           <>
+            {/* ── Pending Downgrade Banner ── */}
+            {pendingPlan && (
+              <div className="flash flash-warning" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>
+                  Downgrade to <strong>{pendingPlan.charAt(0).toUpperCase() + pendingPlan.slice(1)}</strong> scheduled for <strong>{formatDate(planEffectiveAt)}</strong>.
+                  You keep your current {planLabel(currentPlan)} features until then.
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', marginLeft: '1rem', whiteSpace: 'nowrap' }}
+                  disabled={switching !== null}
+                  onClick={handleCancelDowngrade}
+                >
+                  Cancel Downgrade
+                </button>
+              </div>
+            )}
+
             {/* ── Current Plan Card ── */}
             <div className="card plan-section">
               <div className="plan-hero">
@@ -359,24 +525,7 @@ export default function PlanPage() {
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}
                             style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
-                          {p.key === currentPlan ? (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current</span>
-                          ) : p.key === 'business' ? (
-                            <a href="mailto:sales@tokengate.to"
-                               className="btn btn-secondary"
-                               style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'inline-block' }}>
-                              Contact Sales
-                            </a>
-                          ) : (
-                            <button
-                              className="btn btn-primary"
-                              style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-                              disabled={switching !== null}
-                              onClick={() => handleSwitchPlan(p.key)}
-                            >
-                              {switching === p.key ? 'Switching…' : `Switch to ${p.label}`}
-                            </button>
-                          )}
+                          {renderPlanButton(p.key)}
                         </td>
                       ))}
                     </tr>

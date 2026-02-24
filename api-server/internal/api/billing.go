@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -29,12 +30,14 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 	}
 
 	resp := gin.H{
-		"plan":             tenant.Plan,
-		"plan_status":      tenant.PlanStatus,
-		"has_subscription": tenant.StripeSubscriptionID != "",
-		"billing_email":    tenant.BillingEmail,
+		"plan":               tenant.Plan,
+		"plan_status":        tenant.PlanStatus,
+		"has_subscription":   tenant.StripeSubscriptionID != "",
+		"billing_email":      tenant.BillingEmail,
 		"current_period_end": tenant.CurrentPeriodEnd,
 		"stripe_configured":  s.stripeSvc.IsConfigured(),
+		"pending_plan":       tenant.PendingPlan,
+		"plan_effective_at":  tenant.PlanEffectiveAt,
 	}
 
 	// Fetch payment method info from Stripe if configured and subscribed
@@ -196,9 +199,13 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
-// ── POST /v1/billing/cancel ──────────────────────────────────────────────────
+// ── POST /v1/billing/downgrade ───────────────────────────────────────────────
 
-func (s *Server) handleBillingCancel(c *gin.Context) {
+type downgradeRequest struct {
+	Plan string `json:"plan" binding:"required"`
+}
+
+func (s *Server) handleBillingDowngrade(c *gin.Context) {
 	if !s.stripeSvc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
@@ -210,8 +217,65 @@ func (s *Server) handleBillingCancel(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.CancelSubscription(c.Request.Context(), caller.TenantID); err != nil {
-		log.Printf("billing: cancel error for tenant %d: %v", caller.TenantID, err)
+	var req downgradeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !models.ValidPlan(req.Plan) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan"})
+		return
+	}
+
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+
+	if !models.IsDowngrade(tenant.Plan, req.Plan) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target plan is not a downgrade; use change-plan for upgrades"})
+		return
+	}
+
+	if tenant.PendingPlan != "" {
+		c.JSON(http.StatusConflict, gin.H{"error": "a downgrade is already scheduled; cancel it first"})
+		return
+	}
+
+	if err := s.stripeSvc.ScheduleDowngrade(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
+		log.Printf("billing: downgrade error for tenant %d: %v", caller.TenantID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	c.JSON(http.StatusOK, gin.H{
+		"plan":              tenant.Plan,
+		"plan_status":       tenant.PlanStatus,
+		"pending_plan":      tenant.PendingPlan,
+		"plan_effective_at": tenant.PlanEffectiveAt,
+		"message":           fmt.Sprintf("Downgrade to %s scheduled at end of billing period.", req.Plan),
+	})
+}
+
+// ── POST /v1/billing/downgrade/cancel ───────────────────────────────────────
+
+func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
+	if !s.stripeSvc.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := s.stripeSvc.CancelScheduledDowngrade(c.Request.Context(), caller.TenantID); err != nil {
+		log.Printf("billing: cancel-downgrade error for tenant %d: %v", caller.TenantID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -221,7 +285,7 @@ func (s *Server) handleBillingCancel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"plan":        tenant.Plan,
 		"plan_status": tenant.PlanStatus,
-		"message":     "Subscription canceled. You are now on the Free plan.",
+		"message":     "Scheduled downgrade has been canceled.",
 	})
 }
 
@@ -267,6 +331,11 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 
 	if tenant.Plan == req.Plan {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "already on this plan"})
+		return
+	}
+
+	if models.IsDowngrade(tenant.Plan, req.Plan) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "use POST /v1/billing/downgrade for downgrades"})
 		return
 	}
 

@@ -24,6 +24,8 @@ interface BillingStatus {
   stripe_configured: boolean
   cancel_at_period_end?: boolean
   payment_method?: PaymentMethod
+  pending_plan?: string
+  plan_effective_at?: string | null
 }
 
 interface Invoice {
@@ -225,7 +227,15 @@ export default function BillingPage() {
                     <span className="detail-value">{formatDate(billingStatus.current_period_end)}</span>
                   </div>
                 )}
-                {billingStatus.cancel_at_period_end && (
+                {billingStatus.pending_plan && (
+                  <div className="detail-row">
+                    <span className="detail-label">Pending change</span>
+                    <span className="detail-value" style={{ color: '#fb923c' }}>
+                      Downgrading to {planLabel(billingStatus.pending_plan)}{billingStatus.plan_effective_at ? ` on ${formatDate(billingStatus.plan_effective_at)}` : ' at end of billing period'}
+                    </span>
+                  </div>
+                )}
+                {billingStatus.cancel_at_period_end && !billingStatus.pending_plan && (
                   <div className="detail-row">
                     <span className="detail-label">Status</span>
                     <span className="detail-value" style={{ color: '#fb923c' }}>
