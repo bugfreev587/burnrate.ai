@@ -157,7 +157,7 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
       const [logsRes, summaryRes, budgetRes] = await Promise.all([
         fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/admin/budget?tz=${encodeURIComponent(tz)}`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/budget?tz=${encodeURIComponent(tz)}`, { headers }),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }

@@ -122,6 +122,7 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/cost-ledger", s.handleListCostLedger)
 		viewer.GET("/usage/forecast", s.handleUsageForecast)
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
+		viewer.GET("/budget", s.handleGetBudget)
 	}
 
 	// ─── Editor+ (Management, Limits, Pricing Config) ───────────────────────
