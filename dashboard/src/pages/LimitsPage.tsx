@@ -200,8 +200,8 @@ export default function LimitsPage() {
               <table className="mgmt-table">
                 <thead>
                   <tr>
-                    <th>Period</th>
                     <th>Provider</th>
+                    <th>Period</th>
                     <th>Limit (USD)</th>
                     <th>Alert At</th>
                     <th>Action</th>
@@ -229,13 +229,13 @@ export default function LimitsPage() {
                     return (
                       <tr key={l.id}>
                         <td>
-                          <span className={`metric-badge metric-${l.period_type === 'monthly' ? 'rpm' : l.period_type === 'weekly' ? 'itpm' : 'otpm'}`}>
-                            {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)}
+                          <span className="provider-badge">
+                            {l.provider ? l.provider.charAt(0).toUpperCase() + l.provider.slice(1) : 'All'}
                           </span>
                         </td>
                         <td>
-                          <span className="provider-badge">
-                            {l.provider ? l.provider.charAt(0).toUpperCase() + l.provider.slice(1) : 'All'}
+                          <span className={`metric-badge metric-${l.period_type === 'monthly' ? 'rpm' : l.period_type === 'weekly' ? 'itpm' : 'otpm'}`}>
+                            {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)}
                           </span>
                         </td>
                         <td>${parseFloat(l.limit_amount).toFixed(2)}</td>
@@ -375,39 +375,21 @@ export default function LimitsPage() {
               </p>
 
               <div className="form-group">
-                <label>Period <span className="required">*</span></label>
-                <div className="role-select">
-                  {PERIOD_OPTIONS.map(p => (
-                    <label key={p.value} className={`role-option ${slPeriod === p.value ? 'selected' : ''}`}>
-                      <input
-                        type="radio" name="sl-period" value={p.value}
-                        checked={slPeriod === p.value}
-                        onChange={() => setSlPeriod(p.value)}
-                      />
-                      <div><strong>{p.label}</strong></div>
-                    </label>
-                  ))}
-                </div>
+                <label>Provider <span className="required">*</span></label>
+                <select value={slProvider} onChange={e => setSlProvider(e.target.value)}>
+                  <option value="">All Providers</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                </select>
               </div>
 
               <div className="form-group">
-                <label>Provider</label>
-                <div className="role-select">
-                  {[
-                    { value: '', label: 'All Providers' },
-                    { value: 'anthropic', label: 'Anthropic' },
-                    { value: 'openai', label: 'OpenAI' },
-                  ].map(p => (
-                    <label key={p.value} className={`role-option ${slProvider === p.value ? 'selected' : ''}`}>
-                      <input
-                        type="radio" name="sl-provider" value={p.value}
-                        checked={slProvider === p.value}
-                        onChange={() => setSlProvider(p.value)}
-                      />
-                      <div><strong>{p.label}</strong></div>
-                    </label>
+                <label>Period <span className="required">*</span></label>
+                <select value={slPeriod} onChange={e => setSlPeriod(e.target.value)}>
+                  {PERIOD_OPTIONS.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
-                </div>
+                </select>
               </div>
 
               <div className="form-group">
