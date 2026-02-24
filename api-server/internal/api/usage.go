@@ -289,7 +289,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Requests  int64
 	}
 	periodStats := func(from, to *time.Time) periodRow {
-		q := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+		q := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
 		if from != nil {
 			q = q.Where("created_at >= ?", *from)
 		}
