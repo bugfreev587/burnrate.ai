@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
-import { useUserSync } from '../hooks/useUserSync'
+import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import './PlanPage.css'
 
 const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
@@ -194,8 +194,8 @@ export default function PlanPage() {
   const [resultModal, setResultModal] = useState<{ type: 'success' | 'error' | 'warning'; title: string; message: string } | null>(null)
   const [confirmDowngrade, setConfirmDowngrade] = useState<PlanKey | null>(null)
 
-  // Auth guard: wait until synced, then redirect non-owners
-  if (isSynced && role !== 'owner') {
+  // Auth guard: wait until synced, then redirect non-admins
+  if (isSynced && !hasPermission(role, 'admin')) {
     return <Navigate to="/dashboard" replace />
   }
 

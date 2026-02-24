@@ -100,6 +100,11 @@ export default function BillingPage() {
   const navigate = useNavigate()
   const isAdmin = isSynced && hasPermission(role, 'admin')
 
+  // Auth guard: redirect non-admins
+  useEffect(() => {
+    if (isSynced && !isAdmin) navigate('/dashboard')
+  }, [isSynced, isAdmin, navigate])
+
   // Handle Stripe return: verify checkout session to sync plan immediately
   useEffect(() => {
     const sessionId = searchParams.get('session_id')

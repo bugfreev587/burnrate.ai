@@ -80,11 +80,11 @@ export default function LimitsPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const isAdmin = isSynced && hasPermission(role, 'admin')
+  const canAccess = isSynced && hasPermission(role, 'editor')
 
   useEffect(() => {
-    if (isSynced && !isAdmin) navigate('/dashboard')
-  }, [isSynced, isAdmin, navigate])
+    if (isSynced && !canAccess) navigate('/dashboard')
+  }, [isSynced, canAccess, navigate])
 
   const showSuccess = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(null), 3000) }
   const showError = (msg: string) => { setErrorMsg(msg); setTimeout(() => setErrorMsg(null), 5000) }

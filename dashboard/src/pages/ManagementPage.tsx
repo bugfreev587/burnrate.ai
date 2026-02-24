@@ -104,7 +104,7 @@ export default function ManagementPage() {
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
 
-  const isAdmin = hasPermission(role, 'admin')
+  const canAccess = hasPermission(role, 'editor')
   const isOwner = role === 'owner'
 
   const headers = useCallback(() => ({
@@ -161,7 +161,7 @@ export default function ManagementPage() {
 
   useEffect(() => {
     if (!isSynced) return
-    if (!isAdmin) {
+    if (!canAccess) {
       navigate('/dashboard')
       return
     }
@@ -171,7 +171,7 @@ export default function ManagementPage() {
       setLoading(false)
     }
     load()
-  }, [isSynced, isAdmin, navigate, fetchUsers, fetchAPIKeys, fetchProviderKeys])
+  }, [isSynced, canAccess, navigate, fetchUsers, fetchAPIKeys, fetchProviderKeys])
 
   // ── Invite user ──────────────────────────────────────────────────────────
 

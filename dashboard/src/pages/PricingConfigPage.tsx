@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
+import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { usePricingConfig, CatalogEntry, PricingConfigView } from '../hooks/usePricingConfig'
 import './PricingConfigPage.css'
 
@@ -54,6 +56,8 @@ function groupByProvider(catalog: CatalogEntry[]) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function PricingConfigPage() {
+  const navigate = useNavigate()
+  const { role, isSynced } = useUserSync()
   const {
     catalog, configs, activeKeys,
     loading, error,
@@ -61,6 +65,11 @@ export default function PricingConfigPage() {
     addRate, deleteRate,
     assignKey, unassignKey,
   } = usePricingConfig()
+
+  // Auth guard: redirect non-editors
+  useEffect(() => {
+    if (isSynced && !hasPermission(role, 'editor')) navigate('/dashboard')
+  }, [isSynced, role, navigate])
 
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const showFlash = (type: 'success' | 'error', msg: string) => {

@@ -12,8 +12,8 @@ export default function Navbar() {
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  const canAccessEditor = isSynced && hasPermission(role, 'editor')
   const canAccessAdmin = isSynced && hasPermission(role, 'admin')
-  const isOwner = isSynced && role === 'owner'
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -38,9 +38,9 @@ export default function Navbar() {
         {isLoaded && isSignedIn && (
           <div className="navbar-center">
             <Link to="/dashboard" className="navbar-link">Dashboard</Link>
-            {canAccessAdmin && <Link to="/management" className="navbar-link">Management</Link>}
-            {canAccessAdmin && <Link to="/limits" className="navbar-link">Limits</Link>}
-            {canAccessAdmin && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
+            {canAccessEditor && <Link to="/management" className="navbar-link">Management</Link>}
+            {canAccessEditor && <Link to="/limits" className="navbar-link">Limits</Link>}
+            {canAccessEditor && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
           </div>
         )}
 
@@ -76,14 +76,16 @@ export default function Navbar() {
                   <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
                     Profile
                   </Link>
-                  {isOwner && (
+                  {canAccessAdmin && (
                     <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
                       Plan
                     </Link>
                   )}
-                  <Link to="/billing" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                    Billing
-                  </Link>
+                  {canAccessAdmin && (
+                    <Link to="/billing" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                      Billing
+                    </Link>
+                  )}
                   <div className="dropdown-divider" />
                   <SignOutButton>
                     <button className="dropdown-item dropdown-signout">Sign Out</button>
