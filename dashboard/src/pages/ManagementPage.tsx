@@ -729,7 +729,7 @@ export default function ManagementPage() {
       {/* ── Invite Member Modal ───────────────────────────────────────────── */}
       {showInviteModal && (
         <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setInviteError(null) }}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>Invite Team Member</h2>
             </div>
@@ -800,7 +800,7 @@ export default function ManagementPage() {
       {/* ── Create API Key Modal ─────────────────────────────────────────── */}
       {showCreateKeyModal && (
         <div className="modal-overlay" onClick={() => { setShowCreateKeyModal(false); setCreateKeyError(null) }}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>Create API Key</h2>
             </div>
@@ -882,7 +882,7 @@ export default function ManagementPage() {
       {/* ── Add Provider Key Modal ───────────────────────────────────────── */}
       {showAddKeyModal && (
         <div className="modal-overlay" onClick={() => setShowAddKeyModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>Add Provider Key</h2>
             </div>
