@@ -948,7 +948,7 @@ export default function ManagementPage() {
       {/* ── Limit Reached Modal ──────────────────────────────────────────── */}
       {limitModal && (
         <div className="modal-overlay" onClick={() => setLimitModal(null)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
               <h2>{limitModal.type === 'keys' ? 'API Key Limit Reached' : 'Member Limit Reached'}</h2>
             </div>
