@@ -100,20 +100,23 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	}
 
 	// One-time migration: populate auth_method + billing_mode from legacy mode column.
-	// Passthrough modes → BROWSER_OAUTH + MONTHLY_SUBSCRIPTION
-	migratePassthroughSQL := `UPDATE api_keys SET auth_method = 'BROWSER_OAUTH', billing_mode = 'MONTHLY_SUBSCRIPTION' WHERE mode IN ('CLAUDE_CODE_PASSTHROUGH', 'OPENAI_CODEX_PASSTHROUGH') AND auth_method = 'BROWSER_OAUTH' AND billing_mode = 'MONTHLY_SUBSCRIPTION'`
-	db.Exec(migratePassthroughSQL) // no-op if already migrated (defaults match)
+	// Only run if the legacy "mode" column still exists.
+	var modeColExists bool
+	db.Raw(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'mode')`).Scan(&modeColExists)
+	if modeColExists {
+		// Passthrough modes → BROWSER_OAUTH + MONTHLY_SUBSCRIPTION
+		db.Exec(`UPDATE api_keys SET auth_method = 'BROWSER_OAUTH', billing_mode = 'MONTHLY_SUBSCRIPTION' WHERE mode IN ('CLAUDE_CODE_PASSTHROUGH', 'OPENAI_CODEX_PASSTHROUGH')`)
 
-	// BYOK modes → BYOK + API_USAGE
-	migrateBYOKSQL := `UPDATE api_keys SET auth_method = 'BYOK', billing_mode = 'API_USAGE' WHERE mode IN ('ANTHROPIC_API_BYOK', 'OPENAI_API_BYOK', 'API_BYOK')`
-	if res := db.Exec(migrateBYOKSQL); res.Error != nil {
-		log.Printf("migrate api_key auth/billing: %v", res.Error)
-	} else if res.RowsAffected > 0 {
-		log.Printf("migrate api_key auth/billing: updated %d BYOK rows", res.RowsAffected)
+		// BYOK modes → BYOK + API_USAGE
+		if res := db.Exec(`UPDATE api_keys SET auth_method = 'BYOK', billing_mode = 'API_USAGE' WHERE mode IN ('ANTHROPIC_API_BYOK', 'OPENAI_API_BYOK', 'API_BYOK')`); res.Error != nil {
+			log.Printf("migrate api_key auth/billing: %v", res.Error)
+		} else if res.RowsAffected > 0 {
+			log.Printf("migrate api_key auth/billing: updated %d BYOK rows", res.RowsAffected)
+		}
+
+		// Drop the legacy mode column now that auth_method + billing_mode are populated.
+		db.Exec("ALTER TABLE api_keys DROP COLUMN IF EXISTS mode")
 	}
-
-	// Drop the legacy mode column now that auth_method + billing_mode are populated.
-	db.Exec("ALTER TABLE api_keys DROP COLUMN IF EXISTS mode")
 
 	// One-time backfill: copy final_cost from cost_ledgers into usage_logs
 	// where cost was never set (zero). Safe to run repeatedly — the WHERE
