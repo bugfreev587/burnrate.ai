@@ -413,7 +413,7 @@ export default function LimitsPage() {
                   <label className={`role-option ${slScope === 'api_key' ? 'selected' : ''}`}>
                     <input type="radio" name="sl-scope" value="api_key"
                       checked={slScope === 'api_key'}
-                      onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? '') }} />
+                      onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? ''); setSlProvider('') }} />
                     <div>
                       <strong>Per API Key</strong>
                       <span className="role-desc">Applies to a single API key (Team+ plans)</span>
@@ -439,14 +439,16 @@ export default function LimitsPage() {
                 </div>
               )}
 
-              <div className="form-group">
-                <label>Provider <span className="required">*</span></label>
-                <select value={slProvider} onChange={e => setSlProvider(e.target.value)}>
-                  <option value="">All Providers</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                </select>
-              </div>
+              {slScope === 'account' && (
+                <div className="form-group">
+                  <label>Provider <span className="required">*</span></label>
+                  <select value={slProvider} onChange={e => setSlProvider(e.target.value)}>
+                    <option value="">All Providers</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Period <span className="required">*</span></label>
