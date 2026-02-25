@@ -361,6 +361,50 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		}
 	}
 
+	// ── By-API-key breakdown ────────────────────────────────────────────────
+	type apiKeyRow struct {
+		KeyID        string
+		Label        string
+		TotalCost    decimal.Decimal
+		InputTokens  int64
+		OutputTokens int64
+		Requests     int64
+	}
+	var byAPIKey []apiKeyRow
+	byKeyQ := db.Model(&models.UsageLog{}).
+		Select("usage_logs.key_id, COALESCE(api_keys.label, '') as label, COALESCE(SUM(usage_logs.cost),0) as total_cost, COALESCE(SUM(usage_logs.prompt_tokens),0) as input_tokens, COALESCE(SUM(usage_logs.completion_tokens),0) as output_tokens, COUNT(*) as requests").
+		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
+		Where("usage_logs.tenant_id = ? AND usage_logs.api_usage_billed = ?", tenantID, true)
+	if rangeQueryStart != nil {
+		byKeyQ = byKeyQ.Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+	} else {
+		byKeyQ = byKeyQ.Where("usage_logs.created_at >= ?", monthStart)
+	}
+	byKeyQ.
+		Group("usage_logs.key_id, api_keys.label").
+		Order("total_cost DESC").
+		Scan(&byAPIKey)
+
+	byAPIKeyOut := make([]gin.H, len(byAPIKey))
+	for i, k := range byAPIKey {
+		displayLabel := k.Label
+		if displayLabel == "" && k.KeyID != "" {
+			// Show first 12 chars of key_id as fallback
+			displayLabel = k.KeyID
+			if len(displayLabel) > 12 {
+				displayLabel = displayLabel[:12] + "…"
+			}
+		}
+		byAPIKeyOut[i] = gin.H{
+			"key_id":       k.KeyID,
+			"label":        displayLabel,
+			"cost":         k.TotalCost.StringFixed(4),
+			"input_tokens":  k.InputTokens,
+			"output_tokens": k.OutputTokens,
+			"requests":      k.Requests,
+		}
+	}
+
 	// ── Daily trend ──────────────────────────────────────────────────────────
 	type dailyRow struct {
 		Date   string
@@ -368,12 +412,19 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Tokens int64
 	}
 	var daily []dailyRow
-	dailyQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
+
+	var trendStart time.Time
+	var trendEnd time.Time
 	if rangeQueryStart != nil {
-		dailyQ = dailyQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+		trendStart = *rangeQueryStart
+		trendEnd = *rangeQueryEnd
 	} else {
-		dailyQ = dailyQ.Where("created_at >= ?", trend30Start)
+		trendStart = trend30Start
+		trendEnd = now
 	}
+
+	dailyQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
+	dailyQ = dailyQ.Where("created_at >= ? AND created_at <= ?", trendStart, trendEnd)
 	tzName := loc.String()
 	dailyQ.
 		Select(fmt.Sprintf("TO_CHAR(created_at AT TIME ZONE '%s', 'YYYY-MM-DD') as date, COALESCE(SUM(cost),0) as cost, COALESCE(SUM(prompt_tokens)+SUM(completion_tokens),0) as tokens", tzName)).
@@ -381,13 +432,31 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		Order("date ASC").
 		Scan(&daily)
 
-	dailyOut := make([]gin.H, len(daily))
-	for i, d := range daily {
-		dailyOut[i] = gin.H{
-			"date":   d.Date,
-			"cost":   d.Cost.StringFixed(4),
-			"tokens": d.Tokens,
+	// Build a map of existing daily data, then fill in missing dates with zeros.
+	dailyMap := make(map[string]dailyRow, len(daily))
+	for _, d := range daily {
+		dailyMap[d.Date] = d
+	}
+
+	var dailyOut []gin.H
+	for cursor := time.Date(trendStart.Year(), trendStart.Month(), trendStart.Day(), 0, 0, 0, 0, loc); !cursor.After(time.Date(trendEnd.Year(), trendEnd.Month(), trendEnd.Day(), 0, 0, 0, 0, loc)); cursor = cursor.AddDate(0, 0, 1) {
+		dateStr := cursor.Format("2006-01-02")
+		if row, ok := dailyMap[dateStr]; ok {
+			dailyOut = append(dailyOut, gin.H{
+				"date":   row.Date,
+				"cost":   row.Cost.StringFixed(4),
+				"tokens": row.Tokens,
+			})
+		} else {
+			dailyOut = append(dailyOut, gin.H{
+				"date":   dateStr,
+				"cost":   "0.0000",
+				"tokens": int64(0),
+			})
 		}
+	}
+	if dailyOut == nil {
+		dailyOut = []gin.H{}
 	}
 
 	resp := gin.H{
@@ -412,6 +481,7 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 			"avg_per_request": avgTokensPerRequest,
 		},
 		"by_model":    byModelOut,
+		"by_api_key":  byAPIKeyOut,
 		"daily_trend": dailyOut,
 	}
 

@@ -91,11 +91,20 @@ export interface DailyTrend {
   cost: string
   tokens: number
 }
+export interface ApiKeyBreakdown {
+  key_id: string
+  label: string
+  cost: string
+  input_tokens: number
+  output_tokens: number
+  requests: number
+}
 export interface UsageSummary {
   cost: CostPeriods
   requests: RequestPeriods
   tokens: TokenSummary
   by_model: ModelBreakdown[]
+  by_api_key: ApiKeyBreakdown[]
   daily_trend: DailyTrend[]
   applied_range?: { start: string; end: string }
 }

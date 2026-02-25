@@ -3,7 +3,7 @@ import { useUser } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
 import DateRangeSelector from '../components/DateRangeSelector'
 import { useUsageData } from '../hooks/useUsageData'
-import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown } from '../hooks/useUsageData'
+import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown } from '../hooks/useUsageData'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import './Dashboard.css'
 
@@ -363,6 +363,54 @@ function ModelTable({ models }: { models: ModelBreakdown[] }) {
   )
 }
 
+// ─── API Key Table ───────────────────────────────────────────────────────────
+
+function ApiKeyTable({ keys }: { keys: ApiKeyBreakdown[] }) {
+  if (keys.length === 0) {
+    return <p className="model-empty">No API key usage for the selected period.</p>
+  }
+  const maxCost = Math.max(...keys.map(k => parseFloat(k.cost)), 0.0001)
+  return (
+    <table className="model-table">
+      <thead>
+        <tr>
+          <th>API Key</th>
+          <th>Cost</th>
+          <th>Input</th>
+          <th>Output</th>
+          <th>Requests</th>
+        </tr>
+      </thead>
+      <tbody>
+        {keys.map(k => {
+          const costVal = parseFloat(k.cost)
+          const barPct = (costVal / maxCost) * 100
+          return (
+            <tr key={k.key_id}>
+              <td>
+                <div className="model-name-cell">
+                  <code className="model-code">{k.label || k.key_id}</code>
+                </div>
+              </td>
+              <td>
+                <div className="model-cost-cell">
+                  <span>{fmt$(k.cost)}</span>
+                  <div className="model-cost-bar-track">
+                    <div className="model-cost-bar-fill" style={{ width: `${barPct}%` }} />
+                  </div>
+                </div>
+              </td>
+              <td className="num-cell">{fmtTokens(k.input_tokens)}</td>
+              <td className="num-cell">{fmtTokens(k.output_tokens)}</td>
+              <td className="num-cell">{fmtNum(k.requests)}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -513,18 +561,27 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── Model Breakdown + Daily Trend side-by-side ── */}
+            {/* ── Breakdowns: Model + API Key side-by-side ── */}
             <div className="dash-section-title">{periodLabel}</div>
             <div className="dash-split">
               <div className="card dash-split-left">
                 <p className="card-subtitle">Breakdown by Model</p>
                 <ModelTable models={s?.by_model ?? []} />
               </div>
-
               <div className="card dash-split-right">
-                <p className="card-subtitle">Daily Cost — {periodLabel.toLowerCase()}</p>
+                <p className="card-subtitle">Breakdown by API Key</p>
+                <ApiKeyTable keys={s?.by_api_key ?? []} />
+              </div>
+            </div>
+
+            {/* ── Daily Charts: Cost + Tokens side-by-side ── */}
+            <div className="dash-split">
+              <div className="card dash-split-left">
+                <p className="card-subtitle">Daily Cost</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="cost" />
-                <p className="card-subtitle" style={{ marginTop: '1.5rem' }}>Daily Tokens — {periodLabel.toLowerCase()}</p>
+              </div>
+              <div className="card dash-split-right">
+                <p className="card-subtitle">Daily Tokens</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="tokens" />
               </div>
             </div>
