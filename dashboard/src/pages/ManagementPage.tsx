@@ -1040,12 +1040,34 @@ export default function ManagementPage() {
               <div className="install-box">
                 <h3>Quick Setup</h3>
                 {createdAuthMethod === 'BYOK' ? (
-                  <div className="install-step">
-                    <div className="warn-box" style={{ marginTop: 0 }}>
-                      <span className="warn-icon">!</span>
-                      <p>Remember to add your <strong>{createdProvider === 'openai' ? 'OpenAI' : 'Anthropic'} provider key</strong> in the Provider Keys section before using this gateway key.</p>
+                  <>
+                    <div className="install-step">
+                      <div className="warn-box" style={{ marginTop: 0 }}>
+                        <span className="warn-icon">!</span>
+                        <p>Remember to add your <strong>{createdProvider === 'openai' ? 'OpenAI' : 'Anthropic'} provider key</strong> in the Provider Keys section before using this gateway key.</p>
+                      </div>
                     </div>
-                  </div>
+                    {createdProvider === 'openai' && createdBillingMode === 'API_USAGE' && (
+                      <>
+                        <div className="install-step">
+                          <h4>1. Clear <code>~/.codex/config.toml</code> and paste the following config</h4>
+                          <div className="cmd-box">
+                            <pre>{`model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`}</pre>
+                            <button className="btn btn-small btn-secondary"
+                              onClick={() => copy(
+                                `model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`,
+                                'env'
+                              )}>
+                              {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="install-step">
+                          <h4>2. Run <code>codex</code> in a code repo and select "3. Provide your own API key" if prompted, otherwise you are good to go</h4>
+                        </div>
+                      </>
+                    )}
+                  </>
                 ) : createdProvider === 'openai' && createdAuthMethod === 'BROWSER_OAUTH' && createdBillingMode === 'MONTHLY_SUBSCRIPTION' ? (
                   <>
                     <div className="install-step">
