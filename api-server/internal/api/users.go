@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -373,7 +374,8 @@ func (s *Server) handleGetTenantSettings(c *gin.Context) {
 }
 
 type updateTenantSettingsReq struct {
-	MaxAPIKeys *int `json:"max_api_keys"`
+	MaxAPIKeys *int    `json:"max_api_keys"`
+	Name       *string `json:"name"`
 }
 
 // handleUpdateTenantSettings updates owner-controlled tenant settings.
@@ -389,12 +391,8 @@ func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if req.MaxAPIKeys == nil {
+	if req.MaxAPIKeys == nil && req.Name == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no settings provided"})
-		return
-	}
-	if *req.MaxAPIKeys < 1 || *req.MaxAPIKeys > 1000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "max_api_keys must be between 1 and 1000"})
 		return
 	}
 	var tenant models.Tenant
@@ -402,21 +400,43 @@ func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
-	// Plans with a fixed limit (non -1) cannot be overridden.
-	planLim := models.GetPlanLimits(tenant.Plan)
-	if planLim.MaxAPIKeys != -1 && *req.MaxAPIKeys > planLim.MaxAPIKeys {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "plan_limit_exceeded",
-			"message":    fmt.Sprintf("Your %s plan allows a maximum of %d API key(s). Upgrade to set a higher limit.", tenant.Plan, planLim.MaxAPIKeys),
-			"plan_limit": planLim.MaxAPIKeys,
-			"plan":       tenant.Plan,
-		})
-		return
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		if trimmed == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name cannot be empty"})
+			return
+		}
+		if len(trimmed) > 100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name must be 100 characters or fewer"})
+			return
+		}
+		if err := s.postgresDB.GetDB().Model(&tenant).Update("name", trimmed).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update name"})
+			return
+		}
+		tenant.Name = trimmed
 	}
-	tenant.MaxAPIKeys = *req.MaxAPIKeys
-	if err := s.postgresDB.GetDB().Model(&tenant).Update("max_api_keys", *req.MaxAPIKeys).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update settings"})
-		return
+	if req.MaxAPIKeys != nil {
+		if *req.MaxAPIKeys < 1 || *req.MaxAPIKeys > 1000 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "max_api_keys must be between 1 and 1000"})
+			return
+		}
+		// Plans with a fixed limit (non -1) cannot be overridden.
+		planLim := models.GetPlanLimits(tenant.Plan)
+		if planLim.MaxAPIKeys != -1 && *req.MaxAPIKeys > planLim.MaxAPIKeys {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":      "plan_limit_exceeded",
+				"message":    fmt.Sprintf("Your %s plan allows a maximum of %d API key(s). Upgrade to set a higher limit.", tenant.Plan, planLim.MaxAPIKeys),
+				"plan_limit": planLim.MaxAPIKeys,
+				"plan":       tenant.Plan,
+			})
+			return
+		}
+		tenant.MaxAPIKeys = *req.MaxAPIKeys
+		if err := s.postgresDB.GetDB().Model(&tenant).Update("max_api_keys", *req.MaxAPIKeys).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update settings"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, tenantSettingsResponse{
 		TenantID:   tenant.ID,

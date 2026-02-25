@@ -39,6 +39,20 @@ func (s *StripeService) IsConfigured() bool {
 	return s.cfg.SecretKey != ""
 }
 
+// CancelSubscriptionImmediately cancels a Stripe subscription immediately.
+// No-ops when subscriptionID is empty (e.g. free-tier tenants).
+func (s *StripeService) CancelSubscriptionImmediately(subscriptionID string) error {
+	if subscriptionID == "" {
+		return nil
+	}
+	_, err := subscription.Cancel(subscriptionID, nil)
+	if err != nil {
+		return fmt.Errorf("cancel subscription %s: %w", subscriptionID, err)
+	}
+	log.Printf("stripe: subscription %s canceled immediately", subscriptionID)
+	return nil
+}
+
 // ── Price ↔ Plan mapping ─────────────────────────────────────────────────────
 
 // PriceIDForPlan returns the Stripe Price ID for a plan tier.

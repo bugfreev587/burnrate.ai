@@ -15,6 +15,7 @@ import PlanPage from './pages/PlanPage'
 import BillingPage from './pages/BillingPage'
 import LimitsPage from './pages/LimitsPage'
 import IntegrationPage from './pages/IntegrationPage'
+import SettingsPage from './pages/SettingsPage'
 import PublicPricingPage from './pages/PublicPricingPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
           <Route path="/limits" element={<ProtectedRoute><LimitsPage /></ProtectedRoute>} />
           <Route path="/integration" element={<ProtectedRoute><IntegrationPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/plan" element={<ProtectedRoute><PlanPage /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
           <Route path="/plans" element={<PublicPricingPage />} />

@@ -217,6 +217,7 @@ func (s *Server) setupRoutes() {
 		owner.POST("/transfer-ownership", s.handleTransferOwnership)
 		owner.GET("/settings", s.handleGetTenantSettings)
 		owner.PATCH("/settings", s.handleUpdateTenantSettings)
+		owner.DELETE("/account", s.handleDeleteAccount)
 		// Deprecated: use POST /v1/billing/checkout for plan changes via Stripe
 		owner.PATCH("/plan", func(c *gin.Context) {
 			c.JSON(http.StatusGone, gin.H{

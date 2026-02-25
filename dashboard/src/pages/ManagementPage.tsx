@@ -1,20 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
-import type { UserRole } from '../hooks/useUserSync'
 import Navbar from '../components/Navbar'
 import './ManagementPage.css'
 
 const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
-
-interface User {
-  id: string
-  email: string
-  name: string
-  role: UserRole
-  status: string
-  created_at: string
-}
 
 interface APIKey {
   key_id: string
@@ -66,10 +56,8 @@ export default function ManagementPage() {
   const navigate = useNavigate()
   const { role, userId, isSynced } = useUserSync()
 
-  const [users, setUsers] = useState<User[]>([])
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
-  const [memberLimit, setMemberLimit] = useState<number | null>(null)
   const [keyLimit, setKeyLimit] = useState<number | null>(null)
   const [providerKeyLimit, setProviderKeyLimit] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -98,18 +86,9 @@ export default function ManagementPage() {
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
   // Limit-reached modal
-  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'members' | 'provider_keys' } | null>(null)
-
-  // Invite modal
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteName, setInviteName] = useState('')
-  const [inviteRole, setInviteRole] = useState<'viewer' | 'editor'>('viewer')
-  const [inviting, setInviting] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'provider_keys' } | null>(null)
 
   const canAccess = hasPermission(role, 'editor')
-  const isOwner = role === 'owner'
 
   const headers = useCallback(() => ({
     'Content-Type': 'application/json',
@@ -124,19 +103,6 @@ export default function ManagementPage() {
     setErrorMsg(msg)
     setTimeout(() => setErrorMsg(null), 5000)
   }
-
-  const fetchUsers = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users`, { headers: headers() })
-      if (res.ok) {
-        const data = await res.json()
-        setUsers(data.users ?? [])
-        setMemberLimit(data.member_limit ?? null)
-      }
-    } catch (err) {
-      console.error('fetch users:', err)
-    }
-  }, [headers])
 
   const fetchAPIKeys = useCallback(async () => {
     try {
@@ -172,155 +138,11 @@ export default function ManagementPage() {
     }
     const load = async () => {
       setLoading(true)
-      await Promise.all([fetchUsers(), fetchAPIKeys(), fetchProviderKeys()])
+      await Promise.all([fetchAPIKeys(), fetchProviderKeys()])
       setLoading(false)
     }
     load()
-  }, [isSynced, canAccess, navigate, fetchUsers, fetchAPIKeys, fetchProviderKeys])
-
-  // ── Invite user ──────────────────────────────────────────────────────────
-
-  const handleInviteUser = async () => {
-    if (!inviteEmail.trim()) {
-      setInviteError('Email is required')
-      return
-    }
-    setInviting(true)
-    setInviteError(null)
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/invite`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          name: inviteName.trim(),
-          role: inviteRole,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.message ?? data.error ?? 'Failed to invite user')
-      showSuccess(`Invite sent to ${inviteEmail}. They'll join when they sign up.`)
-      setShowInviteModal(false)
-      setInviteEmail('')
-      setInviteName('')
-      setInviteRole('viewer')
-      setInviteError(null)
-      fetchUsers()
-    } catch (err) {
-      setInviteError(err instanceof Error ? err.message : 'Failed to invite user')
-    } finally {
-      setInviting(false)
-    }
-  }
-
-  // ── User role actions ────────────────────────────────────────────────────
-
-  const handleUpdateRole = async (targetID: string, newRole: 'viewer' | 'editor') => {
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/${targetID}/role`, {
-        method: 'PATCH',
-        headers: headers(),
-        body: JSON.stringify({ role: newRole }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to update role')
-      }
-      showSuccess(`Role updated to ${newRole}`)
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to update role')
-    }
-  }
-
-  const handlePromoteAdmin = async (targetID: string) => {
-    if (!confirm('Promote this user to admin?')) return
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/owner/users/${targetID}/promote-admin`, {
-        method: 'POST',
-        headers: headers(),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to promote user')
-      }
-      showSuccess('User promoted to admin')
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to promote user')
-    }
-  }
-
-  const handleDemoteAdmin = async (targetID: string) => {
-    if (!confirm('Demote this admin to editor?')) return
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/owner/users/${targetID}/demote-admin`, {
-        method: 'DELETE',
-        headers: headers(),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to demote admin')
-      }
-      showSuccess('Admin demoted to editor')
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to demote admin')
-    }
-  }
-
-  const handleSuspend = async (targetID: string) => {
-    if (!confirm('Suspend this user?')) return
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/${targetID}/suspend`, {
-        method: 'PATCH',
-        headers: headers(),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to suspend')
-      }
-      showSuccess('User suspended')
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to suspend user')
-    }
-  }
-
-  const handleUnsuspend = async (targetID: string) => {
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/${targetID}/unsuspend`, {
-        method: 'PATCH',
-        headers: headers(),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to unsuspend')
-      }
-      showSuccess('User unsuspended')
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to unsuspend user')
-    }
-  }
-
-  const handleRemoveUser = async (targetID: string) => {
-    if (!confirm('Remove this user? This cannot be undone.')) return
-    try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/users/${targetID}`, {
-        method: 'DELETE',
-        headers: headers(),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.message ?? d.error ?? 'Failed to remove user')
-      }
-      showSuccess('User removed')
-      fetchUsers()
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to remove user')
-    }
-  }
+  }, [isSynced, canAccess, navigate, fetchAPIKeys, fetchProviderKeys])
 
   // ── API Key actions ──────────────────────────────────────────────────────
 
@@ -477,111 +299,6 @@ export default function ManagementPage() {
           {/* Flash messages */}
           {successMsg && <div className="flash flash-success">{successMsg}</div>}
           {errorMsg   && <div className="flash flash-error">{errorMsg}</div>}
-
-          {/* ── Team Members ─────────────────────────────────────────────── */}
-          <section className="mgmt-section">
-            <div className="section-hdr">
-              <div>
-                <h2>
-                  Team Members{' '}
-                  <span className="section-count">
-                    {users.length}/{memberLimit === null ? '∞' : memberLimit}
-                  </span>
-                </h2>
-                <p className="section-desc">Manage who has access to your workspace.</p>
-              </div>
-              <button className="btn btn-primary" onClick={() => {
-                if (memberLimit !== null && users.length >= memberLimit) {
-                  setLimitModal({ type: 'members' })
-                  return
-                }
-                setInviteEmail(''); setInviteName(''); setInviteRole('viewer')
-                setInviteError(null); setShowInviteModal(true)
-              }}>
-                Invite Member
-              </button>
-            </div>
-            <div className="table-scroll">
-              <table className="mgmt-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.length === 0 ? (
-                    <tr><td colSpan={5} className="empty-cell">No users found.</td></tr>
-                  ) : users.map(u => (
-                    <tr key={u.id} className={u.id === userId ? 'row-self' : ''}>
-                      <td>{u.name || u.email?.split('@')[0] || '—'}</td>
-                      <td className="text-muted">{u.email}</td>
-                      <td><span className={`role-badge role-${u.role}`}>{u.role}</span></td>
-                      <td><span className={`status-badge status-${u.status}`}>{u.status}</span></td>
-                      <td className="actions-cell">
-                        {u.id === userId ? (
-                          <span className="you-badge">You</span>
-                        ) : (
-                          <>
-                            {/* viewer ↔ editor (admin+) */}
-                            {u.role === 'viewer' && u.status !== 'pending' && (
-                              <button className="btn btn-small btn-secondary"
-                                onClick={() => handleUpdateRole(u.id, 'editor')}>
-                                → Editor
-                              </button>
-                            )}
-                            {u.role === 'editor' && (
-                              <button className="btn btn-small btn-secondary"
-                                onClick={() => handleUpdateRole(u.id, 'viewer')}>
-                                → Viewer
-                              </button>
-                            )}
-                            {/* promote/demote admin (owner only) */}
-                            {isOwner && (u.role === 'viewer' || u.role === 'editor') && (
-                              <button className="btn btn-small btn-secondary"
-                                onClick={() => handlePromoteAdmin(u.id)}>
-                                → Admin
-                              </button>
-                            )}
-                            {isOwner && u.role === 'admin' && (
-                              <button className="btn btn-small btn-secondary"
-                                onClick={() => handleDemoteAdmin(u.id)}>
-                                ↓ Editor
-                              </button>
-                            )}
-                            {/* Suspend / Unsuspend */}
-                            {u.role !== 'owner' && u.status !== 'pending' && (u.role !== 'admin' || isOwner) && (
-                              u.status === 'active' ? (
-                                <button className="btn btn-small btn-warning"
-                                  onClick={() => handleSuspend(u.id)}>
-                                  Suspend
-                                </button>
-                              ) : u.status === 'suspended' ? (
-                                <button className="btn btn-small btn-secondary"
-                                  onClick={() => handleUnsuspend(u.id)}>
-                                  Unsuspend
-                                </button>
-                              ) : null
-                            )}
-                            {/* Remove */}
-                            {u.role !== 'owner' && (u.role !== 'admin' || isOwner) && (
-                              <button className="btn btn-small btn-danger"
-                                onClick={() => handleRemoveUser(u.id)}>
-                                Remove
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
 
           {/* ── Gateway API Keys ─────────────────────────────────────────── */}
           <section className="mgmt-section">
@@ -743,77 +460,6 @@ export default function ManagementPage() {
 
         </div>
       </div>
-
-      {/* ── Invite Member Modal ───────────────────────────────────────────── */}
-      {showInviteModal && (
-        <div className="modal-overlay" onClick={() => { setShowInviteModal(false); setInviteError(null) }}>
-          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
-            <div className="modal-hdr">
-              <h2>Invite Team Member</h2>
-            </div>
-            <div className="modal-body">
-              <p className="modal-hint">
-                Enter the invitee's email address. They'll join your workspace automatically
-                when they sign up with that email.
-              </p>
-              <div className="form-group">
-                <label>Email <span className="required">*</span></label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  placeholder="colleague@company.com"
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label>Name <span className="optional">(optional)</span></label>
-                <input
-                  type="text"
-                  value={inviteName}
-                  onChange={e => setInviteName(e.target.value)}
-                  placeholder="Full name"
-                />
-              </div>
-              <div className="form-group">
-                <label>Role</label>
-                <div className="role-select">
-                  {(['viewer', 'editor'] as const).map(r => (
-                    <label key={r} className={`role-option ${inviteRole === r ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="invite-role"
-                        value={r}
-                        checked={inviteRole === r}
-                        onChange={() => setInviteRole(r)}
-                      />
-                      <div>
-                        <strong>{r.charAt(0).toUpperCase() + r.slice(1)}</strong>
-                        <span className="role-desc">
-                          {r === 'viewer' ? 'Can view usage data' : 'Can view and manage API keys'}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {inviteError && (
-              <div className="flash flash-error modal-flash">{inviteError}</div>
-            )}
-            <div className="modal-ftr">
-              <button className="btn btn-secondary" onClick={() => { setShowInviteModal(false); setInviteError(null) }}
-                disabled={inviting}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleInviteUser}
-                disabled={!inviteEmail.trim() || inviting}>
-                {inviting ? 'Inviting…' : 'Send Invite'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Create API Key Modal ─────────────────────────────────────────── */}
       {showCreateKeyModal && (
@@ -997,17 +643,14 @@ export default function ManagementPage() {
             <div className="modal-hdr">
               <h2>
                 {limitModal.type === 'keys' ? 'API Key Limit Reached'
-                  : limitModal.type === 'provider_keys' ? 'Provider Key Limit Reached'
-                  : 'Member Limit Reached'}
+                  : 'Provider Key Limit Reached'}
               </h2>
             </div>
             <div className="modal-body">
               <p>
                 {limitModal.type === 'keys'
                   ? `You've reached the maximum of ${keyLimit} API key${keyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to create more API keys.`
-                  : limitModal.type === 'provider_keys'
-                  ? `You've reached the maximum of ${providerKeyLimit} provider key${providerKeyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more provider keys.`
-                  : `You've reached the maximum of ${memberLimit} member${memberLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to invite more members.`}
+                  : `You've reached the maximum of ${providerKeyLimit} provider key${providerKeyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more provider keys.`}
               </p>
             </div>
             <div className="modal-ftr">
