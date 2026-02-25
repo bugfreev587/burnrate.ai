@@ -105,6 +105,7 @@ export interface BudgetStatus {
   id: number
   scope_type: string
   scope_id: string
+  key_label?: string
   period_type: string
   provider: string
   limit_amount: string

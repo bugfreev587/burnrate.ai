@@ -61,7 +61,7 @@ function BudgetBar({ b }: { b: BudgetStatus }) {
             {b.period_type.charAt(0).toUpperCase() + b.period_type.slice(1)} Budget
             <span style={{ color, fontSize: '0.85em' }}>{b.provider ? ` · ${b.provider.charAt(0).toUpperCase() + b.provider.slice(1)}` : ' · All Providers'}</span>
             {b.scope_type === 'api_key' && b.scope_id && (
-              <span className="budget-scope"> · key {b.scope_id.slice(0, 8)}…</span>
+              <span className="budget-scope"> · Key: {b.key_label || b.scope_id.slice(0, 8) + '…'}</span>
             )}
           </span>
           <span className="budget-action" style={{ color: b.action === 'block' || b.action === 'alert_block' ? 'var(--color-danger)' : '#f59e0b' }}>
@@ -435,11 +435,14 @@ export default function Dashboard() {
         {!loading && (
           <>
             {/* ── Budget bars ── */}
-            {budgets.filter(b => b.scope_type === 'account').length > 0 && (
+            {budgets.length > 0 && (
               <div className="budget-bars">
                 {budgets
-                  .filter(b => b.scope_type === 'account')
                   .sort((a, b) => {
+                    // Account-level budgets first, then per-key
+                    if (a.scope_type !== b.scope_type) {
+                      return a.scope_type === 'account' ? -1 : 1
+                    }
                     const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
                     const pa = periodOrder[a.period_type] ?? 9
                     const pb = periodOrder[b.period_type] ?? 9
