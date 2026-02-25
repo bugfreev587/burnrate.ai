@@ -54,7 +54,7 @@ func upstreamPath(p Provider, originalPath string) string {
 	}
 	prefix := "/v1/" + string(p)
 	if strings.HasPrefix(originalPath, prefix) {
-		return originalPath[len(prefix):]
+		return "/v1" + originalPath[len(prefix):]
 	}
 	return originalPath
 }
