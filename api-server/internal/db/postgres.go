@@ -99,13 +99,21 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("ensure missing models: %w", err)
 	}
 
-	// One-time migration: rename legacy API_BYOK mode to provider-specific ANTHROPIC_API_BYOK.
-	migrateModesSQL := `UPDATE api_keys SET mode = 'ANTHROPIC_API_BYOK' WHERE provider = 'anthropic' AND mode = 'API_BYOK'`
-	if res := db.Exec(migrateModesSQL); res.Error != nil {
-		log.Printf("migrate api_key modes: %v", res.Error)
+	// One-time migration: populate auth_method + billing_mode from legacy mode column.
+	// Passthrough modes → BROWSER_OAUTH + MONTHLY_SUBSCRIPTION
+	migratePassthroughSQL := `UPDATE api_keys SET auth_method = 'BROWSER_OAUTH', billing_mode = 'MONTHLY_SUBSCRIPTION' WHERE mode IN ('CLAUDE_CODE_PASSTHROUGH', 'OPENAI_CODEX_PASSTHROUGH') AND auth_method = 'BROWSER_OAUTH' AND billing_mode = 'MONTHLY_SUBSCRIPTION'`
+	db.Exec(migratePassthroughSQL) // no-op if already migrated (defaults match)
+
+	// BYOK modes → BYOK + API_USAGE
+	migrateBYOKSQL := `UPDATE api_keys SET auth_method = 'BYOK', billing_mode = 'API_USAGE' WHERE mode IN ('ANTHROPIC_API_BYOK', 'OPENAI_API_BYOK', 'API_BYOK')`
+	if res := db.Exec(migrateBYOKSQL); res.Error != nil {
+		log.Printf("migrate api_key auth/billing: %v", res.Error)
 	} else if res.RowsAffected > 0 {
-		log.Printf("migrate api_key modes: updated %d rows from API_BYOK to ANTHROPIC_API_BYOK", res.RowsAffected)
+		log.Printf("migrate api_key auth/billing: updated %d BYOK rows", res.RowsAffected)
 	}
+
+	// Drop the legacy mode column now that auth_method + billing_mode are populated.
+	db.Exec("ALTER TABLE api_keys DROP COLUMN IF EXISTS mode")
 
 	// One-time backfill: copy final_cost from cost_ledgers into usage_logs
 	// where cost was never set (zero). Safe to run repeatedly — the WHERE

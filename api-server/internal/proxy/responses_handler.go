@@ -37,9 +37,10 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 
 	fmt.Println("------- HandleResponses -------")
 
-	mode := c.GetString("mode")
+	authMethod := c.GetString("auth_method")
+	billingMode := c.GetString("billing_mode")
 
-	fmt.Println("tenantID:", tenantID, "keyID:", keyIDStr, "mode:", mode)
+	fmt.Println("tenantID:", tenantID, "keyID:", keyIDStr, "auth_method:", authMethod, "billing_mode:", billingMode)
 
 	// Read the request body.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -92,7 +93,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		maxTokens = *req.MaxOutputTokens
 	}
 
-	apiUsageBilled := determineBillable(mode, c.Request.Header)
+	apiUsageBilled := determineBillable(billingMode)
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, req.Model, len(bodyBytes), maxTokens) {
 		return
@@ -103,7 +104,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		return
 	}
 
-	byokKey, ok := h.resolveAuth(c, tenantID, provider, mode)
+	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
 	if !ok {
 		return
 	}
@@ -114,9 +115,9 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 
 	switch provider {
 	case ProviderOpenAI:
-		counts, err = h.handleResponsesOpenAI(c, bodyBytes, req, provider, mode, byokKey)
+		counts, err = h.handleResponsesOpenAI(c, bodyBytes, req, provider, authMethod, billingMode, byokKey)
 	case ProviderAnthropic:
-		counts, err = h.handleResponsesAnthropic(c, bodyBytes, req, provider, mode, byokKey)
+		counts, err = h.handleResponsesAnthropic(c, bodyBytes, req, provider, byokKey)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "tg_bad_request",
@@ -142,13 +143,14 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 // handleResponsesOpenAI forwards the request to OpenAI's /v1/responses as-is.
 // For Codex passthrough (ChatGPT OAuth), the upstream is the ChatGPT backend
 // because the OAuth token is not accepted by api.openai.com.
-func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, mode string, byokKey []byte) (TokenCounts, error) {
+func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, authMethod, billingMode string, byokKey []byte) (TokenCounts, error) {
 	upstreamURL := upstreamBase(ProviderOpenAI) + "/v1/responses"
-	if mode == models.OpenAIModeCodexPassthrough && byokKey == nil {
+	// Route to ChatGPT backend for subscription users with browser OAuth (Codex passthrough).
+	if authMethod == models.AuthMethodBrowserOAuth && billingMode == models.BillingModeMonthlySubscription && byokKey == nil {
 		upstreamURL = chatGPTCodexResponsesURL
 	}
 
-	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, body, provider, mode, byokKey, c.Request)
+	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, body, provider, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"type":    "tg_internal_error",
@@ -199,7 +201,7 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 	// or usage in the standard OpenAI format. Generate a synthetic ID so the
 	// usage event is always published (the guard in publishUsageEvent skips
 	// events where MessageID, InputTokens, and OutputTokens are all zero).
-	if mode == models.OpenAIModeCodexPassthrough {
+	if authMethod == models.AuthMethodBrowserOAuth && billingMode == models.BillingModeMonthlySubscription {
 		if counts.MessageID == "" {
 			counts.MessageID = "codex_" + uuid.New().String()
 		}
@@ -212,7 +214,7 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 
 // handleResponsesAnthropic translates the Responses request to the Anthropic
 // Messages API, sends it upstream, and translates the response back.
-func (h *ProxyHandler) handleResponsesAnthropic(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, mode string, byokKey []byte) (TokenCounts, error) {
+func (h *ProxyHandler) handleResponsesAnthropic(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, byokKey []byte) (TokenCounts, error) {
 	// Translate Responses request → Anthropic Messages request.
 	anthropicBody, err := translateResponsesToAnthropic(&req)
 	if err != nil {
@@ -225,7 +227,7 @@ func (h *ProxyHandler) handleResponsesAnthropic(c *gin.Context, body []byte, req
 
 	upstreamURL := upstreamBase(ProviderAnthropic) + "/v1/messages"
 
-	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, anthropicBody, provider, mode, byokKey, c.Request)
+	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, anthropicBody, provider, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"type":    "tg_internal_error",

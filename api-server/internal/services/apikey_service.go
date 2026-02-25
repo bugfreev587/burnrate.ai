@@ -26,16 +26,17 @@ type APIKeyService struct {
 }
 
 type apiKeyCacheData struct {
-	KeyID      string     `json:"key_id"`
-	TenantID   uint       `json:"tenant_id"`
-	Label      string     `json:"label"`
-	Revoked    bool       `json:"revoked"`
-	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
-	Scopes     []string   `json:"scopes"`
-	Provider   string     `json:"provider"`
-	Mode       string     `json:"mode"`
-	Salt       string     `json:"salt"`        // base64
-	SecretHash string     `json:"secret_hash"` // base64
+	KeyID       string     `json:"key_id"`
+	TenantID    uint       `json:"tenant_id"`
+	Label       string     `json:"label"`
+	Revoked     bool       `json:"revoked"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	Scopes      []string   `json:"scopes"`
+	Provider    string     `json:"provider"`
+	AuthMethod  string     `json:"auth_method"`
+	BillingMode string     `json:"billing_mode"`
+	Salt        string     `json:"salt"`        // base64
+	SecretHash  string     `json:"secret_hash"` // base64
 }
 
 func NewAPIKeyService(db *gorm.DB, pepper []byte, cache *redis.Client, ttl time.Duration) *APIKeyService {
@@ -54,9 +55,9 @@ func (e *ErrAPIKeyLimitReached) Error() string {
 
 // CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
-func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, mode string) (string, string, error) {
-	if !models.ValidAPIKeyMode(provider, mode) {
-		return "", "", fmt.Errorf("invalid mode %q for provider %q", mode, provider)
+func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, authMethod, billingMode string) (string, string, error) {
+	if !models.ValidAuthBillingCombo(provider, authMethod, billingMode) {
+		return "", "", fmt.Errorf("invalid auth_method %q + billing_mode %q for provider %q", authMethod, billingMode, provider)
 	}
 	// Fetch tenant to read the limit
 	var tenant models.Tenant
@@ -95,16 +96,17 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 
 	kid := "tg_" + uuid.New().String()
 	ak := models.APIKey{
-		TenantID:   tenantID,
-		KeyID:      kid,
-		Label:      label,
-		Salt:       salt,
-		SecretHash: hash,
-		Scopes:     scopes,
-		Provider:   provider,
-		Mode:       mode,
-		Revoked:    false,
-		ExpiresAt:  expiresAt,
+		TenantID:    tenantID,
+		KeyID:       kid,
+		Label:       label,
+		Salt:        salt,
+		SecretHash:  hash,
+		Scopes:      scopes,
+		Provider:    provider,
+		AuthMethod:  authMethod,
+		BillingMode: billingMode,
+		Revoked:     false,
+		ExpiresAt:   expiresAt,
 	}
 	if err := s.db.Create(&ak).Error; err != nil {
 		return "", "", err
@@ -141,16 +143,17 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 					return nil, fmt.Errorf("invalid key: hash mismatch")
 				}
 				return &models.APIKey{
-					TenantID:   cd.TenantID,
-					KeyID:      cd.KeyID,
-					Label:      cd.Label,
-					Salt:       salt,
-					SecretHash: storedHash,
-					Scopes:     cd.Scopes,
-					Provider:   cd.Provider,
-					Mode:       cd.Mode,
-					Revoked:    cd.Revoked,
-					ExpiresAt:  cd.ExpiresAt,
+					TenantID:    cd.TenantID,
+					KeyID:       cd.KeyID,
+					Label:       cd.Label,
+					Salt:        salt,
+					SecretHash:  storedHash,
+					Scopes:      cd.Scopes,
+					Provider:    cd.Provider,
+					AuthMethod:  cd.AuthMethod,
+					BillingMode: cd.BillingMode,
+					Revoked:     cd.Revoked,
+					ExpiresAt:   cd.ExpiresAt,
 				}, nil
 			}
 		}
@@ -236,16 +239,17 @@ func (s *APIKeyService) cacheKey(ctx context.Context, ak *models.APIKey) {
 		return
 	}
 	cd := apiKeyCacheData{
-		KeyID:      ak.KeyID,
-		TenantID:   ak.TenantID,
-		Label:      ak.Label,
-		Revoked:    ak.Revoked,
-		ExpiresAt:  ak.ExpiresAt,
-		Scopes:     ak.Scopes,
-		Provider:   ak.Provider,
-		Mode:       ak.Mode,
-		Salt:       base64.StdEncoding.EncodeToString(ak.Salt),
-		SecretHash: base64.StdEncoding.EncodeToString(ak.SecretHash),
+		KeyID:       ak.KeyID,
+		TenantID:    ak.TenantID,
+		Label:       ak.Label,
+		Revoked:     ak.Revoked,
+		ExpiresAt:   ak.ExpiresAt,
+		Scopes:      ak.Scopes,
+		Provider:    ak.Provider,
+		AuthMethod:  ak.AuthMethod,
+		BillingMode: ak.BillingMode,
+		Salt:        base64.StdEncoding.EncodeToString(ak.Salt),
+		SecretHash:  base64.StdEncoding.EncodeToString(ak.SecretHash),
 	}
 	if b, err := json.Marshal(cd); err == nil {
 		s.cache.Set(ctx, "apikey:"+ak.KeyID, b, s.cacheTTL)

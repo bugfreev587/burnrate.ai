@@ -20,39 +20,39 @@ interface APIKey {
   key_id: string
   label: string
   provider: string
-  mode: string
+  auth_method: string
+  billing_mode: string
   scopes: string[] | null
   expires_at: string | null
   created_at: string
   last_seen_at: string | null
 }
 
-const PROVIDER_MODES: Record<string, { value: string; label: string; description: string }[]> = {
-  anthropic: [
-    {
-      value: 'CLAUDE_CODE_PASSTHROUGH',
-      label: 'Claude Code (Pass-Through)',
-      description: 'For Claude Code CLI. Forwards browser auth / ephemeral credentials.',
-    },
-    {
-      value: 'ANTHROPIC_API_BYOK',
-      label: 'API — Bring Your Own Key',
-      description: 'For direct API access. Gateway uses your stored Anthropic provider key.',
-    },
-  ],
-  openai: [
-    {
-      value: 'OPENAI_CODEX_PASSTHROUGH',
-      label: 'Codex CLI (Pass-Through)',
-      description: 'For OpenAI Codex CLI. Forwards the client\'s own OpenAI credentials.',
-    },
-    {
-      value: 'OPENAI_API_BYOK',
-      label: 'API — Bring Your Own Key',
-      description: 'For direct API access. Gateway uses your stored OpenAI provider key.',
-    },
-  ],
-}
+const AUTH_METHODS: { value: string; label: string; description: string }[] = [
+  {
+    value: 'BROWSER_OAUTH',
+    label: 'Browser OAuth',
+    description: 'CLI tool authenticates via browser login. Forwards the client\'s own credentials.',
+  },
+  {
+    value: 'BYOK',
+    label: 'Bring Your Own Key',
+    description: 'Gateway injects your stored provider key. User never handles raw credentials.',
+  },
+]
+
+const BILLING_MODES: { value: string; label: string; description: string }[] = [
+  {
+    value: 'MONTHLY_SUBSCRIPTION',
+    label: 'Monthly Subscription',
+    description: 'Usage billed through the user\'s existing provider subscription.',
+  },
+  {
+    value: 'API_USAGE',
+    label: 'API Usage',
+    description: 'Usage billed per token through the stored or client-provided API key.',
+  },
+]
 
 interface ProviderKey {
   id: number
@@ -88,8 +88,11 @@ export default function ManagementPage() {
   const [showNewKeyModal, setShowNewKeyModal] = useState(false)
   const [newKeyLabel, setNewKeyLabel] = useState('')
   const [newKeyProvider, setNewKeyProvider] = useState<string>('anthropic')
-  const [newKeyMode, setNewKeyMode] = useState<string>('CLAUDE_CODE_PASSTHROUGH')
-  const [createdKeyMode, setCreatedKeyMode] = useState<string>('')
+  const [newAuthMethod, setNewAuthMethod] = useState<string>('BROWSER_OAUTH')
+  const [newBillingMode, setNewBillingMode] = useState<string>('MONTHLY_SUBSCRIPTION')
+  const [createdAuthMethod, setCreatedAuthMethod] = useState<string>('')
+  const [createdBillingMode, setCreatedBillingMode] = useState<string>('')
+  const [createdProvider, setCreatedProvider] = useState<string>('')
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null)
   const [copiedID, setCopiedID] = useState<string | null>(null)
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
@@ -331,14 +334,16 @@ export default function ManagementPage() {
       const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ label: newKeyLabel.trim(), provider: newKeyProvider, mode: newKeyMode, scopes: ['*'] }),
+        body: JSON.stringify({ label: newKeyLabel.trim(), provider: newKeyProvider, auth_method: newAuthMethod, billing_mode: newBillingMode, scopes: ['*'] }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.message ?? d.error ?? 'Failed to create API key')
       }
       const data = await res.json()
-      setCreatedKeyMode(newKeyMode)
+      setCreatedAuthMethod(newAuthMethod)
+      setCreatedBillingMode(newBillingMode)
+      setCreatedProvider(newKeyProvider)
       setNewKeySecret(`${data.key_id}:${data.secret}`)
       setShowCreateKeyModal(false)
       setCreateKeyError(null)
@@ -609,7 +614,8 @@ export default function ManagementPage() {
                     <th>Key ID</th>
                     <th>Label</th>
                     <th>Provider</th>
-                    <th>Mode</th>
+                    <th>Auth</th>
+                    <th>Billing</th>
                     <th>Created</th>
                     <th>Last Seen</th>
                     <th>Expires</th>
@@ -619,7 +625,7 @@ export default function ManagementPage() {
                 <tbody>
                   {apiKeys.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="empty-cell">
+                      <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No API keys yet. Create one to start reporting usage.</p>
                           <button className="btn btn-primary"
@@ -634,7 +640,8 @@ export default function ManagementPage() {
                       <td><code className="key-id">{k.key_id.slice(0, 8)}…</code></td>
                       <td>{k.label}</td>
                       <td><span className="provider-badge">{k.provider}</span></td>
-                      <td><span className="mode-badge">{k.mode}</span></td>
+                      <td><span className="mode-badge">{k.auth_method}</span></td>
+                      <td><span className="mode-badge">{k.billing_mode}</span></td>
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td className="text-muted">
@@ -834,17 +841,14 @@ export default function ManagementPage() {
               <div className="form-group">
                 <label>Provider</label>
                 <div className="role-select">
-                  {Object.keys(PROVIDER_MODES).map(p => (
+                  {['anthropic', 'openai'].map(p => (
                     <label key={p} className={`role-option ${newKeyProvider === p ? 'selected' : ''}`}>
                       <input
                         type="radio"
                         name="new-key-provider"
                         value={p}
                         checked={newKeyProvider === p}
-                        onChange={() => {
-                          setNewKeyProvider(p)
-                          setNewKeyMode(PROVIDER_MODES[p][0].value)
-                        }}
+                        onChange={() => setNewKeyProvider(p)}
                       />
                       <div>
                         <strong>{p.charAt(0).toUpperCase() + p.slice(1)}</strong>
@@ -854,16 +858,22 @@ export default function ManagementPage() {
                 </div>
               </div>
               <div className="form-group">
-                <label>Mode</label>
+                <label>Auth Method</label>
                 <div className="role-select">
-                  {(PROVIDER_MODES[newKeyProvider] ?? []).map(m => (
-                    <label key={m.value} className={`role-option ${newKeyMode === m.value ? 'selected' : ''}`}>
+                  {AUTH_METHODS.map(m => (
+                    <label key={m.value} className={`role-option ${newAuthMethod === m.value ? 'selected' : ''}`}>
                       <input
                         type="radio"
-                        name="new-key-mode"
+                        name="new-key-auth-method"
                         value={m.value}
-                        checked={newKeyMode === m.value}
-                        onChange={() => setNewKeyMode(m.value)}
+                        checked={newAuthMethod === m.value}
+                        onChange={() => {
+                          setNewAuthMethod(m.value)
+                          // BYOK implies API_USAGE billing — auto-select and lock it
+                          if (m.value === 'BYOK') {
+                            setNewBillingMode('API_USAGE')
+                          }
+                        }}
                       />
                       <div>
                         <strong>{m.label}</strong>
@@ -871,6 +881,30 @@ export default function ManagementPage() {
                       </div>
                     </label>
                   ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Billing Mode</label>
+                <div className="role-select">
+                  {BILLING_MODES.map(m => {
+                    const disabled = newAuthMethod === 'BYOK' && m.value === 'MONTHLY_SUBSCRIPTION'
+                    return (
+                      <label key={m.value} className={`role-option ${newBillingMode === m.value ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}>
+                        <input
+                          type="radio"
+                          name="new-key-billing-mode"
+                          value={m.value}
+                          checked={newBillingMode === m.value}
+                          onChange={() => setNewBillingMode(m.value)}
+                          disabled={disabled}
+                        />
+                        <div>
+                          <strong>{m.label}</strong>
+                          <span className="role-desc">{m.description}{disabled ? ' (not available with BYOK)' : ''}</span>
+                        </div>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -1005,25 +1039,25 @@ export default function ManagementPage() {
               </div>
               <div className="install-box">
                 <h3>Quick Setup</h3>
-                {createdKeyMode === 'ANTHROPIC_API_BYOK' ? (
+                {createdAuthMethod === 'BYOK' ? (
                   <div className="install-step">
                     <div className="warn-box" style={{ marginTop: 0 }}>
                       <span className="warn-icon">!</span>
-                      <p>Remember to add your <strong>Anthropic provider key</strong> in the Provider Keys section before using this gateway key.</p>
+                      <p>Remember to add your <strong>{createdProvider === 'openai' ? 'OpenAI' : 'Anthropic'} provider key</strong> in the Provider Keys section before using this gateway key.</p>
                     </div>
                   </div>
                 ) : (
                   <div className="install-step">
                     <h4>Set environment variables</h4>
                     <div className="cmd-box">
-                      {createdKeyMode.startsWith('OPENAI_') ? (
-                        <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdKeyMode === 'OPENAI_API_BYOK' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
+                      {createdProvider === 'openai' ? (
+                        <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdBillingMode === 'API_USAGE' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
                       ) : (
                         <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${'\n# Claude Code will add its own auth automatically'}`}</pre>
                       )}
                       <button className="btn btn-small btn-secondary"
                         onClick={() => copy(
-                          createdKeyMode.startsWith('OPENAI_')
+                          createdProvider === 'openai'
                             ? `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`
                             : `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
                           'env'
@@ -1033,7 +1067,7 @@ export default function ManagementPage() {
                     </div>
                   </div>
                 )}
-                {createdKeyMode.endsWith('_API_BYOK') && (
+                {createdAuthMethod === 'BYOK' && (
                   <div className="install-step">
                     <h4>Test the gateway (example curl)</h4>
                     <div className="cmd-box">

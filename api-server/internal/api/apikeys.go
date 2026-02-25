@@ -14,11 +14,12 @@ import (
 )
 
 type createAPIKeyReq struct {
-	Label     string     `json:"label"      binding:"required"`
-	Provider  string     `json:"provider"   binding:"required"`
-	Mode      string     `json:"mode"       binding:"required"`
-	Scopes    []string   `json:"scopes"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Label       string     `json:"label"        binding:"required"`
+	Provider    string     `json:"provider"     binding:"required"`
+	AuthMethod  string     `json:"auth_method"  binding:"required"`
+	BillingMode string     `json:"billing_mode" binding:"required"`
+	Scopes      []string   `json:"scopes"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
 // handleCreateAPIKey creates a new tenant-scoped API key.
@@ -57,7 +58,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		}
 	}
 
-	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.Mode)
+	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
 		if errors.As(err, &limitErr) {
@@ -74,11 +75,12 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"key_id":   kid,
-		"secret":   secret, // shown only once
-		"label":    req.Label,
-		"provider": req.Provider,
-		"mode":     req.Mode,
+		"key_id":       kid,
+		"secret":       secret, // shown only once
+		"label":        req.Label,
+		"provider":     req.Provider,
+		"auth_method":  req.AuthMethod,
+		"billing_mode": req.BillingMode,
 	})
 }
 
@@ -104,26 +106,28 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 	planLim := models.GetPlanLimits(tenant.Plan)
 
 	type keyView struct {
-		KeyID      string     `json:"key_id"`
-		Label      string     `json:"label"`
-		Provider   string     `json:"provider"`
-		Mode       string     `json:"mode"`
-		Scopes     []string   `json:"scopes"`
-		ExpiresAt  *time.Time `json:"expires_at"`
-		CreatedAt  time.Time  `json:"created_at"`
-		LastSeenAt *time.Time `json:"last_seen_at"`
+		KeyID       string     `json:"key_id"`
+		Label       string     `json:"label"`
+		Provider    string     `json:"provider"`
+		AuthMethod  string     `json:"auth_method"`
+		BillingMode string     `json:"billing_mode"`
+		Scopes      []string   `json:"scopes"`
+		ExpiresAt   *time.Time `json:"expires_at"`
+		CreatedAt   time.Time  `json:"created_at"`
+		LastSeenAt  *time.Time `json:"last_seen_at"`
 	}
 	out := make([]keyView, len(keys))
 	for i, k := range keys {
 		out[i] = keyView{
-			KeyID:      k.KeyID,
-			Label:      k.Label,
-			Provider:   k.Provider,
-			Mode:       k.Mode,
-			Scopes:     k.Scopes,
-			ExpiresAt:  k.ExpiresAt,
-			CreatedAt:  k.CreatedAt,
-			LastSeenAt: k.LastSeenAt,
+			KeyID:       k.KeyID,
+			Label:       k.Label,
+			Provider:    k.Provider,
+			AuthMethod:  k.AuthMethod,
+			BillingMode: k.BillingMode,
+			Scopes:      k.Scopes,
+			ExpiresAt:   k.ExpiresAt,
+			CreatedAt:   k.CreatedAt,
+			LastSeenAt:  k.LastSeenAt,
 		}
 	}
 

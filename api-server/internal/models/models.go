@@ -89,42 +89,40 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
-// API key modes
+// Auth method constants
 const (
-	AnthropicModeClaudeCodePassthrough = "CLAUDE_CODE_PASSTHROUGH"
-	AnthropicModeAPIBYOK               = "ANTHROPIC_API_BYOK"
-	OpenAIModeCodexPassthrough         = "OPENAI_CODEX_PASSTHROUGH"
-	OpenAIModeAPIBYOK                  = "OPENAI_API_BYOK"
+	AuthMethodBrowserOAuth = "BROWSER_OAUTH"
+	AuthMethodBYOK         = "BYOK"
 )
 
-// IsBYOKMode returns true when the mode is a Bring Your Own Key mode (any provider).
-func IsBYOKMode(mode string) bool {
-	return mode == AnthropicModeAPIBYOK || mode == OpenAIModeAPIBYOK
-}
+// Billing mode constants
+const (
+	BillingModeMonthlySubscription = "MONTHLY_SUBSCRIPTION"
+	BillingModeAPIUsage            = "API_USAGE"
+)
 
-// IsPassthroughMode returns true when the mode is a passthrough mode (any provider).
-func IsPassthroughMode(mode string) bool {
-	return mode == AnthropicModeClaudeCodePassthrough || mode == OpenAIModeCodexPassthrough
-}
-
-// SupportedAPIKeyModes maps provider → valid modes.
-var SupportedAPIKeyModes = map[string][]string{
-	"anthropic": {AnthropicModeClaudeCodePassthrough, AnthropicModeAPIBYOK},
-	"openai":    {OpenAIModeCodexPassthrough, OpenAIModeAPIBYOK},
-}
-
-// ValidAPIKeyMode returns true when mode is valid for provider.
-func ValidAPIKeyMode(provider, mode string) bool {
-	modes, ok := SupportedAPIKeyModes[provider]
-	if !ok {
+// ValidAuthBillingCombo returns true when the auth_method + billing_mode combination
+// is valid for the given provider. BYOK + MONTHLY_SUBSCRIPTION is never valid.
+func ValidAuthBillingCombo(provider, authMethod, billingMode string) bool {
+	if provider != "anthropic" && provider != "openai" {
 		return false
 	}
-	for _, m := range modes {
-		if m == mode {
-			return true
-		}
+	if authMethod != AuthMethodBrowserOAuth && authMethod != AuthMethodBYOK {
+		return false
 	}
-	return false
+	if billingMode != BillingModeMonthlySubscription && billingMode != BillingModeAPIUsage {
+		return false
+	}
+	// BYOK implies API-level access — monthly subscription makes no sense.
+	if authMethod == AuthMethodBYOK && billingMode == BillingModeMonthlySubscription {
+		return false
+	}
+	return true
+}
+
+// IsBillableMode returns true when the billing mode indicates billable API usage.
+func IsBillableMode(billingMode string) bool {
+	return billingMode == BillingModeAPIUsage
 }
 
 // APIKey is the machine-to-machine key used by the claude-code agent
@@ -137,8 +135,9 @@ type APIKey struct {
 	Salt       []byte
 	SecretHash []byte
 	Scopes     pq.StringArray `gorm:"type:text[]"`
-	Provider   string         `gorm:"not null;default:anthropic"`
-	Mode       string         `gorm:"not null;default:CLAUDE_CODE_PASSTHROUGH"`
+	Provider    string         `gorm:"not null;default:anthropic"`
+	AuthMethod  string         `gorm:"not null;default:BROWSER_OAUTH"`
+	BillingMode string         `gorm:"not null;default:MONTHLY_SUBSCRIPTION"`
 	Revoked    bool
 	ExpiresAt  *time.Time
 	LastSeenAt *time.Time

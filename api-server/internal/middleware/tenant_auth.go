@@ -85,7 +85,8 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		c.Set("tenant_id", ak.TenantID)
 		c.Set("key_id", ak.KeyID)
 		c.Set("provider", ak.Provider)
-		c.Set("mode", ak.Mode)
+		c.Set("auth_method", ak.AuthMethod)
+		c.Set("billing_mode", ak.BillingMode)
 		go apiKeySvc.TouchLastSeen(context.Background(), ak.KeyID)
 		c.Next()
 	}

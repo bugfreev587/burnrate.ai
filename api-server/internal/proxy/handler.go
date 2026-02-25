@@ -56,14 +56,8 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
 // determineBillable returns true when the request should be recorded as billable API usage.
-func determineBillable(mode string, headers http.Header) bool {
-	if models.IsBYOKMode(mode) {
-		return true
-	}
-	if v := headers.Get("x-api-key"); strings.HasPrefix(v, "sk-ant-api") {
-		return true
-	}
-	return false
+func determineBillable(billingMode string) bool {
+	return models.IsBillableMode(billingMode)
 }
 
 // checkRateLimit performs a rate limit check. If the limit is exceeded it writes
@@ -125,10 +119,10 @@ func (h *ProxyHandler) preCheckBudget(c *gin.Context, tenantID uint, keyID strin
 	return reservedAmount, true
 }
 
-// resolveAuth fetches the BYOK key for API_BYOK mode. For passthrough mode it
-// returns nil. Returns ok=false (and writes a 500 response) on internal errors.
-func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provider, mode string) (byokKey []byte, ok bool) {
-	if !models.IsBYOKMode(mode) {
+// resolveAuth fetches the BYOK key when authMethod is BYOK. For other auth
+// methods it returns nil. Returns ok=false (and writes a 500 response) on internal errors.
+func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provider, authMethod string) (byokKey []byte, ok bool) {
+	if authMethod != models.AuthMethodBYOK {
 		return nil, true
 	}
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
@@ -150,7 +144,7 @@ func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provi
 
 // buildUpstreamRequest creates an HTTP request for the upstream provider with
 // correct headers and authentication applied.
-func (h *ProxyHandler) buildUpstreamRequest(ctx context.Context, method, url string, body []byte, provider Provider, mode string, byokKey []byte, clientReq *http.Request) (*http.Request, error) {
+func (h *ProxyHandler) buildUpstreamRequest(ctx context.Context, method, url string, body []byte, provider Provider, byokKey []byte, clientReq *http.Request) (*http.Request, error) {
 	upstreamReq, err := http.NewRequestWithContext(ctx, method, url, newBodyReader(body))
 	if err != nil {
 		return nil, err
@@ -253,15 +247,16 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 
 	fmt.Println("------- HandleProxy called ------- tenantID:", tenantID, "keyID:", keyIDStr)
 
-	// Read provider and mode from context (set by auth middleware from the API key record).
+	// Read provider, auth_method, and billing_mode from context (set by auth middleware from the API key record).
 	provider := Provider(c.GetString("provider"))
-	mode := c.GetString("mode")
+	authMethod := c.GetString("auth_method")
+	billingMode := c.GetString("billing_mode")
 	if provider == "" {
 		provider = ProviderAnthropic
 	}
-	fmt.Println("------- provider:", provider, "mode:", mode)
+	fmt.Println("------- provider:", provider, "auth_method:", authMethod, "billing_mode:", billingMode)
 
-	apiUsageBilled := determineBillable(mode, c.Request.Header)
+	apiUsageBilled := determineBillable(billingMode)
 
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -284,11 +279,11 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	fmt.Println("------- Budget pre-check passed -------")
 
-	byokKey, ok := h.resolveAuth(c, tenantID, provider, mode)
+	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
 	if !ok {
 		return
 	}
-	fmt.Println("------ mode:", mode, "byokKey set:", byokKey != nil)
+	fmt.Println("------ auth_method:", authMethod, "byokKey set:", byokKey != nil)
 
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
@@ -296,7 +291,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		upstreamURL += "?" + c.Request.URL.RawQuery
 	}
 
-	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), c.Request.Method, upstreamURL, bodyBytes, provider, mode, byokKey, c.Request)
+	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), c.Request.Method, upstreamURL, bodyBytes, provider, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
 			"type":    "tg_internal_error",
@@ -379,12 +374,12 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 // HandleModels handles GET /v1/models — Anthropic model list passthrough.
 func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
-	mode := c.GetString("mode")
-	fmt.Println("------- HandleModels called ------- tenantID:", tenantID, "mode:", mode)
+	authMethod := c.GetString("auth_method")
+	fmt.Println("------- HandleModels called ------- tenantID:", tenantID, "auth_method:", authMethod)
 
-	// Resolve API key based on mode.
+	// Resolve API key based on auth method.
 	var resolvedKey string
-	if models.IsBYOKMode(mode) {
+	if authMethod == models.AuthMethodBYOK {
 		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
 		if err != nil {
 			if !errors.Is(err, services.ErrNoActiveKey) {

@@ -61,7 +61,8 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 		c.Set("tenant_id", ak.TenantID)
 		c.Set("key_id", ak.KeyID)
 		c.Set("provider", ak.Provider)
-		c.Set("mode", ak.Mode)
+		c.Set("auth_method", ak.AuthMethod)
+		c.Set("billing_mode", ak.BillingMode)
 		go svc.TouchLastSeen(context.Background(), ak.KeyID)
 		c.Next()
 	}

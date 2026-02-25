@@ -15,27 +15,53 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
 - **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
 - **Team management** – Invite members by email, assign roles, suspend or remove users.
-- **API key management** – Admins create and revoke agent API keys with provider and mode selection (e.g., `CLAUDE_CODE_PASSTHROUGH` / `ANTHROPIC_API_BYOK` for Anthropic, `OPENAI_CODEX_PASSTHROUGH` / `OPENAI_API_BYOK` for OpenAI). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
+- **API key management** – Admins create and revoke agent API keys with provider, auth method (`BROWSER_OAUTH` / `BYOK`), and billing mode (`MONTHLY_SUBSCRIPTION` / `API_USAGE`). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
-## Supported Providers & Modes
+## Recent changes
 
-| Provider | Mode | Auth Flow | Billing | Description |
-|---|---|---|---|---|
-| **Anthropic** | `CLAUDE_CODE_PASSTHROUGH` | Browser auth (Claude monthly subscription) | API usage billed to Anthropic subscription | User authenticates via Claude Code's browser login. The gateway passes through the user's session credentials to Anthropic. Usage is tracked but billed through the user's existing Anthropic subscription. |
-| **Anthropic** | `ANTHROPIC_API_BYOK` | Bring Your Own Key | API usage billed to tenant's Anthropic API key | Tenant stores their Anthropic API key in the encrypted vault. The gateway injects the stored key on every request. Full cost tracking, budget enforcement, and rate limiting apply. |
-| **OpenAI** | `OPENAI_CODEX_PASSTHROUGH` | Client credentials (OpenAI subscription) | API usage billed to user's OpenAI account | User runs Codex CLI with their own OpenAI credentials. The gateway passes through the client's auth to OpenAI. Usage is tracked but billed through the user's existing OpenAI account. |
-| **OpenAI** | `OPENAI_API_BYOK` | Bring Your Own Key | API usage billed to tenant's OpenAI API key | Tenant stores their OpenAI API key in the encrypted vault. Requests to `/v1/responses` and `/v1/openai/*` are forwarded to OpenAI with the stored key. Supports Codex CLI and other OpenAI-compatible clients. |
+- **2026-02-25** – Refactored `mode` column into separate `auth_method` + `billing_mode` fields for cleaner provider/auth/billing separation.
+- **2026-02-25** – Fixed Codex passthrough usage logs so every request creates a usage log entry.
+- **2026-02-25** – Codex passthrough now routes to the ChatGPT backend instead of `api.openai.com`.
+- **2026-02-24** – Dashboard shows per-API-key budget limits.
+- **2026-02-24** – Provider selector is hidden when creating per-API-key spend limits.
+- **2026-02-24** – Per-API-key spend limits are available for Team+ plans.
+- **2026-02-24** – Provider key limits are enforced by plan (free:1, pro:3, team:5, business:20).
+- **2026-02-24** – Dashboard spend limits are visible to viewers via the `/v1/budget` endpoint.
 
-### How each mode works
+## Auth Methods & Billing Modes
 
-**Passthrough modes (`CLAUDE_CODE_PASSTHROUGH`, `OPENAI_CODEX_PASSTHROUGH`)**
+Each API key is configured with a **provider**, an **auth method**, and a **billing mode**:
+
+| Auth Method | Billing Mode | Description |
+|---|---|---|
+| `BROWSER_OAUTH` | `MONTHLY_SUBSCRIPTION` | CLI tool (Claude Code / Codex) authenticates via browser login. Usage billed through the user's existing provider subscription. |
+| `BROWSER_OAUTH` | `API_USAGE` | Client provides own API key in headers. Usage billed per token. |
+| `BYOK` | `API_USAGE` | Gateway injects the tenant's stored provider key. Usage billed per token. Full budget enforcement applies. |
+
+> **Invalid combination:** `BYOK` + `MONTHLY_SUBSCRIPTION` — BYOK implies API-level access, so monthly subscription billing is not applicable.
+
+### Valid combinations per provider
+
+| Provider | Auth Method | Billing Mode | Use Case |
+|---|---|---|---|
+| anthropic | `BROWSER_OAUTH` | `MONTHLY_SUBSCRIPTION` | Claude Code CLI, subscription user |
+| anthropic | `BROWSER_OAUTH` | `API_USAGE` | Client provides own Anthropic key in headers, billed per token |
+| anthropic | `BYOK` | `API_USAGE` | Gateway injects stored Anthropic key, billed per token |
+| openai | `BROWSER_OAUTH` | `MONTHLY_SUBSCRIPTION` | Codex CLI, subscription user (routes to ChatGPT backend) |
+| openai | `BROWSER_OAUTH` | `API_USAGE` | Client provides own OpenAI key in headers, billed per token |
+| openai | `BYOK` | `API_USAGE` | Gateway injects stored OpenAI key, billed per token |
+
+### How each auth method works
+
+**Browser OAuth (`BROWSER_OAUTH`)**
 - The user runs the CLI tool (Claude Code or Codex CLI) with their own credentials.
 - The gateway validates the `tg_xxx` key and passes the client's auth through to the upstream provider.
-- Cost is tracked for visibility but billed through the user's own provider subscription.
+- When billing mode is `MONTHLY_SUBSCRIPTION`, cost is tracked for visibility but billed through the user's own provider subscription.
+- When billing mode is `API_USAGE`, the client provides their own API key and usage is billed per token.
 
-**BYOK modes (`ANTHROPIC_API_BYOK`, `OPENAI_API_BYOK`)**
+**Bring Your Own Key (`BYOK`)**
 - The admin stores a provider API key in the encrypted vault via the Management dashboard.
 - The gateway validates the `tg_xxx` key, fetches the stored provider key from the vault, and injects it into the upstream request.
 - The user never sees or handles the raw provider key.
@@ -257,10 +283,10 @@ api-server/
 |---|---|
 | `Tenant` | `id`, `name`, `plan` (free\|pro\|team\|business, default free), `max_api_keys` (derived from plan) |
 | `User` | `id` (Clerk ID), `tenant_id`, `email`, `role`, `status` |
-| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `mode` (CLAUDE_CODE_PASSTHROUGH\|ANTHROPIC_API_BYOK\|OPENAI_CODEX_PASSTHROUGH\|OPENAI_API_BYOK), `expires_at` |
+| `APIKey` | `key_id`, `tenant_id`, `label`, `hash`, `salt`, `scopes`, `provider` (default anthropic), `auth_method` (BROWSER_OAUTH\|BYOK), `billing_mode` (MONTHLY_SUBSCRIPTION\|API_USAGE), `expires_at` |
 | `ProviderKey` | `id`, `tenant_id`, `provider`, `label`, `encrypted_key`, `key_nonce`, `encrypted_dek`, `dek_nonce` |
 | `TenantProviderSettings` | `tenant_id`, `provider`, `active_key_id`, `policy_version` (bumped on every activate/rotate) |
-| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id`, `api_usage_billed` (bool — `true` for BYOK billable requests, `false` for passthrough/subscription) |
+| `UsageLog` | `id`, `tenant_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cost` (decimal), `request_id`, `api_usage_billed` (bool — `true` for API_USAGE billing, `false` for MONTHLY_SUBSCRIPTION) |
 | `Provider` | `id`, `name`, `display_name`, `currency` |
 | `ModelDef` | `id`, `provider_id`, `model_name`, `billing_unit_type` |
 | `ModelPricing` | `id`, `model_id`, `price_type`, `price_per_unit` (decimal/1M tokens), `effective_from`, `effective_to` |
@@ -535,7 +561,7 @@ Production config is loaded from `conf/api-server-prod.yaml`. Sensitive values a
 | `API_KEY_PEPPER` | Secret pepper for API key hashing |
 | `CORS_ORIGINS` | Comma-separated allowed origins (or `*`) |
 | `PROVIDER_KEY_ENCRYPTION_KEY` | 64-char hex (32-byte) AES master key for provider key encryption. **Required** — server fails to start if unset. Generate with `openssl rand -hex 32`. |
-| `ENABLE_GW_VALIDATION` | When `false`, allows passthrough requests without gateway key validation (used for `CLAUDE_CODE_PASSTHROUGH` mode). Default: `true`. |
+| `ENABLE_GW_VALIDATION` | When `false`, allows passthrough requests without gateway key validation (used for BROWSER_OAUTH passthrough). Default: `true`. |
 
 ---
 
@@ -561,7 +587,7 @@ dashboard/
 │   │   ├── SignUpPage.tsx       # Clerk sign-up embed
 │   │   ├── Dashboard.tsx        # Usage summary + trend charts + collapsible log table + date range
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
-│   │   ├── ManagementPage.tsx   # Team, API key (provider+mode), and provider key management
+│   │   ├── ManagementPage.tsx   # Team, API key (provider+auth_method+billing_mode), and provider key management
 │   │   ├── LimitsPage.tsx       # Spend limits + rate limits management (unified)
 │   │   ├── PricingConfigPage.tsx# Per-key pricing overrides
 │   │   ├── PublicPricingPage.tsx# Full pricing page at /pricing (monthly/annual toggle, 4-tier cards)
@@ -605,7 +631,7 @@ dashboard/
 - **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
 - **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note (filters by BYOK billable requests only), budget status bars sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical) showing provider name and correct action labels (Alert only / Block only / Alert + Block), and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Non-billable (subscription) requests display $0.00 cost.
-- **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is hidden for `CLAUDE_CODE_PASSTHROUGH` mode keys.
+- **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + auth method + billing mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is shown for BYOK keys.
 - **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (All Providers / Anthropic / OpenAI) via dropdown selectors. Spend limits table is sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
@@ -759,7 +785,7 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Budget enforcement (alert / block / alert+block, per-provider) | ✅ Live |
 | Rate limits (RPM / ITPM / OTPM, model-scoped) | ✅ Live |
 | Dashboard date range selection (plan-aware retention) | ✅ Live |
-| API key provider + mode (4 provider-specific modes) | ✅ Live |
+| API key provider + auth_method + billing_mode | ✅ Live |
 | Monthly spend forecast | ✅ Live |
 | Provider key vault (AES-256-GCM envelope encryption) | ✅ Live |
 | Anthropic reverse proxy (`/v1/messages`) | ✅ Live |
