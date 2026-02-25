@@ -1046,6 +1046,25 @@ export default function ManagementPage() {
                       <p>Remember to add your <strong>{createdProvider === 'openai' ? 'OpenAI' : 'Anthropic'} provider key</strong> in the Provider Keys section before using this gateway key.</p>
                     </div>
                   </div>
+                ) : createdProvider === 'openai' && createdAuthMethod === 'BROWSER_OAUTH' && createdBillingMode === 'MONTHLY_SUBSCRIPTION' ? (
+                  <>
+                    <div className="install-step">
+                      <h4>1. Paste the following config to the top of <code>~/.codex/config.toml</code></h4>
+                      <div className="cmd-box">
+                        <pre>{`model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nrequires_openai_auth = true\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`}</pre>
+                        <button className="btn btn-small btn-secondary"
+                          onClick={() => copy(
+                            `model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nrequires_openai_auth = true\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`,
+                            'env'
+                          )}>
+                          {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="install-step">
+                      <h4>2. Run <code>codex</code> command in a code repo</h4>
+                    </div>
+                  </>
                 ) : (
                   <div className="install-step">
                     <h4>Set environment variables</h4>
