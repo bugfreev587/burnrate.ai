@@ -67,7 +67,20 @@ func ParseOpenAIResponsesSSE(ctx context.Context, body io.Reader, w http.Respons
 // Chat Completions field names (prompt_tokens/completion_tokens) for compatibility
 // with the ChatGPT backend.
 func parseOpenAIResponsesSSEEvent(eventType, data string, counts *TokenCounts) {
-	if eventType != "response.completed" {
+	switch eventType {
+	case "response.output_text.delta":
+		// Track output text bytes so we can estimate tokens when the upstream
+		// (e.g. ChatGPT backend for Codex passthrough) omits the usage field.
+		var deltaEvt struct {
+			Delta string `json:"delta"`
+		}
+		if err := json.Unmarshal([]byte(data), &deltaEvt); err == nil {
+			counts.OutputTextBytes += int64(len(deltaEvt.Delta))
+		}
+		return
+	case "response.completed":
+		// Fall through to usage extraction below.
+	default:
 		return
 	}
 	var evt struct {

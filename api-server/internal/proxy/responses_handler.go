@@ -182,6 +182,7 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 	}
 
 	var counts TokenCounts
+	var respBodyLen int64
 	if isSSE {
 		counts, err = ParseOpenAIResponsesSSE(c.Request.Context(), resp.Body, c.Writer)
 		if err != nil {
@@ -193,6 +194,7 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 			log.Printf("proxy: read OpenAI Responses body (tenant=%d): %v", c.GetUint("tenant_id"), readErr)
 			return TokenCounts{}, readErr
 		}
+		respBodyLen = int64(len(respBody))
 		c.Writer.Write(respBody)
 		counts = extractTokensFromOpenAIResponsesJSON(respBody)
 	}
@@ -201,9 +203,27 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 	// or usage in the standard OpenAI format. Generate a synthetic ID so the
 	// usage event is always published (the guard in publishUsageEvent skips
 	// events where MessageID, InputTokens, and OutputTokens are all zero).
+	// When usage data is missing, estimate tokens from the content that flowed
+	// through the proxy (~4 bytes per token).
 	if authMethod == models.AuthMethodBrowserOAuth && billingMode == models.BillingModeMonthlySubscription {
 		if counts.MessageID == "" {
 			counts.MessageID = "codex_" + uuid.New().String()
+		}
+		if counts.InputTokens == 0 {
+			counts.InputTokens = int64(len(body)) / 4
+			if counts.InputTokens < 1 {
+				counts.InputTokens = 1
+			}
+		}
+		if counts.OutputTokens == 0 {
+			if counts.OutputTextBytes > 0 {
+				counts.OutputTokens = counts.OutputTextBytes / 4
+			} else if respBodyLen > 0 {
+				counts.OutputTokens = respBodyLen / 4
+			}
+			if counts.OutputTokens < 1 {
+				counts.OutputTokens = 1
+			}
 		}
 		log.Printf("proxy: codex passthrough usage — MessageID=%s Model=%s InputTokens=%d OutputTokens=%d (tenant=%d)",
 			counts.MessageID, counts.Model, counts.InputTokens, counts.OutputTokens, c.GetUint("tenant_id"))

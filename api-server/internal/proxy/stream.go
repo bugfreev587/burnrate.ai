@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// TokenCounts holds the token usage extracted from the Anthropic SSE stream.
+// TokenCounts holds the token usage extracted from the upstream SSE stream or JSON response.
 type TokenCounts struct {
 	InputTokens         int64
 	OutputTokens        int64
@@ -18,6 +18,9 @@ type TokenCounts struct {
 	CacheReadTokens     int64
 	MessageID           string
 	Model               string
+	// OutputTextBytes is the sum of bytes from output_text.delta events during SSE
+	// streaming. Used to estimate OutputTokens when the upstream doesn't report usage.
+	OutputTextBytes int64
 }
 
 // ParseSSE reads SSE bytes from Anthropic, writes them through to the client (w),
