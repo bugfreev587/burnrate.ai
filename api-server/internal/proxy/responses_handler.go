@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
 // ResponsesRequest is the minimal struct used to extract routing-relevant fields
@@ -137,8 +139,13 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 }
 
 // handleResponsesOpenAI forwards the request to OpenAI's /v1/responses as-is.
+// For Codex passthrough (ChatGPT OAuth), the upstream is the ChatGPT backend
+// because the OAuth token is not accepted by api.openai.com.
 func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req ResponsesRequest, provider Provider, mode string, byokKey []byte) (TokenCounts, error) {
 	upstreamURL := upstreamBase(ProviderOpenAI) + "/v1/responses"
+	if mode == models.OpenAIModeCodexPassthrough && byokKey == nil {
+		upstreamURL = chatGPTCodexResponsesURL
+	}
 
 	fmt.Println("----- handleResponsesOpenAI upstreamURL:", upstreamURL)
 

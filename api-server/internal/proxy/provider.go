@@ -24,6 +24,11 @@ var defaultUpstreamURLs = map[Provider]string{
 	ProviderVertex:    "https://us-central1-aiplatform.googleapis.com",
 }
 
+// ChatGPT backend base URL for Codex passthrough (subscription/OAuth users).
+// The ChatGPT OAuth token is not accepted by api.openai.com; it must be sent
+// to the ChatGPT backend endpoint instead.
+const chatGPTCodexResponsesURL = "https://chatgpt.com/backend-api/codex/responses"
+
 // tokengateHeaders lists headers that must never be forwarded upstream.
 var tokengateHeaders = []string{
 	"X-Tokengate-Key",
