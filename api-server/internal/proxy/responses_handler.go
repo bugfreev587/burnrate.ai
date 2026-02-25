@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
@@ -147,8 +148,6 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 		upstreamURL = chatGPTCodexResponsesURL
 	}
 
-	fmt.Println("----- handleResponsesOpenAI upstreamURL:", upstreamURL)
-
 	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), http.MethodPost, upstreamURL, body, provider, mode, byokKey, c.Request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
@@ -195,6 +194,16 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 		c.Writer.Write(respBody)
 		counts = extractTokensFromOpenAIResponsesJSON(respBody)
 	}
+
+	// Codex passthrough via the ChatGPT backend may not return a response ID
+	// or usage in the standard OpenAI format. Generate a synthetic ID so the
+	// usage event is always published (the guard in publishUsageEvent skips
+	// events where MessageID, InputTokens, and OutputTokens are all zero).
+	if counts.MessageID == "" && mode == models.OpenAIModeCodexPassthrough {
+		counts.MessageID = "codex_" + uuid.New().String()
+		log.Printf("proxy: codex passthrough response missing ID; generated synthetic MessageID=%s (tenant=%d)", counts.MessageID, c.GetUint("tenant_id"))
+	}
+
 	return counts, nil
 }
 
