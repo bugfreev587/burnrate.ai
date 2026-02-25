@@ -199,9 +199,12 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 	// or usage in the standard OpenAI format. Generate a synthetic ID so the
 	// usage event is always published (the guard in publishUsageEvent skips
 	// events where MessageID, InputTokens, and OutputTokens are all zero).
-	if counts.MessageID == "" && mode == models.OpenAIModeCodexPassthrough {
-		counts.MessageID = "codex_" + uuid.New().String()
-		log.Printf("proxy: codex passthrough response missing ID; generated synthetic MessageID=%s (tenant=%d)", counts.MessageID, c.GetUint("tenant_id"))
+	if mode == models.OpenAIModeCodexPassthrough {
+		if counts.MessageID == "" {
+			counts.MessageID = "codex_" + uuid.New().String()
+		}
+		log.Printf("proxy: codex passthrough usage — MessageID=%s Model=%s InputTokens=%d OutputTokens=%d (tenant=%d)",
+			counts.MessageID, counts.Model, counts.InputTokens, counts.OutputTokens, c.GetUint("tenant_id"))
 	}
 
 	return counts, nil

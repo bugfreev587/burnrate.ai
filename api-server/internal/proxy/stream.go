@@ -139,24 +139,39 @@ func extractTokensFromJSON(body []byte) TokenCounts {
 }
 
 // extractTokensFromOpenAIResponsesJSON parses token usage from an OpenAI Responses API
-// non-streaming JSON response body (usage.input_tokens, usage.output_tokens).
+// non-streaming JSON response body. It handles both Responses API field names
+// (input_tokens/output_tokens) and Chat Completions field names
+// (prompt_tokens/completion_tokens) for compatibility with the ChatGPT backend.
 func extractTokensFromOpenAIResponsesJSON(body []byte) TokenCounts {
 	var resp struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`
 		Usage struct {
+			// Responses API format
 			InputTokens  int64 `json:"input_tokens"`
 			OutputTokens int64 `json:"output_tokens"`
+			// Chat Completions format (ChatGPT backend)
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return TokenCounts{}
 	}
+	inputTokens := resp.Usage.InputTokens
+	outputTokens := resp.Usage.OutputTokens
+	// Fall back to Chat Completions field names if Responses API fields are zero.
+	if inputTokens == 0 && resp.Usage.PromptTokens != 0 {
+		inputTokens = resp.Usage.PromptTokens
+	}
+	if outputTokens == 0 && resp.Usage.CompletionTokens != 0 {
+		outputTokens = resp.Usage.CompletionTokens
+	}
 	return TokenCounts{
 		MessageID:    resp.ID,
 		Model:        resp.Model,
-		InputTokens:  resp.Usage.InputTokens,
-		OutputTokens: resp.Usage.OutputTokens,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
 	}
 }
 

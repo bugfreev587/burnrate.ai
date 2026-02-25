@@ -63,6 +63,9 @@ func ParseOpenAIResponsesSSE(ctx context.Context, body io.Reader, w http.Respons
 }
 
 // parseOpenAIResponsesSSEEvent extracts token counts from OpenAI Responses SSE events.
+// It handles both Responses API field names (input_tokens/output_tokens) and
+// Chat Completions field names (prompt_tokens/completion_tokens) for compatibility
+// with the ChatGPT backend.
 func parseOpenAIResponsesSSEEvent(eventType, data string, counts *TokenCounts) {
 	if eventType != "response.completed" {
 		return
@@ -72,8 +75,12 @@ func parseOpenAIResponsesSSEEvent(eventType, data string, counts *TokenCounts) {
 			ID    string `json:"id"`
 			Model string `json:"model"`
 			Usage struct {
+				// Responses API format
 				InputTokens  int64 `json:"input_tokens"`
 				OutputTokens int64 `json:"output_tokens"`
+				// Chat Completions format (ChatGPT backend)
+				PromptTokens     int64 `json:"prompt_tokens"`
+				CompletionTokens int64 `json:"completion_tokens"`
 			} `json:"usage"`
 		} `json:"response"`
 	}
@@ -82,6 +89,13 @@ func parseOpenAIResponsesSSEEvent(eventType, data string, counts *TokenCounts) {
 		counts.Model = evt.Response.Model
 		counts.InputTokens = evt.Response.Usage.InputTokens
 		counts.OutputTokens = evt.Response.Usage.OutputTokens
+		// Fall back to Chat Completions field names if Responses API fields are zero.
+		if counts.InputTokens == 0 && evt.Response.Usage.PromptTokens != 0 {
+			counts.InputTokens = evt.Response.Usage.PromptTokens
+		}
+		if counts.OutputTokens == 0 && evt.Response.Usage.CompletionTokens != 0 {
+			counts.OutputTokens = evt.Response.Usage.CompletionTokens
+		}
 	}
 }
 
