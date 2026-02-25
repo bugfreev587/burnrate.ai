@@ -117,6 +117,8 @@ function fmtDate(s: string | null | undefined): string {
 }
 
 function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens' }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
   if (data.length === 0) {
     return <div className="trend-empty">No data for the selected period.</div>
   }
@@ -162,8 +164,20 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
   const axisTitleX = 10
   const axisTitleY = PAD.top + chartH / 2
 
+  // Tooltip value for hovered point.
+  const hoverPoint = hoverIdx !== null ? data[hoverIdx] : null
+  const hoverVal = hoverPoint
+    ? (mode === 'cost' ? fmt$(hoverPoint.cost) : fmtTokens(hoverPoint.tokens))
+    : ''
+  const hoverDate = hoverPoint ? hoverPoint.date : ''
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="trend-svg" preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="trend-svg"
+      preserveAspectRatio="none"
+      onMouseLeave={() => setHoverIdx(null)}
+    >
       <defs>
         <linearGradient id={`grad-${mode}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
@@ -219,11 +233,84 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
       <polygon points={areaPts} fill={`url(#grad-${mode})`} />
       {/* Line */}
       <polyline points={pts} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinejoin="round" />
+
+      {/* Vertical guide line on hover */}
+      {hoverIdx !== null && (
+        <line
+          x1={xOf(hoverIdx)} y1={PAD.top}
+          x2={xOf(hoverIdx)} y2={PAD.top + chartH}
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="1"
+          strokeDasharray="3,3"
+        />
+      )}
+
       {/* Dots */}
       {data.map((d, i) => {
         const v = mode === 'cost' ? parseFloat(d.cost) : d.tokens
-        return <circle key={i} cx={xOf(i)} cy={yOf(v)} r="3" fill="var(--color-primary)" />
+        const isHovered = hoverIdx === i
+        return (
+          <circle
+            key={i}
+            cx={xOf(i)}
+            cy={yOf(v)}
+            r={isHovered ? 5 : 3}
+            fill={isHovered ? '#fff' : 'var(--color-primary)'}
+            stroke={isHovered ? 'var(--color-primary)' : 'none'}
+            strokeWidth={isHovered ? 2 : 0}
+          />
+        )
       })}
+
+      {/* Invisible wider hit areas for hover detection */}
+      {data.map((d, i) => {
+        const v = mode === 'cost' ? parseFloat(d.cost) : d.tokens
+        return (
+          <circle
+            key={`hit-${i}`}
+            cx={xOf(i)}
+            cy={yOf(v)}
+            r={10}
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHoverIdx(i)}
+          />
+        )
+      })}
+
+      {/* Tooltip */}
+      {hoverIdx !== null && hoverPoint && (() => {
+        const v = mode === 'cost' ? parseFloat(hoverPoint.cost) : hoverPoint.tokens
+        const cx = xOf(hoverIdx)
+        const cy = yOf(v)
+        // Position tooltip above the point; flip if near the top.
+        const tooltipY = cy - 12 > PAD.top ? cy - 12 : cy + 18
+        // Anchor: prefer middle, shift left/right near edges.
+        const anchor = cx < PAD.left + 60 ? 'start' : cx > PAD.left + chartW - 60 ? 'end' : 'middle'
+        return (
+          <g>
+            <text
+              x={cx}
+              y={tooltipY - 9}
+              textAnchor={anchor}
+              fontSize="8"
+              fill="var(--color-text-muted)"
+            >
+              {hoverDate}
+            </text>
+            <text
+              x={cx}
+              y={tooltipY}
+              textAnchor={anchor}
+              fontSize="9.5"
+              fontWeight="600"
+              fill="#fff"
+            >
+              {hoverVal}
+            </text>
+          </g>
+        )
+      })()}
 
       {/* X-axis labels */}
       {data.map((d, i) => {
