@@ -13,6 +13,9 @@ type PlanLimits struct {
 	// MaxAPIKeys is the maximum number of active (non-revoked, non-expired) API keys.
 	// -1 means unlimited.
 	MaxAPIKeys int `json:"max_api_keys"`
+	// MaxProviderKeys is the maximum number of active (non-revoked) provider keys.
+	// -1 means unlimited.
+	MaxProviderKeys int `json:"max_provider_keys"`
 	// MaxMembers is the maximum number of users (owner + all others, including pending invites).
 	// -1 means unlimited.
 	MaxMembers int `json:"max_members"`
@@ -34,6 +37,7 @@ type PlanLimits struct {
 var planLimitsMap = map[string]PlanLimits{
 	PlanFree: {
 		MaxAPIKeys:           1,
+		MaxProviderKeys:      1,
 		MaxMembers:           1,
 		AllowedPeriods:       []string{"monthly"},
 		AllowBlockAction:     false,
@@ -44,6 +48,7 @@ var planLimitsMap = map[string]PlanLimits{
 	},
 	PlanPro: {
 		MaxAPIKeys:           5,
+		MaxProviderKeys:      3,
 		MaxMembers:           1,
 		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:     true,
@@ -54,6 +59,7 @@ var planLimitsMap = map[string]PlanLimits{
 	},
 	PlanTeam: {
 		MaxAPIKeys:           -1,
+		MaxProviderKeys:      5,
 		MaxMembers:           10,
 		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:     true,
@@ -64,6 +70,7 @@ var planLimitsMap = map[string]PlanLimits{
 	},
 	PlanBusiness: {
 		MaxAPIKeys:           -1,
+		MaxProviderKeys:      20,
 		MaxMembers:           -1,
 		AllowedPeriods:       []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:     true,

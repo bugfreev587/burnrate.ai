@@ -71,6 +71,7 @@ export default function ManagementPage() {
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
   const [memberLimit, setMemberLimit] = useState<number | null>(null)
   const [keyLimit, setKeyLimit] = useState<number | null>(null)
+  const [providerKeyLimit, setProviderKeyLimit] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -94,7 +95,7 @@ export default function ManagementPage() {
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
   // Limit-reached modal
-  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'members' } | null>(null)
+  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'members' | 'provider_keys' } | null>(null)
 
   // Invite modal
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -153,6 +154,7 @@ export default function ManagementPage() {
       if (res.ok) {
         const data = await res.json()
         setProviderKeys(data.provider_keys ?? [])
+        setProviderKeyLimit(data.limit ?? null)
       }
     } catch (err) {
       console.error('fetch provider keys:', err)
@@ -655,13 +657,22 @@ export default function ManagementPage() {
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
-                <h2>Provider Keys</h2>
+                <h2>
+                  Provider Keys{' '}
+                  <span className="section-count">
+                    {providerKeys.length}/{providerKeyLimit === null ? '∞' : providerKeyLimit}
+                  </span>
+                </h2>
                 <p className="section-desc">
                   Upstream LLM provider API keys (Anthropic, OpenAI) stored and rotated centrally.
                   Set one as active and agents will use it automatically via the gateway proxy.
                 </p>
               </div>
               <button className="btn btn-primary" onClick={() => {
+                if (providerKeyLimit !== null && providerKeys.length >= providerKeyLimit) {
+                  setLimitModal({ type: 'provider_keys' })
+                  return
+                }
                 setAddKeyLabel(''); setAddKeyValue(''); setAddKeyProvider('anthropic')
                 setShowAddKeyModal(true)
               }}>
@@ -950,12 +961,18 @@ export default function ManagementPage() {
         <div className="modal-overlay" onClick={() => setLimitModal(null)}>
           <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
-              <h2>{limitModal.type === 'keys' ? 'API Key Limit Reached' : 'Member Limit Reached'}</h2>
+              <h2>
+                {limitModal.type === 'keys' ? 'API Key Limit Reached'
+                  : limitModal.type === 'provider_keys' ? 'Provider Key Limit Reached'
+                  : 'Member Limit Reached'}
+              </h2>
             </div>
             <div className="modal-body">
               <p>
                 {limitModal.type === 'keys'
                   ? `You've reached the maximum of ${keyLimit} API key${keyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to create more API keys.`
+                  : limitModal.type === 'provider_keys'
+                  ? `You've reached the maximum of ${providerKeyLimit} provider key${providerKeyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more provider keys.`
                   : `You've reached the maximum of ${memberLimit} member${memberLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to invite more members.`}
               </p>
             </div>

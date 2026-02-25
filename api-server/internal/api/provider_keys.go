@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
@@ -32,6 +35,27 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 		return
 	}
 
+	// Enforce plan-based provider key limit.
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, tenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
+	if planLim.MaxProviderKeys != -1 {
+		var activeCount int64
+		s.postgresDB.GetDB().Model(&models.ProviderKey{}).
+			Where("tenant_id = ? AND revoked = false", tenantID).
+			Count(&activeCount)
+		if int(activeCount) >= planLim.MaxProviderKeys {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "plan_limit_reached",
+				"message": fmt.Sprintf("Your %s plan allows up to %d provider key(s). Upgrade to add more.", tenant.Plan, planLim.MaxProviderKeys),
+				"limit":   planLim.MaxProviderKeys,
+				"current": activeCount,
+				"plan":    tenant.Plan,
+			})
+			return
+		}
+	}
+
 	pk, err := s.providerKeySvc.Store(c.Request.Context(), tenantID, req.Provider, req.Label, req.APIKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store provider key"})
@@ -50,6 +74,12 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 // GET /v1/admin/provider_keys
 func (s *Server) handleListProviderKeys(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
+
+	user, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 
 	keys, err := s.providerKeySvc.List(c.Request.Context(), tenantID)
 	if err != nil {
@@ -89,7 +119,23 @@ func (s *Server) handleListProviderKeys(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"provider_keys": resp})
+	// Fetch tenant for plan-aware limit display.
+	var tenant models.Tenant
+	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	planLim := models.GetPlanLimits(tenant.Plan)
+
+	var limitResp, slotsLeft interface{}
+	if planLim.MaxProviderKeys != -1 {
+		limitResp = planLim.MaxProviderKeys
+		slotsLeft = planLim.MaxProviderKeys - len(resp)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"provider_keys": resp,
+		"limit":         limitResp,
+		"slots_left":    slotsLeft,
+		"plan":          tenant.Plan,
+	})
 }
 
 // handleRevokeProviderKey revokes a provider key.

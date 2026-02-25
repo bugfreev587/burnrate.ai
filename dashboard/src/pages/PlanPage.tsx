@@ -14,6 +14,7 @@ const PLAN_LEVELS: Record<PlanKey, number> = { free: 0, pro: 1, team: 2, busines
 
 interface PlanLimits {
   max_api_keys: number
+  max_provider_keys: number
   max_members: number
   allowed_periods: string[]
   allow_block_action: boolean
@@ -37,6 +38,7 @@ interface BillingStatus {
 interface PlanData {
   settings: OwnerSettings
   keyCount: number
+  providerKeyCount: number
   memberCount: number
   billing: BillingStatus | null
 }
@@ -48,16 +50,17 @@ const PLANS: Array<{
   label: string
   price: string
   maxKeys: string
+  maxProviderKeys: string
   maxMembers: string
   periods: string
   block: boolean
   perKey: boolean
   retention: string
 }> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days'    },
-  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days'   },
-  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days'  },
-  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited' },
+  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days'    },
+  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days'   },
+  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days'  },
+  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -288,9 +291,10 @@ export default function PlanPage() {
       setLoading(true)
       setError(null)
       try {
-        const [settingsRes, keysRes, usersRes, billingRes] = await Promise.all([
+        const [settingsRes, keysRes, providerKeysRes, usersRes, billingRes] = await Promise.all([
           fetch(`${API_BASE}/v1/owner/settings`, { headers }),
           fetch(`${API_BASE}/v1/admin/api_keys`, { headers }),
+          fetch(`${API_BASE}/v1/admin/provider_keys`, { headers }),
           fetch(`${API_BASE}/v1/admin/users`, { headers }),
           fetch(`${API_BASE}/v1/billing/status`, { headers }),
         ])
@@ -299,17 +303,21 @@ export default function PlanPage() {
         if (!keysRes.ok) throw new Error(`API keys fetch failed: HTTP ${keysRes.status}`)
         if (!usersRes.ok) throw new Error(`Users fetch failed: HTTP ${usersRes.status}`)
 
-        const [settings, keysData, usersData] = await Promise.all([
+        const [settings, keysData, providerKeysData, usersData] = await Promise.all([
           settingsRes.json(),
           keysRes.json(),
+          providerKeysRes.ok ? providerKeysRes.json() : { provider_keys: [] },
           usersRes.json(),
         ])
 
         const billingData = billingRes.ok ? await billingRes.json() : null
 
+        const pkArr = providerKeysData.provider_keys ?? []
+
         setData({
           settings,
           keyCount: Array.isArray(keysData) ? keysData.length : (keysData.count ?? keysData.total ?? 0),
+          providerKeyCount: Array.isArray(pkArr) ? pkArr.length : 0,
           memberCount: Array.isArray(usersData) ? usersData.length : (usersData.total ?? usersData.count ?? 0),
           billing: billingData,
         })
@@ -472,6 +480,11 @@ export default function PlanPage() {
                   limit={limits?.max_api_keys ?? data.settings.max_api_keys}
                 />
                 <UsageMeter
+                  label="Provider Keys"
+                  count={data.providerKeyCount}
+                  limit={limits?.max_provider_keys ?? 1}
+                />
+                <UsageMeter
                   label="Members"
                   count={data.memberCount}
                   limit={limits?.max_members ?? 1}
@@ -532,6 +545,14 @@ export default function PlanPage() {
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
                           {p.maxKeys}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Provider Keys</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.maxProviderKeys}
                         </td>
                       ))}
                     </tr>
