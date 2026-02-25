@@ -149,6 +149,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		CacheReadTokens:     cacheReadTokens,
 		Cost:                result.FinalCost,
 		RequestID:           messageID,
+		KeyID:               keyID,
 		APIKeyFingerprint:   apiKeyFingerprint,
 		CreatedAt:           ts,
 		APIUsageBilled:      apiUsageBilled,

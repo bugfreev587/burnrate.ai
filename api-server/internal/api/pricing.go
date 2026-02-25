@@ -355,6 +355,25 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		return
 	}
 
+	// Build a key_id → label lookup for per-key budget display.
+	keyLabels := map[string]string{}
+	for _, bl := range limits {
+		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
+			keyLabels[bl.ScopeID] = ""
+		}
+	}
+	if len(keyLabels) > 0 {
+		keyIDs := make([]string, 0, len(keyLabels))
+		for kid := range keyLabels {
+			keyIDs = append(keyIDs, kid)
+		}
+		var keys []models.APIKey
+		s.postgresDB.GetDB().Where("tenant_id = ? AND key_id IN ?", tenantID, keyIDs).Find(&keys)
+		for _, k := range keys {
+			keyLabels[k.KeyID] = k.Label
+		}
+	}
+
 	// Compute current period spend for each limit.
 	loc := parseTimezone(c)
 	now := time.Now().In(loc)
@@ -377,8 +396,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		q := s.postgresDB.GetDB().Model(&models.UsageLog{}).
 			Where("tenant_id = ? AND created_at >= ? AND api_usage_billed = ?", tenantID, periodStart, true)
 		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
-			q = q.Where("request_id IN (SELECT request_id FROM usage_logs WHERE tenant_id = ?)", tenantID)
-			// scope to key: UsageLog doesn't store key_id, so account-level spend is the best proxy
+			q = q.Where("key_id = ?", bl.ScopeID)
 		}
 		if bl.Provider != "" {
 			q = q.Where("provider = ?", bl.Provider)
@@ -394,7 +412,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			}
 		}
 
-		out[i] = gin.H{
+		entry := gin.H{
 			"id":              bl.ID,
 			"scope_type":      bl.ScopeType,
 			"scope_id":        bl.ScopeID,
@@ -408,6 +426,10 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			"period_start":    periodStart.Format("2006-01-02"),
 			"created_at":      bl.CreatedAt,
 		}
+		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
+			entry["key_label"] = keyLabels[bl.ScopeID]
+		}
+		out[i] = entry
 	}
 
 	c.JSON(http.StatusOK, gin.H{"budget_limits": out})

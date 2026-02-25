@@ -11,6 +11,7 @@ export interface SpendLimit {
   id: number
   scope_type: string      // "account" | "api_key"
   scope_id: string
+  key_label?: string      // present when scope_type="api_key"
   period_type: string     // "monthly" | "weekly" | "daily"
   provider: string        // "" = all, "anthropic", "openai"
   limit_amount: string    // decimal string (USD)

@@ -32,7 +32,7 @@ export default function LimitsPage() {
   const { role, isSynced } = useUserSync()
   const { limits: rateLimits, loading: rlLoading, error: rlError, upsertLimit: upsertRateLimit, deleteLimit: deleteRateLimit } = useRateLimits()
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
-  const { catalog } = usePricingConfig()
+  const { catalog, activeKeys } = usePricingConfig()
 
   // ── Provider / model options from catalog ─────────────────────────────────
   const providerOptions = useMemo(() => {
@@ -68,6 +68,8 @@ export default function LimitsPage() {
 
   // ── Spend limit modal state ───────────────────────────────────────────────
   const [showSLModal, setShowSLModal] = useState(false)
+  const [slScope, setSlScope] = useState<'account' | 'api_key'>('account')
+  const [slKeyId, setSlKeyId] = useState('')
   const [slProvider, setSlProvider] = useState('')
   const [slPeriod, setSlPeriod] = useState('monthly')
   const [slLimitAmount, setSlLimitAmount] = useState('')
@@ -119,8 +121,8 @@ export default function LimitsPage() {
 
   // ── Spend limit handlers ──────────────────────────────────────────────────
   const resetSLForm = () => {
-    setSlProvider(''); setSlPeriod('monthly'); setSlLimitAmount(''); setSlThreshold('80')
-    setSlActions(['alert']); setSlFormError(null)
+    setSlScope('account'); setSlKeyId(''); setSlProvider(''); setSlPeriod('monthly')
+    setSlLimitAmount(''); setSlThreshold('80'); setSlActions(['alert']); setSlFormError(null)
   }
 
   const handleSaveSL = async () => {
@@ -129,14 +131,16 @@ export default function LimitsPage() {
     const threshold = parseFloat(slThreshold)
     if (isNaN(threshold) || threshold < 0 || threshold > 100) { setSlFormError('Alert threshold must be 0-100'); return }
     if (slActions.length === 0) { setSlFormError('Select at least one action'); return }
+    if (slScope === 'api_key' && !slKeyId) { setSlFormError('Please select an API key'); return }
     const action = slActions.includes('alert') && slActions.includes('block')
       ? 'alert_block'
       : slActions[0]
     setSlSaving(true); setSlFormError(null)
     try {
       const req: UpsertSpendLimitReq = {
-        scope_type: 'account', scope_id: '', period_type: slPeriod,
-        provider: slProvider, limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
+        scope_type: slScope, scope_id: slScope === 'api_key' ? slKeyId : '',
+        period_type: slPeriod, provider: slProvider,
+        limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
       }
       await upsertSpendLimit(req)
       showSuccess('Spend limit saved'); setShowSLModal(false); resetSLForm()
@@ -200,6 +204,7 @@ export default function LimitsPage() {
               <table className="mgmt-table">
                 <thead>
                   <tr>
+                    <th>Scope</th>
                     <th>Provider</th>
                     <th>Period</th>
                     <th>Limit (USD)</th>
@@ -213,7 +218,7 @@ export default function LimitsPage() {
                 <tbody>
                   {spendLimits.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="empty-cell">
+                      <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
                           <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }}>
@@ -223,6 +228,8 @@ export default function LimitsPage() {
                       </td>
                     </tr>
                   ) : [...spendLimits].sort((a, b) => {
+                    // Account-level first, then per-key
+                    if (a.scope_type !== b.scope_type) return a.scope_type === 'account' ? -1 : 1
                     const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
                     const pa = periodOrder[a.period_type] ?? 9
                     const pb = periodOrder[b.period_type] ?? 9
@@ -236,6 +243,15 @@ export default function LimitsPage() {
                     const barClass = pct >= 100 ? 'usage-exceeded' : pct >= thresholdNum ? 'usage-high' : ''
                     return (
                       <tr key={l.id}>
+                        <td>
+                          {l.scope_type === 'api_key' ? (
+                            <span className="mode-badge" title={l.scope_id}>
+                              {l.key_label || l.scope_id?.slice(0, 8) + '…'}
+                            </span>
+                          ) : (
+                            <span className="provider-badge">Account</span>
+                          )}
+                        </td>
                         <td>
                           <span className="provider-badge">
                             {l.provider ? l.provider.charAt(0).toUpperCase() + l.provider.slice(1) : 'All'}
@@ -378,9 +394,50 @@ export default function LimitsPage() {
             </div>
             <div className="modal-body">
               <p className="modal-hint">
-                Set a budget cap for your account. When the limit is reached, the configured action
-                (alert or block) will take effect.
+                Set a budget cap for your account or a specific API key. When the limit is reached,
+                the configured action (alert or block) will take effect.
               </p>
+
+              <div className="form-group">
+                <label>Scope <span className="required">*</span></label>
+                <div className="role-select">
+                  <label className={`role-option ${slScope === 'account' ? 'selected' : ''}`}>
+                    <input type="radio" name="sl-scope" value="account"
+                      checked={slScope === 'account'}
+                      onChange={() => { setSlScope('account'); setSlKeyId('') }} />
+                    <div>
+                      <strong>Account</strong>
+                      <span className="role-desc">Applies to all usage across the account</span>
+                    </div>
+                  </label>
+                  <label className={`role-option ${slScope === 'api_key' ? 'selected' : ''}`}>
+                    <input type="radio" name="sl-scope" value="api_key"
+                      checked={slScope === 'api_key'}
+                      onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? '') }} />
+                    <div>
+                      <strong>Per API Key</strong>
+                      <span className="role-desc">Applies to a single API key (Team+ plans)</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {slScope === 'api_key' && (
+                <div className="form-group">
+                  <label>API Key <span className="required">*</span></label>
+                  {activeKeys.length === 0 ? (
+                    <p className="text-muted">No active API keys. Create one in Management first.</p>
+                  ) : (
+                    <select value={slKeyId} onChange={e => setSlKeyId(e.target.value)}>
+                      {activeKeys.map(k => (
+                        <option key={k.key_id} value={k.key_id}>
+                          {k.label} ({k.key_id.slice(0, 8)}…)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Provider <span className="required">*</span></label>
