@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/config"
 	"github.com/xiaoboyu/tokengate/api-server/internal/db"
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
+	"github.com/xiaoboyu/tokengate/api-server/internal/logging"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
 	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
@@ -26,26 +27,34 @@ import (
 func main() {
 	_ = godotenv.Load()
 
+	// Initialize structured logging (stdout JSON + optional Better Stack).
+	// Must be called before any other logging so the bridge captures everything.
+	flush := logging.Init(os.Getenv("BETTERSTACK_SOURCE_TOKEN"))
+	defer flush()
+
 	confFile := "/app/conf/api-server-prod.yaml"
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		confFile = "./conf/api-server-prod.yaml"
 	}
-	log.Printf("loading config from: %s", confFile)
+	slog.Info("loading config", "file", confFile)
 
 	cfg, err := config.LoadConfig(confFile)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("config loaded: env=%s host=%s port=%s", cfg.Environment, cfg.Server.Host, cfg.Server.Port)
+	slog.Info("config loaded", "env", cfg.Environment, "host", cfg.Server.Host, "port", cfg.Server.Port)
 
 	// ── Production startup validations ───────────────────────────────────────
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		if strings.EqualFold(os.Getenv("ENABLE_GW_VALIDATION"), "false") {
-			log.Fatalf("FATAL: ENABLE_GW_VALIDATION=false is not allowed in production")
+			slog.Error("ENABLE_GW_VALIDATION=false is not allowed in production")
+			os.Exit(1)
 		}
 		pepper := cfg.Security.APIKeyPepper
 		if pepper == "change-me-in-production" || len(pepper) < 16 {
-			log.Fatalf("FATAL: API_KEY_PEPPER must be at least 16 characters and not the default value in production")
+			slog.Error("API_KEY_PEPPER must be at least 16 characters and not the default value in production")
+			os.Exit(1)
 		}
 	}
 
@@ -56,16 +65,18 @@ func main() {
 	}
 	postgresDB, err := db.InitPostgres(postgresDSN)
 	if err != nil {
-		log.Fatalf("postgres init err: %v", err)
+		slog.Error("postgres init failed", "error", err)
+		os.Exit(1)
 	}
-	log.Println("✓ PostgreSQL connected")
+	slog.Info("PostgreSQL connected")
 
 	// Redis
 	var rdb *redis.Client
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		opts, err := redis.ParseURL(redisURL)
 		if err != nil {
-			log.Fatalf("failed to parse REDIS_URL: %v", err)
+			slog.Error("failed to parse REDIS_URL", "error", err)
+			os.Exit(1)
 		}
 		rdb = redis.NewClient(opts)
 	} else {
@@ -77,9 +88,10 @@ func main() {
 	}
 	ctx := context.Background()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis ping err: %v", err)
+		slog.Error("redis ping failed", "error", err)
+		os.Exit(1)
 	}
-	log.Println("✓ Redis connected")
+	slog.Info("Redis connected")
 
 	// Services
 	apiKeySvc := services.NewAPIKeyService(
@@ -96,9 +108,10 @@ func main() {
 	// Provider key service (requires PROVIDER_KEY_ENCRYPTION_KEY)
 	providerKeySvc, err := services.NewProviderKeyService(postgresDB.GetDB(), cfg.Security.ProviderKeyEncryptionKey, rdb)
 	if err != nil {
-		log.Fatalf("provider key service init err: %v", err)
+		slog.Error("provider key service init failed", "error", err)
+		os.Exit(1)
 	}
-	log.Println("✓ Provider key service initialized")
+	slog.Info("Provider key service initialized")
 
 	// Event queue (Redis Streams producer)
 	eventQueue := events.NewEventQueue(rdb)
@@ -106,14 +119,14 @@ func main() {
 	// Usage worker (Redis Streams consumer)
 	usageWorker := events.NewUsageWorker(rdb, pricingEngine, usageSvc)
 	go usageWorker.Run(context.Background())
-	log.Println("✓ Usage worker started")
+	slog.Info("Usage worker started")
 
 	// Audit report service + queue + worker
 	auditSvc := services.NewAuditReportService(postgresDB.GetDB())
 	reportQueue := events.NewReportQueue(rdb)
 	reportWorker := events.NewReportWorker(rdb, postgresDB.GetDB(), auditSvc)
 	go reportWorker.Run(context.Background())
-	log.Println("✓ Report worker started")
+	slog.Info("Report worker started")
 
 	// Rate limiter
 	rateLimiter := ratelimit.NewLimiter(postgresDB.GetDB(), rdb)
@@ -121,12 +134,12 @@ func main() {
 	// Stripe billing service
 	stripeSvc := services.NewStripeService(postgresDB.GetDB(), cfg.Stripe)
 	if stripeSvc.IsConfigured() {
-		log.Println("✓ Stripe billing configured")
+		slog.Info("Stripe billing configured")
 		if !stripeSvc.IsWebhookConfigured() {
-			log.Println("⚠ Stripe is configured but STRIPE_WEBHOOK_SECRET is missing — webhooks will not be verified")
+			slog.Warn("Stripe is configured but STRIPE_WEBHOOK_SECRET is missing — webhooks will not be verified")
 		}
 	} else {
-		log.Println("⚠ Stripe not configured — billing endpoints will return 503/empty")
+		slog.Warn("Stripe not configured — billing endpoints will return 503/empty")
 	}
 
 	// Proxy handler
@@ -136,20 +149,21 @@ func main() {
 	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue)
 	go func() {
 		if err := apiServer.Run(); err != nil {
-			log.Fatalf("server err: %v", err)
+			slog.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
-	log.Printf("✓ Server started on %s:%s", cfg.Server.Host, cfg.Server.Port)
+	slog.Info("Server started", "host", cfg.Server.Host, "port", cfg.Server.Port)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down...")
+	slog.Info("shutting down...")
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := apiServer.Shutdown(shutCtx); err != nil {
-		log.Printf("forced shutdown: %v", err)
+		slog.Error("forced shutdown", "error", err)
 	}
-	log.Println("server exited")
+	slog.Info("server exited")
 }

@@ -115,6 +115,12 @@ github.com/rivo/uniseg v0.4.4/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUc
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/ruudk/golang-pdf417 v0.0.0-20181029194003-1af4ab5afa58/go.mod h1:6lfFZQK844Gfx8o5WFuvpxWRwnSoipWe/p622j1v06w=
+github.com/samber/lo v1.52.0 h1:Rvi+3BFHES3A8meP33VPAxiBZX/Aws5RxrschYGjomw=
+github.com/samber/lo v1.52.0/go.mod h1:4+MXEGsJzbKGaUEQFKBq2xtfuznW9oz/WrgyzMzRoM0=
+github.com/samber/slog-betterstack v1.4.3 h1:1IsiiiwYnOR3/V2Px2GwbHnJYykwnVN6dnhj0Xbjt2A=
+github.com/samber/slog-betterstack v1.4.3/go.mod h1:fNhxTkNfrG8Sb6eDUziHilwPkaYqqr44mvGGWZ93wkw=
+github.com/samber/slog-common v0.20.0 h1:WaLnm/aCvBJSk5nR5aXZTFBaV0B47A+AEaEOiZDeUnc=
+github.com/samber/slog-common v0.20.0/go.mod h1:+Ozat1jgnnE59UAlmNX1IF3IByHsODnnwf9jUcBZ+m8=
 github.com/shopspring/decimal v1.4.0 h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=
 github.com/shopspring/decimal v1.4.0/go.mod h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
