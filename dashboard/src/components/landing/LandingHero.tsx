@@ -56,7 +56,7 @@ export default function LandingHero() {
 
         <div className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-gray-600">
           <span className="uppercase tracking-widest font-medium">Works with</span>
-          {['Claude Code', 'Anthropic API', 'Codex', 'OpenAI API', 'and more...'].map(
+          {['Claude Code', 'Anthropic API', 'Codex', 'OpenAI API', 'more coming soon'].map(
             (tool, i, arr) => (
               <span key={tool} className="flex items-center gap-6">
                 <span className="text-gray-400">{tool}</span>
