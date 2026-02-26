@@ -505,7 +505,7 @@ function ApiKeyTable({ keys }: { keys: ApiKeyBreakdown[] }) {
 export default function Dashboard() {
   const { user } = useUser()
   const { config } = useDashboardConfig()
-  const [dateRange, setDateRange] = useState<DateRange>({ preset: '30d' })
+  const [dateRange, setDateRange] = useState<DateRange>({ preset: '7d' })
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const { logs, summary, budgets, appliedRange, loading, error, refresh } = useUsageData(dateRange)
 
