@@ -138,6 +138,12 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	return &PostgresDB{db: db}, nil
 }
 
+// NewFromDB wraps an existing *gorm.DB instance. Used in tests to avoid
+// the full InitPostgres bootstrap (retry loop, one-time migrations, seeding).
+func NewFromDB(gormDB *gorm.DB) *PostgresDB {
+	return &PostgresDB{db: gormDB}
+}
+
 func (p *PostgresDB) GetDB() *gorm.DB {
 	return p.db
 }

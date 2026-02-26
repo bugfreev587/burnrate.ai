@@ -274,6 +274,11 @@ func (s *Server) internalSecretMiddleware() gin.HandlerFunc {
 	}
 }
 
+// Router returns the underlying http.Handler for use in tests.
+func (s *Server) Router() http.Handler {
+	return s.router
+}
+
 func (s *Server) Run() error {
 	addr := fmt.Sprintf("%s:%s", s.cfg.Server.Host, s.cfg.Server.Port)
 	s.httpServer = &http.Server{
