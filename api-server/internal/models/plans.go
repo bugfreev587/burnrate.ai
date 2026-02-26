@@ -32,6 +32,8 @@ type PlanLimits struct {
 	AllowRateLimits bool `json:"allow_rate_limits"`
 	// AllowPerKeyRateLimit permits rate limits scoped to individual API keys.
 	AllowPerKeyRateLimit bool `json:"allow_per_key_rate_limit"`
+	// AllowExport permits generating and downloading audit reports (PDF/CSV).
+	AllowExport bool `json:"allow_export"`
 }
 
 var planLimitsMap = map[string]PlanLimits{
@@ -45,6 +47,7 @@ var planLimitsMap = map[string]PlanLimits{
 		DataRetentionDays:    7,
 		AllowRateLimits:      false,
 		AllowPerKeyRateLimit: false,
+		AllowExport:          false,
 	},
 	PlanPro: {
 		MaxAPIKeys:           5,
@@ -56,6 +59,7 @@ var planLimitsMap = map[string]PlanLimits{
 		DataRetentionDays:    90,
 		AllowRateLimits:      true,
 		AllowPerKeyRateLimit: false,
+		AllowExport:          true,
 	},
 	PlanTeam: {
 		MaxAPIKeys:           -1,
@@ -67,6 +71,7 @@ var planLimitsMap = map[string]PlanLimits{
 		DataRetentionDays:    180,
 		AllowRateLimits:      true,
 		AllowPerKeyRateLimit: true,
+		AllowExport:          true,
 	},
 	PlanBusiness: {
 		MaxAPIKeys:           -1,
@@ -78,6 +83,7 @@ var planLimitsMap = map[string]PlanLimits{
 		DataRetentionDays:    -1,
 		AllowRateLimits:      true,
 		AllowPerKeyRateLimit: true,
+		AllowExport:          true,
 	},
 }
 

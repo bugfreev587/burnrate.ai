@@ -11,6 +11,7 @@ import (
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/config"
 	"github.com/xiaoboyu/tokengate/api-server/internal/db"
+	"github.com/xiaoboyu/tokengate/api-server/internal/events"
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
@@ -28,6 +29,8 @@ type Server struct {
 	proxyHandler   *proxy.ProxyHandler
 	rateLimiter    *ratelimit.Limiter
 	stripeSvc      *services.StripeService
+	auditSvc       *services.AuditReportService
+	reportQueue    *events.ReportQueue
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
 	httpServer     *http.Server
@@ -45,6 +48,8 @@ func NewServer(
 	proxyHandler *proxy.ProxyHandler,
 	rateLimiter *ratelimit.Limiter,
 	stripeSvc *services.StripeService,
+	auditSvc *services.AuditReportService,
+	reportQueue *events.ReportQueue,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -63,6 +68,8 @@ func NewServer(
 		proxyHandler:   proxyHandler,
 		rateLimiter:    rateLimiter,
 		stripeSvc:      stripeSvc,
+		auditSvc:       auditSvc,
+		reportQueue:    reportQueue,
 		rbac:           rbac,
 		router:         router,
 		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
@@ -123,6 +130,17 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/forecast", s.handleUsageForecast)
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
 		viewer.GET("/budget", s.handleGetBudget)
+		viewer.GET("/audit/reports", s.handleListAuditReports)
+		viewer.GET("/audit/reports/:id", s.handleGetAuditReport)
+		viewer.GET("/audit/reports/:id/download", s.handleDownloadAuditReport)
+	}
+
+	// ─── Audit Admin (create/delete reports, admin+) ────────────────────────
+	auditAdmin := s.router.Group("/v1/audit")
+	auditAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
+	{
+		auditAdmin.POST("/reports", s.handleCreateAuditReport)
+		auditAdmin.DELETE("/reports/:id", s.handleDeleteAuditReport)
 	}
 
 	// ─── Editor+ (Management, Limits, Pricing Config) ───────────────────────

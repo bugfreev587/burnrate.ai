@@ -42,6 +42,7 @@ export default function Navbar() {
             {canAccessEditor && <Link to="/limits" className="navbar-link">Limits</Link>}
             {canAccessEditor && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
             <Link to="/integration" className="navbar-link">Integration</Link>
+            <Link to="/audit" className="navbar-link">Audit</Link>
           </div>
         )}
 

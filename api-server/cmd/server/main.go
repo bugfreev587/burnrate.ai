@@ -96,6 +96,13 @@ func main() {
 	go usageWorker.Run(context.Background())
 	log.Println("✓ Usage worker started")
 
+	// Audit report service + queue + worker
+	auditSvc := services.NewAuditReportService(postgresDB.GetDB())
+	reportQueue := events.NewReportQueue(rdb)
+	reportWorker := events.NewReportWorker(rdb, postgresDB.GetDB(), auditSvc)
+	go reportWorker.Run(context.Background())
+	log.Println("✓ Report worker started")
+
 	// Rate limiter
 	rateLimiter := ratelimit.NewLimiter(postgresDB.GetDB(), rdb)
 
@@ -111,7 +118,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc)
+	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			log.Fatalf("server err: %v", err)
