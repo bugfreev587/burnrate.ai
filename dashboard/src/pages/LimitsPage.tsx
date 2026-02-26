@@ -549,21 +549,11 @@ export default function LimitsPage() {
 
               <div className="form-group">
                 <label>Metric</label>
-                <div className="role-select">
+                <select value={rlMetric} onChange={e => setRlMetric(e.target.value)}>
                   {METRIC_OPTIONS.map(m => (
-                    <label key={m.value} className={`role-option ${rlMetric === m.value ? 'selected' : ''}`}>
-                      <input
-                        type="radio" name="rl-metric" value={m.value}
-                        checked={rlMetric === m.value}
-                        onChange={() => setRlMetric(m.value)}
-                      />
-                      <div>
-                        <strong>{m.label}</strong>
-                        <span className="role-desc">{m.description}</span>
-                      </div>
-                    </label>
+                    <option key={m.value} value={m.value}>{m.label} — {m.description}</option>
                   ))}
-                </div>
+                </select>
               </div>
 
               <div className="form-group">
