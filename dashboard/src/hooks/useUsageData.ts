@@ -126,11 +126,22 @@ export interface BudgetStatus {
   period_start: string
 }
 
+// ─── Forecast ────────────────────────────────────────────────────────────────
+export interface ForecastData {
+  total_so_far: string
+  daily_average: string
+  forecast: string
+  days_elapsed: number
+  days_remaining: number
+  month: string
+}
+
 // ─── Combined state ───────────────────────────────────────────────────────────
 interface DashboardState {
   logs: UsageLog[]
   summary: UsageSummary | null
   budgets: BudgetStatus[]
+  forecast: ForecastData | null
   appliedRange: { start: string; end: string } | null
   loading: boolean
   error: string | null
@@ -141,6 +152,7 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
     logs: [],
     summary: null,
     budgets: [],
+    forecast: null,
     appliedRange: null,
     loading: false,
     error: null,
@@ -165,20 +177,23 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
         }
       }
 
-      const [logsRes, summaryRes, budgetRes] = await Promise.all([
+      const [logsRes, summaryRes, budgetRes, forecastRes] = await Promise.all([
         fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/budget?tz=${encodeURIComponent(tz)}`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/usage/forecast?tz=${encodeURIComponent(tz)}`, { headers }),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }
       const summaryData: UsageSummary | null = summaryRes.ok ? await summaryRes.json() : null
       const budgetData = budgetRes.ok ? await budgetRes.json() : { budget_limits: [] }
+      const forecastData: ForecastData | null = forecastRes.ok ? await forecastRes.json() : null
 
       setState({
         logs: logsData.usage_logs ?? [],
         summary: summaryData,
         budgets: budgetData.budget_limits ?? [],
+        forecast: forecastData,
         appliedRange: summaryData?.applied_range ?? null,
         loading: false,
         error: null,

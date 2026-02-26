@@ -3,7 +3,7 @@ import { useUser } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
 import DateRangeSelector from '../components/DateRangeSelector'
 import { useUsageData } from '../hooks/useUsageData'
-import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown } from '../hooks/useUsageData'
+import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown, ForecastData } from '../hooks/useUsageData'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import './Dashboard.css'
 
@@ -500,6 +500,135 @@ function ApiKeyTable({ keys }: { keys: ApiKeyBreakdown[] }) {
   )
 }
 
+// ─── Provider Breakdown ──────────────────────────────────────────────────────
+
+const PROVIDER_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
+
+function ProviderBreakdown({ models }: { models: ModelBreakdown[] }) {
+  if (models.length === 0) {
+    return <p className="model-empty">No provider data for the selected period.</p>
+  }
+
+  // Group by provider
+  const byProvider: Record<string, { cost: number; requests: number }> = {}
+  for (const m of models) {
+    const p = m.provider || 'unknown'
+    if (!byProvider[p]) byProvider[p] = { cost: 0, requests: 0 }
+    byProvider[p].cost += parseFloat(m.cost)
+    byProvider[p].requests += m.requests
+  }
+
+  const entries = Object.entries(byProvider)
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.cost - a.cost)
+
+  const totalCost = entries.reduce((sum, e) => sum + e.cost, 0)
+
+  return (
+    <>
+      <div className="provider-bar-track">
+        {entries.map((e, i) => {
+          const pct = totalCost > 0 ? (e.cost / totalCost) * 100 : 0
+          return (
+            <div
+              key={e.name}
+              className="provider-bar-segment"
+              style={{ width: `${pct}%`, background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }}
+              title={`${e.name}: ${fmt$(e.cost)} (${pct.toFixed(1)}%)`}
+            />
+          )
+        })}
+      </div>
+      <div className="provider-legend">
+        {entries.map((e, i) => (
+          <div key={e.name} className="provider-legend-item">
+            <div className="provider-legend-swatch" style={{ background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }} />
+            <div>
+              <span className="provider-legend-name">{e.name}</span>
+              <span className="provider-legend-detail"> {fmt$(e.cost)} · {fmtNum(e.requests)} reqs</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// ─── Quick Health Hero ───────────────────────────────────────────────────────
+
+function QuickHealth({ summary, forecast, budgets }: { summary: ReturnType<typeof useUsageData>['summary']; forecast: ForecastData | null; budgets: BudgetStatus[] }) {
+  const s = summary
+  // Worst-case budget usage
+  let budgetPct: number | null = null
+  let budgetColor = 'budget-status-ok'
+  if (budgets.length > 0) {
+    budgetPct = Math.max(...budgets.map(b => b.pct_used))
+    if (budgetPct >= 100) budgetColor = 'budget-status-danger'
+    else if (budgetPct >= parseFloat(budgets[0]?.alert_threshold ?? '80')) budgetColor = 'budget-status-warn'
+  }
+
+  return (
+    <div className="quick-health">
+      <div className="quick-health-inner">
+        <div className="summary-grid summary-grid-3">
+          <div className="card summary-card">
+            <p className="summary-label">Today's Spend</p>
+            <p className="summary-value">{s ? fmt$(s.cost.today) : '—'}</p>
+            {s && <GrowthPill pct={growthPct(s.cost.today, s.cost.yesterday)} />}
+            <p className="summary-sub">vs yesterday {s ? fmt$(s.cost.yesterday) : ''}</p>
+          </div>
+          <div className="card summary-card">
+            <p className="summary-label">Projected This Month</p>
+            <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
+            <p className="summary-sub">{forecast ? `${forecast.days_elapsed}d elapsed · ${forecast.days_remaining}d left` : ''}</p>
+          </div>
+          <div className="card summary-card">
+            <p className="summary-label">Budget Status</p>
+            <p className={`summary-value ${budgetColor}`}>
+              {budgetPct !== null ? `${budgetPct.toFixed(1)}%` : 'No budget'}
+            </p>
+            <p className="summary-sub">{budgetPct !== null ? 'worst-case usage across all budgets' : 'Set up a budget to track limits'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Insights Strip ──────────────────────────────────────────────────────────
+
+function InsightsStrip({ summary, apiKeys }: { summary: ReturnType<typeof useUsageData>['summary']; apiKeys: ApiKeyBreakdown[] }) {
+  const s = summary
+
+  // Top model by cost
+  const topModel = s?.by_model?.length
+    ? [...s.by_model].sort((a, b) => parseFloat(b.cost) - parseFloat(a.cost))[0]
+    : null
+
+  // Active keys (keys with at least 1 request)
+  const activeKeys = apiKeys.filter(k => k.requests > 0).length
+
+  return (
+    <div className="insights-strip">
+      <div className="card insight-card">
+        <p className="insight-label">Top Model</p>
+        <p className="insight-value">{topModel ? topModel.model : '—'}</p>
+        <p className="insight-sub">{topModel ? `${fmt$(topModel.cost)} · ${fmtNum(topModel.requests)} reqs` : 'No usage data'}</p>
+      </div>
+      <div className="card insight-card">
+        <p className="insight-label">Active Keys</p>
+        <p className="insight-value">{activeKeys}</p>
+        <p className="insight-sub">keys with usage this period</p>
+      </div>
+      <div className="card insight-card">
+        <p className="insight-label">Avg Tokens / Request</p>
+        <p className="insight-value">{s ? fmtTokens(s.tokens.avg_per_request) : '—'}</p>
+        <p className="insight-sub">across all models</p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -507,7 +636,8 @@ export default function Dashboard() {
   const { config } = useDashboardConfig()
   const [dateRange, setDateRange] = useState<DateRange>({ preset: '7d' })
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
-  const { logs, summary, budgets, appliedRange, loading, error, refresh } = useUsageData(dateRange)
+  const [recentOpen, setRecentOpen] = useState(false)
+  const { logs, summary, budgets, forecast, appliedRange, loading, error, refresh } = useUsageData(dateRange)
 
   const s = summary
 
@@ -571,27 +701,8 @@ export default function Dashboard() {
 
         {!loading && (
           <>
-            {/* ── Budget bars ── */}
-            {budgets.length > 0 && (
-              <div className="budget-bars">
-                {budgets
-                  .sort((a, b) => {
-                    // Account-level budgets first, then per-key
-                    if (a.scope_type !== b.scope_type) {
-                      return a.scope_type === 'account' ? -1 : 1
-                    }
-                    const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
-                    const pa = periodOrder[a.period_type] ?? 9
-                    const pb = periodOrder[b.period_type] ?? 9
-                    if (pa !== pb) return pa - pb
-                    // "" (All Providers) sorts first, then alphabetical
-                    if (!a.provider && b.provider) return -1
-                    if (a.provider && !b.provider) return 1
-                    return a.provider.localeCompare(b.provider)
-                  })
-                  .map(b => <BudgetBar key={b.id} b={b} />)}
-              </div>
-            )}
+            {/* ── Quick Health Hero ── */}
+            <QuickHealth summary={s} forecast={forecast} budgets={budgets} />
 
             {/* ── Cost Overview ── */}
             <div className="dash-section-title">Cost Overview</div>
@@ -615,15 +726,39 @@ export default function Dashboard() {
                 <p className="summary-sub">last month {s ? fmt$(s.cost.last_month) : ''}</p>
               </div>
               <div className="card summary-card">
-                <p className="summary-label">Last Month</p>
-                <p className="summary-value">{s ? fmt$(s.cost.last_month) : '—'}</p>
+                <p className="summary-label">Projected Spend</p>
+                <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
+                <p className="summary-sub">{forecast ? `${fmt$(forecast.daily_average)}/day avg` : ''}</p>
               </div>
               <div className="card summary-card">
-                <p className="summary-label">Cumulative</p>
-                <p className="summary-value">{s ? fmt$(s.cost.cumulative) : '—'}</p>
-                <p className="summary-sub">{s ? fmtNum(s.requests.cumulative) : '—'} requests total</p>
+                <p className="summary-label">Avg Daily Cost</p>
+                <p className="summary-value">{forecast ? fmt$(forecast.daily_average) : '—'}</p>
+                <p className="summary-sub">{forecast ? `over ${forecast.days_elapsed} days this month` : ''}</p>
               </div>
             </div>
+
+            {/* ── Budget bars (moved after cost overview) ── */}
+            {budgets.length > 0 && (
+              <>
+                <div className="dash-section-title">Budget Limits</div>
+                <div className="budget-bars">
+                  {budgets
+                    .sort((a, b) => {
+                      if (a.scope_type !== b.scope_type) {
+                        return a.scope_type === 'account' ? -1 : 1
+                      }
+                      const periodOrder: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
+                      const pa = periodOrder[a.period_type] ?? 9
+                      const pb = periodOrder[b.period_type] ?? 9
+                      if (pa !== pb) return pa - pb
+                      if (!a.provider && b.provider) return -1
+                      if (a.provider && !b.provider) return 1
+                      return a.provider.localeCompare(b.provider)
+                    })
+                    .map(b => <BudgetBar key={b.id} b={b} />)}
+                </div>
+              </>
+            )}
 
             {/* ── Token Summary ── */}
             <div className="dash-section-title">Token Usage</div>
@@ -663,41 +798,57 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── Daily Charts: Cost + Tokens side-by-side ── */}
+            {/* ── Daily Cost Chart + Provider Breakdown side-by-side ── */}
             <div className="dash-split">
               <div className="card dash-split-left">
                 <p className="card-subtitle">Daily Cost</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="cost" />
               </div>
               <div className="card dash-split-right">
-                <p className="card-subtitle">Daily Tokens</p>
-                <TrendChart data={s?.daily_trend ?? []} mode="tokens" />
+                <p className="card-subtitle">Provider Breakdown</p>
+                <ProviderBreakdown models={s?.by_model ?? []} />
               </div>
             </div>
 
-            {/* ── Recent Requests ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div className="dash-section-title" style={{ margin: '1.75rem 0 0.75rem' }}>Recent Requests</div>
-              <select
-                value={billingFilter}
-                onChange={e => setBillingFilter(e.target.value as BillingFilter)}
-                style={{
-                  fontSize: '0.75rem',
-                  background: 'var(--color-bg)',
-                  color: 'var(--color-text-muted)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '4px',
-                  padding: '0.25rem 0.5rem',
-                }}
-              >
-                <option value="all">All Requests</option>
-                <option value="api_billed">API Usage Billed</option>
-                <option value="subscription">Monthly Subscription</option>
-              </select>
+            {/* ── Insights Strip ── */}
+            <div className="dash-section-title">Insights</div>
+            <InsightsStrip summary={s} apiKeys={s?.by_api_key ?? []} />
+
+            {/* ── Recent Requests (collapsed by default) ── */}
+            <div
+              className="section-collapsible"
+              onClick={() => setRecentOpen(o => !o)}
+            >
+              <div className="dash-section-title">Recent Requests</div>
+              <button className="section-collapsible-toggle">
+                {recentOpen ? '▲ Collapse' : `▼ Show ${logs.length} requests`}
+              </button>
             </div>
-            <div className="card">
-              <RecentRequests logs={logs} billingFilter={billingFilter} />
-            </div>
+            {recentOpen && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                  <select
+                    value={billingFilter}
+                    onChange={e => setBillingFilter(e.target.value as BillingFilter)}
+                    style={{
+                      fontSize: '0.75rem',
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text-muted)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '4px',
+                      padding: '0.25rem 0.5rem',
+                    }}
+                  >
+                    <option value="all">All Requests</option>
+                    <option value="api_billed">API Usage Billed</option>
+                    <option value="subscription">Monthly Subscription</option>
+                  </select>
+                </div>
+                <div className="card">
+                  <RecentRequests logs={logs} billingFilter={billingFilter} />
+                </div>
+              </>
+            )}
 
           </>
         )}

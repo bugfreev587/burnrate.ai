@@ -437,3 +437,174 @@
   font-weight: 600;
   margin-bottom: 1.25rem;
 }
+
+/* ─── Quick Health Hero ─────────────────────────────────────────────────── */
+
+.quick-health {
+  margin-bottom: 1.5rem;
+  padding: 2px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--color-primary), rgba(99, 102, 241, 0.3), var(--color-border));
+}
+
+.quick-health-inner {
+  background: var(--color-card);
+  border-radius: 12px;
+  padding: 0.25rem;
+}
+
+.quick-health .summary-card {
+  padding: 1.5rem 1.75rem;
+}
+
+.quick-health .summary-value {
+  font-size: 2.1rem;
+}
+
+/* ─── 3-column summary grid ─────────────────────────────────────────────── */
+
+.summary-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 900px) {
+  .summary-grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .summary-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* ─── Provider Breakdown ────────────────────────────────────────────────── */
+
+.provider-bar-track {
+  height: 1.25rem;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 1rem;
+}
+
+.provider-bar-segment {
+  height: 100%;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.provider-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.provider-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.provider-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.provider-legend-name {
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: capitalize;
+}
+
+.provider-legend-detail {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+/* ─── Insights Strip ────────────────────────────────────────────────────── */
+
+.insights-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 700px) {
+  .insights-strip { grid-template-columns: 1fr; }
+}
+
+.insight-card {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.insight-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.insight-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.insight-sub {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+/* ─── Collapsible Section ───────────────────────────────────────────────── */
+
+.section-collapsible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  margin: 1.75rem 0 0.75rem;
+}
+
+.section-collapsible .dash-section-title {
+  margin: 0;
+}
+
+.section-collapsible-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.section-collapsible-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
+}
+
+/* ─── Budget status color helpers ───────────────────────────────────────── */
+
+.budget-status-ok {
+  color: #22c55e;
+}
+
+.budget-status-warn {
+  color: #f59e0b;
+}
+
+.budget-status-danger {
+  color: var(--color-danger);
+}
