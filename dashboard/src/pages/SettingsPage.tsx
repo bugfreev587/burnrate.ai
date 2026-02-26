@@ -23,8 +23,9 @@ export default function SettingsPage() {
   const { signOut } = useClerk()
   const { role, userId, isSynced } = useUserSync()
 
+  const isAdmin = hasPermission(role, 'admin')
   const isOwner = role === 'owner'
-  const canManageTeam = hasPermission(role, 'editor')
+  const canManageTeam = isAdmin
 
   // ── Workspace name ──────────────────────────────────────────────────────
   const [workspaceName, setWorkspaceName] = useState('')
@@ -299,6 +300,12 @@ export default function SettingsPage() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  // ── Redirect non-admin users ──────────────────────────────────────────
+  if (isSynced && !isAdmin) {
+    navigate('/dashboard', { replace: true })
+    return null
   }
 
   // ── Loading ────────────────────────────────────────────────────────────
