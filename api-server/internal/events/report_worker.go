@@ -268,7 +268,6 @@ type keyAgg struct {
 
 func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditReport, filters *models.AuditReportFilters) ([]byte, int64, error) {
 	// ── Aggregation queries ──────────────────────────────────────────────
-	baseQ := w.buildQuery(ctx, report, filters)
 
 	// Summary totals (api_usage_billed only for cost)
 	type summaryRow struct {
@@ -278,12 +277,12 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		TotalCost     decimal.Decimal
 	}
 	var summary summaryRow
-	if err := baseQ.Session(&gorm.Session{NewDB: true}).
+	if err := w.db.WithContext(ctx).
 		Table("usage_logs").
 		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
 		Where("usage_logs.tenant_id = ?", report.TenantID).
 		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Where(w.applyFilters(filters)).
+		Scopes(w.applyFilters(filters)).
 		Select("COUNT(*) as total_requests, COALESCE(SUM(usage_logs.prompt_tokens),0) as total_input, COALESCE(SUM(usage_logs.completion_tokens),0) as total_output, COALESCE(SUM(CASE WHEN usage_logs.api_usage_billed THEN usage_logs.cost ELSE 0 END),0) as total_cost").
 		Scan(&summary).Error; err != nil {
 		return nil, 0, fmt.Errorf("summary query: %w", err)
@@ -296,7 +295,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
 		Where("usage_logs.tenant_id = ?", report.TenantID).
 		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Where(w.applyFilters(filters)).
+		Scopes(w.applyFilters(filters)).
 		Select("usage_logs.model, usage_logs.provider, COALESCE(SUM(usage_logs.cost),0) as total_cost, COALESCE(SUM(usage_logs.prompt_tokens),0) as input_tokens, COALESCE(SUM(usage_logs.completion_tokens),0) as output_tokens, COUNT(*) as requests").
 		Group("usage_logs.model, usage_logs.provider").
 		Order("total_cost DESC").
@@ -311,7 +310,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
 		Where("usage_logs.tenant_id = ?", report.TenantID).
 		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Where(w.applyFilters(filters)).
+		Scopes(w.applyFilters(filters)).
 		Select("usage_logs.key_id, COALESCE(api_keys.label, '') as key_label, COALESCE(SUM(usage_logs.cost),0) as total_cost, COALESCE(SUM(usage_logs.prompt_tokens),0) as input_tokens, COALESCE(SUM(usage_logs.completion_tokens),0) as output_tokens, COUNT(*) as requests").
 		Group("usage_logs.key_id, api_keys.label").
 		Order("total_cost DESC").
