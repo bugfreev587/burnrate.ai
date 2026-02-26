@@ -1,3 +1,10 @@
+/* ─── Dashboard page-width override ──────────────────────────────────────── */
+
+.dash-page .page-content {
+  max-width: 1200px;
+  padding: 2rem;
+}
+
 /* ─── Header ─────────────────────────────────────────────────────────────── */
 
 .dash-header {

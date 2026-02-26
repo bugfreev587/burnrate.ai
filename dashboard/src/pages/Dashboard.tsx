@@ -654,7 +654,7 @@ export default function Dashboard() {
   const periodLabel = dateRange.preset ? (PRESET_LABELS[dateRange.preset] ?? 'Selected Period') : 'Selected Period'
 
   return (
-    <div className="page-container">
+    <div className="page-container dash-page">
       <Navbar />
       <div className="page-content">
 
