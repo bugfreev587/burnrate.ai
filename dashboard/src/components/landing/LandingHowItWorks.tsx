@@ -5,7 +5,7 @@ export default function LandingHowItWorks() {
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Setup</p>
           <h2 id="hiw-heading" className="text-3xl sm:text-4xl font-bold">How It Works</h2>
-          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute.</p>
+          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute. Example below uses Claude Code — works with any supported provider.</p>
         </div>
 
         <ol className="space-y-10">
