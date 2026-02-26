@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed IANA timezone database for containers without system tzdata
@@ -36,6 +37,17 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 	log.Printf("config loaded: env=%s host=%s port=%s", cfg.Environment, cfg.Server.Host, cfg.Server.Port)
+
+	// ── Production startup validations ───────────────────────────────────────
+	if cfg.Environment == "production" || cfg.Environment == "prod" {
+		if strings.EqualFold(os.Getenv("ENABLE_GW_VALIDATION"), "false") {
+			log.Fatalf("FATAL: ENABLE_GW_VALIDATION=false is not allowed in production")
+		}
+		pepper := cfg.Security.APIKeyPepper
+		if pepper == "change-me-in-production" || len(pepper) < 16 {
+			log.Fatalf("FATAL: API_KEY_PEPPER must be at least 16 characters and not the default value in production")
+		}
+	}
 
 	// PostgreSQL
 	postgresDSN := cfg.Postgres.DSN
@@ -110,6 +122,9 @@ func main() {
 	stripeSvc := services.NewStripeService(postgresDB.GetDB(), cfg.Stripe)
 	if stripeSvc.IsConfigured() {
 		log.Println("✓ Stripe billing configured")
+		if !stripeSvc.IsWebhookConfigured() {
+			log.Println("⚠ Stripe is configured but STRIPE_WEBHOOK_SECRET is missing — webhooks will not be verified")
+		}
 	} else {
 		log.Println("⚠ Stripe not configured — billing endpoints will return 503/empty")
 	}

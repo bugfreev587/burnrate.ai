@@ -39,6 +39,11 @@ func (s *StripeService) IsConfigured() bool {
 	return s.cfg.SecretKey != ""
 }
 
+// IsWebhookConfigured returns true when a webhook signing secret has been provided.
+func (s *StripeService) IsWebhookConfigured() bool {
+	return s.cfg.WebhookSecret != ""
+}
+
 // CancelSubscriptionImmediately cancels a Stripe subscription immediately.
 // No-ops when subscriptionID is empty (e.g. free-tier tenants).
 func (s *StripeService) CancelSubscriptionImmediately(subscriptionID string) error {
@@ -251,10 +256,31 @@ func (s *StripeService) ScheduleDowngrade(ctx context.Context, tenantID uint, ta
 			return fmt.Errorf("set cancel_at_period_end: %w", err)
 		}
 	} else {
-		// Paid → lower Paid: we schedule a price swap at period end via Stripe subscription schedule,
-		// but for simplicity we use cancel_at_period_end=false and record the pending plan locally.
-		// The webhook for subscription.updated at period renewal will trigger the price change.
-		// For now, just record the intent in our DB.
+		// Paid → lower Paid: swap the price immediately with no proration so the
+		// new lower price takes effect on the next billing cycle.
+		newPriceID, err := s.PriceIDForPlan(targetPlan)
+		if err != nil {
+			return err
+		}
+
+		if sub.Items == nil || len(sub.Items.Data) == 0 {
+			return errors.New("subscription has no items")
+		}
+		itemID := sub.Items.Data[0].ID
+
+		updateParams := &stripe.SubscriptionParams{
+			Items: []*stripe.SubscriptionItemsParams{
+				{
+					ID:    stripe.String(itemID),
+					Price: stripe.String(newPriceID),
+				},
+			},
+			ProrationBehavior: stripe.String("none"),
+		}
+		updateParams.Context = ctx
+		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+			return fmt.Errorf("update subscription price for downgrade: %w", err)
+		}
 	}
 
 	// Record the pending downgrade in our DB
@@ -285,14 +311,45 @@ func (s *StripeService) CancelScheduledDowngrade(ctx context.Context, tenantID u
 		return errors.New("tenant has no active subscription")
 	}
 
-	// If downgrading to free, we set cancel_at_period_end=true, so undo that
 	if tenant.PendingPlan == models.PlanFree {
+		// Paid → Free was done via cancel_at_period_end=true, so undo that.
 		updateParams := &stripe.SubscriptionParams{
 			CancelAtPeriodEnd: stripe.Bool(false),
 		}
 		updateParams.Context = ctx
 		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
 			return fmt.Errorf("unset cancel_at_period_end: %w", err)
+		}
+	} else {
+		// Paid → lower Paid: revert the Stripe price back to the current plan.
+		currentPriceID, err := s.PriceIDForPlan(tenant.Plan)
+		if err != nil {
+			return fmt.Errorf("resolve current plan price: %w", err)
+		}
+
+		getParams := &stripe.SubscriptionParams{}
+		getParams.Context = ctx
+		sub, err := subscription.Get(tenant.StripeSubscriptionID, getParams)
+		if err != nil {
+			return fmt.Errorf("get subscription: %w", err)
+		}
+		if sub.Items == nil || len(sub.Items.Data) == 0 {
+			return errors.New("subscription has no items")
+		}
+		itemID := sub.Items.Data[0].ID
+
+		updateParams := &stripe.SubscriptionParams{
+			Items: []*stripe.SubscriptionItemsParams{
+				{
+					ID:    stripe.String(itemID),
+					Price: stripe.String(currentPriceID),
+				},
+			},
+			ProrationBehavior: stripe.String("none"),
+		}
+		updateParams.Context = ctx
+		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+			return fmt.Errorf("revert subscription price: %w", err)
 		}
 	}
 

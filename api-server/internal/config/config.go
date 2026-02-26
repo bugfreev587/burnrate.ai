@@ -30,6 +30,7 @@ type SecurityCfg struct {
 	APIKeyCacheTTLSeconds    int    `yaml:"api_key_cache_ttl_seconds"`
 	ProviderKeyEncryptionKey string `yaml:"provider_key_encryption_key"`
 	FingerprintTTLDays       int    `yaml:"fingerprint_ttl_days"`
+	AuthSyncSecret           string `yaml:"auth_sync_secret"`
 }
 
 type StripeCfg struct {
@@ -75,6 +76,9 @@ func applyEnvOverrides(cfg *Config) {
 	// Setting it to "*" allows all origins (useful during development).
 	if v := os.Getenv("PROVIDER_KEY_ENCRYPTION_KEY"); v != "" {
 		cfg.Security.ProviderKeyEncryptionKey = v
+	}
+	if v := os.Getenv("AUTH_SYNC_SECRET"); v != "" {
+		cfg.Security.AuthSyncSecret = v
 	}
 	if v := os.Getenv("STRIPE_SECRET_KEY"); v != "" {
 		cfg.Stripe.SecretKey = v

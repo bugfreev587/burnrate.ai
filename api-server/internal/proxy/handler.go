@@ -245,8 +245,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
 
-	fmt.Println("------- HandleProxy called ------- tenantID:", tenantID, "keyID:", keyIDStr)
-
 	// Read provider, auth_method, and billing_mode from context (set by auth middleware from the API key record).
 	provider := Provider(c.GetString("provider"))
 	authMethod := c.GetString("auth_method")
@@ -254,8 +252,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	if provider == "" {
 		provider = ProviderAnthropic
 	}
-	fmt.Println("------- provider:", provider, "auth_method:", authMethod, "billing_mode:", billingMode)
-
 	apiUsageBilled := determineBillable(billingMode)
 
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
@@ -277,14 +273,10 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	if !ok {
 		return
 	}
-	fmt.Println("------- Budget pre-check passed -------")
-
 	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
 	if !ok {
 		return
 	}
-	fmt.Println("------ auth_method:", authMethod, "byokKey set:", byokKey != nil)
-
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
 	if c.Request.URL.RawQuery != "" {
@@ -375,8 +367,6 @@ func (h *ProxyHandler) HandleMessages(c *gin.Context) {
 func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 	authMethod := c.GetString("auth_method")
-	fmt.Println("------- HandleModels called ------- tenantID:", tenantID, "auth_method:", authMethod)
-
 	// Resolve API key based on auth method.
 	var resolvedKey string
 	if authMethod == models.AuthMethodBYOK {

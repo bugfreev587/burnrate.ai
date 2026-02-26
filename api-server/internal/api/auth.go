@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,6 +30,15 @@ type authSyncReq struct {
 //  4. Neither → create new tenant and make caller the owner (in a transaction
 //     so concurrent duplicate calls don't leave orphan tenants)
 func (s *Server) handleAuthSync(c *gin.Context) {
+	// If an auth sync secret is configured, require it in the request header.
+	if secret := s.cfg.Security.AuthSyncSecret; secret != "" {
+		provided := c.GetHeader("X-Auth-Sync-Secret")
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or missing auth sync secret"})
+			return
+		}
+	}
+
 	var req authSyncReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

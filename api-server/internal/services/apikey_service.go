@@ -121,8 +121,6 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("------- ValidateKey, keyID:", keyID)
-
 	var ak models.APIKey
 	cacheKey := "apikey:" + keyID
 
@@ -158,8 +156,6 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 			}
 		}
 	}
-
-	fmt.Println("------- cache miss for keyID:", keyID)
 
 	// DB fallback
 	if err := s.db.Where("key_id = ?", keyID).First(&ak).Error; err != nil {

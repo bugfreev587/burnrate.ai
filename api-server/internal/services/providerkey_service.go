@@ -237,8 +237,6 @@ func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, pr
 	}
 
 	if plaintext == nil {
-		fmt.Println("----- TPS cache miss for tenantID:", tenantID, "provider:", provider)
-
 		// Slow path: DB.
 		var settings models.TenantProviderSettings
 		err := s.db.WithContext(ctx).
@@ -256,7 +254,6 @@ func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, pr
 
 		// Populate cache for next request.
 		s.cacheTPS(ctx, &settings)
-		fmt.Println("----- DB hit for tenantID:", tenantID, "provider:", provider, "activeKeyID:", settings.ActiveKeyID)
 
 		pt, err := s.GetPlaintext(ctx, settings.ActiveKeyID)
 		if err != nil {

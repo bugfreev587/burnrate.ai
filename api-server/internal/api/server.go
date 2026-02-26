@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"os"
@@ -90,7 +91,6 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	fmt.Println("------- set up routes -------")
 	apiKeyAuth := middleware.APIKeyMiddleware(s.apiKeySvc)
 	// tenantAuth validates X-TokenGate-Key (or passes through when ENABLE_GW_VALIDATION=false).
 	tenantAuth := middleware.TenantAuthMiddleware(s.apiKeySvc)
@@ -265,7 +265,7 @@ func (s *Server) internalSecretMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if c.GetHeader("X-Internal-Secret") != s.internalSecret {
+		if subtle.ConstantTimeCompare([]byte(c.GetHeader("X-Internal-Secret")), []byte(s.internalSecret)) != 1 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal secret"})
 			c.Abort()
 			return

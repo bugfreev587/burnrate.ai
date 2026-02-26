@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -34,8 +33,6 @@ func TenantAuthMiddleware(apiKeySvc *services.APIKeyService) gin.HandlerFunc {
 // Production code should use TenantAuthMiddleware.
 func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		fmt.Println("------- TenantAuthMiddleware -------")
-		fmt.Println("ENABLE_GW_VALIDATION:", os.Getenv("ENABLE_GW_VALIDATION"))
 		// When gateway validation is disabled, forward all requests as-is.
 		if strings.EqualFold(os.Getenv("ENABLE_GW_VALIDATION"), "false") {
 			c.Next()
@@ -77,8 +74,6 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 			c.Abort()
 			return
 		}
-		fmt.Println("validation passed, setting context and proceeding ----- tenantID: ", ak.TenantID, "keyID:", ak.KeyID)
-
 		c.Set(ContextKeyAPIKey, ak)
 		c.Set("tenant_id", ak.TenantID)
 		c.Set("key_id", ak.KeyID)

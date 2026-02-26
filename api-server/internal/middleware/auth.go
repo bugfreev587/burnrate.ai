@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -23,8 +22,6 @@ const (
 // APIKeyMiddleware validates the API key from the X-TokenGate-Key header.
 func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		fmt.Println("------- APIKeyMiddleware -------")
-		fmt.Println("---------- X-TokenGate-Key:", c.GetHeader("X-TokenGate-Key"))
 		token := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{

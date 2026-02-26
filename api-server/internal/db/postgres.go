@@ -41,7 +41,7 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 				break
 			}
 		}
-		fmt.Printf("postgres not ready (attempt %d/10): %v\n", i, err)
+		log.Printf("postgres not ready (attempt %d/10): %v", i, err)
 		time.Sleep(2 * time.Second)
 	}
 	if err != nil {

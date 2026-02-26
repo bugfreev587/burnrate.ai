@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v82"
@@ -13,6 +14,26 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
+
+// validateRedirectURL ensures a URL is valid for use as a Stripe redirect target.
+// It requires a non-empty host and https scheme (http is allowed in non-production).
+func (s *Server) validateRedirectURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("URL must have a host")
+	}
+	isProd := s.cfg.Environment == "production" || s.cfg.Environment == "prod"
+	if isProd && u.Scheme != "https" {
+		return fmt.Errorf("URL must use https in production")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("URL must use http or https scheme")
+	}
+	return nil
+}
 
 // ── GET /v1/billing/status ───────────────────────────────────────────────────
 
@@ -89,6 +110,15 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 
 	if !models.ValidPlan(req.Plan) || req.Plan == models.PlanFree {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan; must be pro, team, or business"})
+		return
+	}
+
+	if err := s.validateRedirectURL(req.SuccessURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid success_url: %v", err)})
+		return
+	}
+	if err := s.validateRedirectURL(req.CancelURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid cancel_url: %v", err)})
 		return
 	}
 
@@ -176,6 +206,11 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 	var req portalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := s.validateRedirectURL(req.ReturnURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid return_url: %v", err)})
 		return
 	}
 
@@ -381,6 +416,11 @@ func (s *Server) handleBillingInvoices(c *gin.Context) {
 func (s *Server) handleBillingWebhook(c *gin.Context) {
 	if !s.stripeSvc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+	if !s.stripeSvc.IsWebhookConfigured() {
+		log.Println("billing: webhook received but STRIPE_WEBHOOK_SECRET is not configured")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "webhook secret not configured"})
 		return
 	}
 
