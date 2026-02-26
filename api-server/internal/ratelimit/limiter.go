@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -117,6 +118,13 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 			// Roll back the increment since we're rejecting the request
 			l.rdb.DecrBy(ctx, key, amount)
 
+			slog.Warn("rate_limit_exceeded",
+				"tenant_id", tenantID, "key_id", keyID,
+				"provider", provider, "model", model,
+				"metric", limit.Metric, "limit", limit.LimitValue,
+				"used", newVal-amount, "retry_after_ms", retryAfterMs,
+			)
+
 			return &RateLimitResult{
 				Exceeded:     true,
 				Metric:       limit.Metric,
@@ -141,6 +149,13 @@ func (l *Limiter) Reconcile(ctx context.Context, tenantID uint, keyID, provider,
 	if diff <= 0 {
 		return
 	}
+
+	slog.Debug("rate_limit_reconciled",
+		"tenant_id", tenantID, "key_id", keyID,
+		"provider", provider, "model", model,
+		"actual_output_tokens", actualOutputTokens, "max_tokens", maxTokens,
+		"delta", diff,
+	)
 
 	limits, err := l.loadLimits(ctx, tenantID)
 	if err != nil {

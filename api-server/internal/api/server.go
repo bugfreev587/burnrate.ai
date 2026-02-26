@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/config"
 	"github.com/xiaoboyu/tokengate/api-server/internal/db"
@@ -23,6 +24,7 @@ import (
 type Server struct {
 	cfg            *config.Config
 	postgresDB     *db.PostgresDB
+	rdb            *redis.Client
 	apiKeySvc      *services.APIKeyService
 	usageSvc       *services.UsageLogService
 	pricingEngine  *pricing.PricingEngine
@@ -42,6 +44,7 @@ type Server struct {
 func NewServer(
 	cfg *config.Config,
 	postgresDB *db.PostgresDB,
+	rdb *redis.Client,
 	apiKeySvc *services.APIKeyService,
 	usageSvc *services.UsageLogService,
 	pricingEngine *pricing.PricingEngine,
@@ -62,6 +65,7 @@ func NewServer(
 	s := &Server{
 		cfg:            cfg,
 		postgresDB:     postgresDB,
+		rdb:            rdb,
 		apiKeySvc:      apiKeySvc,
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -47,6 +48,12 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 			case strings.Contains(errStr, "not found"):
 				msg = "API key not found."
 			}
+			slog.Warn("auth_failure",
+				"error", errStr,
+				"method", c.Request.Method,
+				"path", c.Request.URL.Path,
+				"remote_ip", c.ClientIP(),
+			)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"type": code, "message": msg}})
 			c.Abort()
 			return

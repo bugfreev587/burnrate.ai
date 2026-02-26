@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -38,15 +38,15 @@ func (w *UsageWorker) Run(ctx context.Context) {
 	// Create consumer group; ignore BUSYGROUP error if it already exists.
 	err := w.rdb.XGroupCreateMkStream(ctx, streamName, consumerGroup, "$").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		log.Printf("usageworker: XGROUP CREATE: %v", err)
+		slog.Error("usageworker_xgroup_create_failed", "error", err)
 	}
 
-	log.Printf("usageworker: started, reading from stream=%s group=%s", streamName, consumerGroup)
+	slog.Info("usageworker_started", "stream", streamName, "group", consumerGroup)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("usageworker: context cancelled, stopping")
+			slog.Info("usageworker_stopping", "reason", "context_cancelled")
 			return
 		default:
 		}
@@ -65,7 +65,7 @@ func (w *UsageWorker) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("usageworker: XREADGROUP error: %v", err)
+			slog.Error("usageworker_xreadgroup_error", "error", err)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -73,13 +73,13 @@ func (w *UsageWorker) Run(ctx context.Context) {
 		for _, stream := range streams {
 			for _, msg := range stream.Messages {
 				if err := w.process(ctx, msg); err != nil {
-					log.Printf("usageworker: process msg %s: %v", msg.ID, err)
+					slog.Error("usageworker_process_failed", "msg_id", msg.ID, "error", err)
 					// Don't ACK on failure; let it be redelivered
 					continue
 				}
 				// ACK on success
 				if err := w.rdb.XAck(ctx, streamName, consumerGroup, msg.ID).Err(); err != nil {
-					log.Printf("usageworker: XACK msg %s: %v", msg.ID, err)
+					slog.Error("usageworker_xack_failed", "msg_id", msg.ID, "error", err)
 				}
 			}
 		}
@@ -157,11 +157,19 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	if err := w.usageSvc.Create(ctx, usageLog); err != nil {
 		// Ignore duplicate request_id (already processed)
 		if isDuplicateError(err) {
-			log.Printf("usageworker: duplicate message_id=%s, skipping usage log", messageID)
+			slog.Debug("usageworker_duplicate_skipped", "message_id", messageID)
 		} else {
 			return fmt.Errorf("create usage log: %w", err)
 		}
 	}
+
+	slog.Info("usage_event_processed",
+		"tenant_id", tenantID, "key_id", keyID,
+		"provider", provider, "model", model,
+		"input_tokens", inputTokens, "output_tokens", outputTokens,
+		"cost", result.FinalCost.StringFixed(6),
+		"message_id", messageID,
+	)
 
 	return nil
 }

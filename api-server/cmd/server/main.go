@@ -146,7 +146,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue)
+	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			slog.Error("server error", "error", err)

@@ -79,6 +79,7 @@ func TestMain(m *testing.M) {
 
 	srv := api.NewServer(
 		cfg, pdb,
+		nil, // rdb
 		apiKeySvc, usageSvc, pricingEngine,
 		nil, // providerKeySvc
 		nil, // proxyHandler

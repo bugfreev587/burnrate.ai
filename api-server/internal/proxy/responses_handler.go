@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -31,6 +32,7 @@ type ResponsesRequest struct {
 // It resolves the provider from the model name, then either forwards to OpenAI
 // as-is or translates to the Anthropic Messages API.
 func (h *ProxyHandler) HandleResponses(c *gin.Context) {
+	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
@@ -128,6 +130,14 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, now)
+
+	slog.Info("proxy_request_completed",
+		"tenant_id", tenantID, "key_id", keyIDStr,
+		"provider", string(provider), "model", req.Model,
+		"latency_ms", time.Since(start).Milliseconds(),
+		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
+		"api_usage_billed", apiUsageBilled, "endpoint", "responses",
+	)
 }
 
 // handleResponsesOpenAI forwards the request to OpenAI's /v1/responses as-is.

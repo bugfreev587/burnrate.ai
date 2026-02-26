@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -241,6 +242,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 // It resolves the provider from the X-TokenGate-Provider header or request path,
 // attempts BYOK auth, and falls back to pass-through when no key is configured.
 func (h *ProxyHandler) HandleProxy(c *gin.Context) {
+	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
@@ -356,6 +358,15 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, now)
+
+	slog.Info("proxy_request_completed",
+		"tenant_id", tenantID, "key_id", keyIDStr,
+		"provider", string(provider), "model", reqMeta.Model,
+		"status", resp.StatusCode, "latency_ms", time.Since(start).Milliseconds(),
+		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
+		"cache_read_tokens", counts.CacheReadTokens,
+		"api_usage_billed", apiUsageBilled, "is_sse", isSSE,
+	)
 }
 
 // HandleMessages is a backward-compatible alias for HandleProxy (Anthropic /v1/messages).

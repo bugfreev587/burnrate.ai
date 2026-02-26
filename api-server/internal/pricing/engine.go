@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -162,6 +163,14 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 		thresholdAmount := limit.LimitAmount.Mul(limit.AlertThreshold).Div(decimal.NewFromInt(100))
 
 		if (limit.Action == models.BudgetActionBlock || limit.Action == models.BudgetActionAlertBlock) && effective.GreaterThanOrEqual(limit.LimitAmount) {
+			slog.Warn("budget_blocked",
+				"tenant_id", tenantID, "key_id", keyID,
+				"scope", limit.ScopeType, "period", limit.PeriodType,
+				"provider", limit.Provider,
+				"current_spend", effective.StringFixed(4),
+				"limit_amount", limit.LimitAmount,
+				"action", limit.Action,
+			)
 			return &BudgetStatus{
 				AtWarning:    true,
 				Scope:        limit.ScopeType,
@@ -178,12 +187,20 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 		}
 
 		if effective.GreaterThanOrEqual(thresholdAmount) {
-			if nearestStatus == nil || effective.Div(limit.LimitAmount).GreaterThan(nearestStatus.CurrentSpend.Div(nearestStatus.LimitAmount)) {
+			limAmt := limit.LimitAmount
+			if nearestStatus == nil || effective.Div(limAmt).GreaterThan(nearestStatus.CurrentSpend.Div(nearestStatus.LimitAmount)) {
+				slog.Info("budget_warning",
+					"tenant_id", tenantID, "key_id", keyID,
+					"scope", limit.ScopeType, "period", limit.PeriodType,
+					"current_spend", effective.StringFixed(4),
+					"limit_amount", limAmt,
+					"pct_used", effective.Div(limAmt).Mul(decimal.NewFromInt(100)).StringFixed(1),
+				)
 				nearestStatus = &BudgetStatus{
 					AtWarning:    true,
 					Scope:        limit.ScopeType,
 					Period:       limit.PeriodType,
-					LimitAmount:  limit.LimitAmount,
+					LimitAmount:  limAmt,
 					CurrentSpend: effective,
 					Threshold:    limit.AlertThreshold,
 				}
