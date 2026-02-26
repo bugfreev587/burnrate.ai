@@ -131,6 +131,16 @@ func main() {
 	// Rate limiter
 	rateLimiter := ratelimit.NewLimiter(postgresDB.GetDB(), rdb)
 
+	// Notification queue + worker
+	notifQueue := events.NewNotificationQueue(rdb)
+	notifWorker := events.NewNotificationWorker(rdb, postgresDB.GetDB())
+	go notifWorker.Run(context.Background())
+	slog.Info("Notification worker started")
+
+	// Wire notification queue into pricing engine and rate limiter
+	pricingEngine.SetNotificationQueue(events.NewPricingNotificationAdapter(notifQueue))
+	rateLimiter.SetNotificationQueue(events.NewRateLimitNotificationAdapter(notifQueue))
+
 	// Stripe billing service
 	stripeSvc := services.NewStripeService(postgresDB.GetDB(), cfg.Stripe)
 	if stripeSvc.IsConfigured() {
@@ -146,7 +156,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue)
+	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue, notifWorker)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			slog.Error("server error", "error", err)

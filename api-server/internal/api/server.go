@@ -34,6 +34,7 @@ type Server struct {
 	stripeSvc      *services.StripeService
 	auditSvc       *services.AuditReportService
 	reportQueue    *events.ReportQueue
+	notifWorker    *events.NotificationWorker
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
 	httpServer     *http.Server
@@ -54,6 +55,7 @@ func NewServer(
 	stripeSvc *services.StripeService,
 	auditSvc *services.AuditReportService,
 	reportQueue *events.ReportQueue,
+	notifWorker *events.NotificationWorker,
 ) *Server {
 	if cfg.Environment == "production" || cfg.Environment == "prod" {
 		gin.SetMode(gin.ReleaseMode)
@@ -75,6 +77,7 @@ func NewServer(
 		stripeSvc:      stripeSvc,
 		auditSvc:       auditSvc,
 		reportQueue:    reportQueue,
+		notifWorker:    notifWorker,
 		rbac:           rbac,
 		router:         router,
 		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
@@ -206,6 +209,13 @@ func (s *Server) setupRoutes() {
 		admin.GET("/rate-limits", s.handleListRateLimits)
 		admin.PUT("/rate-limits", s.handleUpsertRateLimit)
 		admin.DELETE("/rate-limits/:id", s.handleDeleteRateLimit)
+
+		// Notification channel management
+		admin.GET("/notifications", s.handleListNotificationChannels)
+		admin.POST("/notifications", s.handleCreateNotificationChannel)
+		admin.PUT("/notifications/:id", s.handleUpdateNotificationChannel)
+		admin.DELETE("/notifications/:id", s.handleDeleteNotificationChannel)
+		admin.POST("/notifications/:id/test", s.handleTestNotificationChannel)
 	}
 
 	// ─── Billing (viewer+ for read, admin+ for mutations) ───────────────────

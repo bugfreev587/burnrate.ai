@@ -22,15 +22,36 @@ type RateLimitResult struct {
 	RetryAfterMs int64
 }
 
+// NotificationPublisher is the interface used to publish notification events.
+type NotificationPublisher interface {
+	Publish(ctx context.Context, msg NotificationEventMsg) error
+}
+
+// NotificationEventMsg mirrors events.NotificationEventMsg to avoid import cycles.
+type NotificationEventMsg struct {
+	TenantID  uint
+	EventType string
+	KeyID     string
+	Provider  string
+	Model     string
+	Details   string
+}
+
 // Limiter enforces tenant-aware, model-scoped rate limits using Redis fixed-window counters.
 type Limiter struct {
-	db  *gorm.DB
-	rdb *redis.Client
+	db         *gorm.DB
+	rdb        *redis.Client
+	notifQueue NotificationPublisher
 }
 
 // NewLimiter creates a new rate limit enforcer.
 func NewLimiter(db *gorm.DB, rdb *redis.Client) *Limiter {
 	return &Limiter{db: db, rdb: rdb}
+}
+
+// SetNotificationQueue sets the notification publisher for rate limit events.
+func (l *Limiter) SetNotificationQueue(nq NotificationPublisher) {
+	l.notifQueue = nq
 }
 
 // Check evaluates all applicable rate limits for the request.
@@ -123,6 +144,16 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 				"metric", limit.Metric, "limit", limit.LimitValue,
 				"used", newVal-amount, "retry_after_ms", retryAfterMs,
 			)
+			if l.notifQueue != nil {
+				_ = l.notifQueue.Publish(ctx, NotificationEventMsg{
+					TenantID:  tenantID,
+					EventType: models.EventRateLimitExceeded,
+					KeyID:     keyID,
+					Provider:  provider,
+					Model:     model,
+					Details:   fmt.Sprintf(`{"metric":"%s","limit":%d,"used":%d}`, limit.Metric, limit.LimitValue, newVal-amount),
+				})
+			}
 
 			return &RateLimitResult{
 				Exceeded:     true,

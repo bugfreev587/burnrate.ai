@@ -40,6 +40,7 @@ export default function Navbar() {
             <Link to="/dashboard" className="navbar-link">Dashboard</Link>
             {canAccessEditor && <Link to="/management" className="navbar-link">Management</Link>}
             {canAccessEditor && <Link to="/limits" className="navbar-link">Limits</Link>}
+            {canAccessEditor && <Link to="/notifications" className="navbar-link">Notifications</Link>}
             {canAccessEditor && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
             <Link to="/integration" className="navbar-link">Integration</Link>
             <Link to="/audit" className="navbar-link">Audit</Link>

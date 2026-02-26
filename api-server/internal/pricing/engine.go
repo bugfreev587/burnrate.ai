@@ -15,6 +15,22 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 )
 
+// NotificationPublisher is the interface used to publish notification events.
+// Defined here to avoid an import cycle with the events package.
+type NotificationPublisher interface {
+	Publish(ctx context.Context, msg NotificationEventMsg) error
+}
+
+// NotificationEventMsg mirrors events.NotificationEventMsg to avoid import cycles.
+type NotificationEventMsg struct {
+	TenantID  uint
+	EventType string
+	KeyID     string
+	Provider  string
+	Model     string
+	Details   string
+}
+
 // PricingEngine orchestrates the full pricing pipeline:
 // UsageEvent → Resolve → Calculate → Markup → Budget Check → Ledger Write
 type PricingEngine struct {
@@ -22,6 +38,7 @@ type PricingEngine struct {
 	rdb        *redis.Client
 	resolver   *PricingResolver
 	calculator *Calculator
+	notifQueue NotificationPublisher
 }
 
 // NewPricingEngine returns a new PricingEngine.
@@ -32,6 +49,11 @@ func NewPricingEngine(db *gorm.DB, rdb *redis.Client) *PricingEngine {
 		resolver:   NewPricingResolver(db, rdb),
 		calculator: NewCalculator(),
 	}
+}
+
+// SetNotificationQueue sets the notification publisher for budget/warning events.
+func (e *PricingEngine) SetNotificationQueue(nq NotificationPublisher) {
+	e.notifQueue = nq
 }
 
 // Process runs the full pricing pipeline for a usage event.
@@ -170,6 +192,15 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 				"limit_amount", limit.LimitAmount,
 				"action", limit.Action,
 			)
+			if e.notifQueue != nil {
+				_ = e.notifQueue.Publish(ctx, NotificationEventMsg{
+					TenantID:  tenantID,
+					EventType: models.EventBudgetBlocked,
+					KeyID:     keyID,
+					Provider:  provider,
+					Details:   fmt.Sprintf(`{"scope":"%s","period":"%s","current_spend":"%s","limit_amount":"%s"}`, limit.ScopeType, limit.PeriodType, effective.StringFixed(4), limit.LimitAmount.String()),
+				})
+			}
 			return &BudgetStatus{
 				AtWarning:    true,
 				Scope:        limit.ScopeType,
@@ -195,6 +226,15 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 					"limit_amount", limAmt,
 					"pct_used", effective.Div(limAmt).Mul(decimal.NewFromInt(100)).StringFixed(1),
 				)
+				if e.notifQueue != nil {
+					_ = e.notifQueue.Publish(ctx, NotificationEventMsg{
+						TenantID:  tenantID,
+						EventType: models.EventBudgetWarning,
+						KeyID:     keyID,
+						Provider:  provider,
+						Details:   fmt.Sprintf(`{"scope":"%s","period":"%s","current_spend":"%s","limit_amount":"%s","pct_used":"%s"}`, limit.ScopeType, limit.PeriodType, effective.StringFixed(4), limAmt.String(), effective.Div(limAmt).Mul(decimal.NewFromInt(100)).StringFixed(1)),
+					})
+				}
 				nearestStatus = &BudgetStatus{
 					AtWarning:    true,
 					Scope:        limit.ScopeType,
