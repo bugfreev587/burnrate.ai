@@ -1,9 +1,9 @@
 const capabilities: { text: string; comingSoon?: boolean }[] = [
-  { text: 'Real-time usage visibility' },
-  { text: 'Budget caps & hard stops' },
-  { text: 'Quota simulation & usage limits', comingSoon: true },
-  { text: 'Runaway protection for agents and long streams', comingSoon: true },
-  { text: 'Project-based tracking — repo / workspace / key' },
+  { text: 'Real-time usage visibility across all providers' },
+  { text: 'Budget caps with hard stops — block before overspend' },
+  { text: 'Rate limiting per key, model & provider' },
+  { text: 'Projected monthly spend & trend analysis' },
+  { text: 'Efficiency insights to cut waste', comingSoon: true },
 ]
 
 export default function LandingSolution() {

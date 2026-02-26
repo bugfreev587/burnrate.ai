@@ -11,6 +11,11 @@ const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 type PlanKey = 'free' | 'pro' | 'team' | 'business'
 
+interface PlanFeature {
+  text: string
+  comingSoon?: boolean
+}
+
 interface PlanCard {
   key: PlanKey
   label: string
@@ -20,7 +25,7 @@ interface PlanCard {
   annualTotal: number | null    // total annual charge
   annualSaving: number | null
   description: string
-  features: string[]
+  features: PlanFeature[]
   limits: string[]              // shown with a muted "not included" style
   bestFor: string[]
   popular?: boolean
@@ -40,13 +45,14 @@ const PLAN_CARDS: PlanCard[] = [
     annualSaving: null,
     description: 'For individual developers who want basic visibility into their AI usage.',
     features: [
-      'Single user',
-      'Anthropic provider',
-      'Basic usage dashboard',
-      'Per-request token & cost tracking',
-      'Monthly usage summary',
-      'Soft budget alerts (email)',
-      '7-day data retention',
+      { text: 'Single user' },
+      { text: 'Anthropic provider' },
+      { text: 'Per-request token & cost tracking' },
+      { text: 'Breakdown by model & API key' },
+      { text: 'Daily cost & token trend charts' },
+      { text: 'Projected monthly spend' },
+      { text: 'Soft budget alerts' },
+      { text: '7-day data retention' },
     ],
     limits: [
       'Up to $200 monitored spend / month',
@@ -66,16 +72,21 @@ const PLAN_CARDS: PlanCard[] = [
     annualSaving: 60,
     description: 'For power users who actively use Claude Code and want real cost control.',
     features: [
-      'Everything in Free, plus:',
-      'Multiple providers (Anthropic, OpenAI)',
-      'Multiple API keys',
-      'Hard budget enforcement — auto-block at limit',
-      'Daily, weekly & monthly budget limits',
-      'Real-time usage dashboard',
-      'Project-level usage tracking',
-      'Slack notifications',
-      '90-day data retention',
-      'CSV export',
+      { text: 'Everything in Free, plus:' },
+      { text: 'Multiple providers (Anthropic, OpenAI)' },
+      { text: 'Multiple API keys' },
+      { text: 'Hard budget enforcement — auto-block at limit' },
+      { text: 'Daily, weekly & monthly budget caps' },
+      { text: 'Per-provider budget scoping' },
+      { text: 'Rate limiting (RPM / ITPM / OTPM)' },
+      { text: 'Alert thresholds + warning headers' },
+      { text: 'Cache hit rate & savings', comingSoon: true },
+      { text: 'Usage cap forecasting', comingSoon: true },
+      { text: 'Cost per session breakdown', comingSoon: true },
+      { text: 'Model cost-efficiency scoring', comingSoon: true },
+      { text: 'Slack notifications', comingSoon: true },
+      { text: '90-day data retention' },
+      { text: 'CSV export' },
     ],
     limits: [],
     bestFor: ['Heavy Claude Code users', 'Indie developers', 'AI tool builders'],
@@ -90,15 +101,19 @@ const PLAN_CARDS: PlanCard[] = [
     annualSaving: 68,
     description: 'For small teams sharing AI usage and budgets across projects.',
     features: [
-      'Everything in Pro, plus:',
-      'Up to 10 team members',
-      'Role-based access (Owner / Admin / Member / Viewer)',
-      'Shared tenant-level budgets',
-      'Per-project budget controls',
-      'Audit logs',
-      '180-day data retention',
-      'Read-only usage API',
-      'Webhook support (budget alerts)',
+      { text: 'Everything in Pro, plus:' },
+      { text: 'Up to 10 team members' },
+      { text: 'Role-based access (Owner / Admin / Member / Viewer)' },
+      { text: 'Per-API-key budget scoping' },
+      { text: 'Per-key & per-model rate limits' },
+      { text: 'Audit logs' },
+      { text: '180-day data retention' },
+      { text: 'Wasted spend detection', comingSoon: true },
+      { text: 'Cost attribution by project / repo', comingSoon: true },
+      { text: 'Per-member efficiency benchmarks', comingSoon: true },
+      { text: 'Peak usage heatmap', comingSoon: true },
+      { text: 'Read-only usage API', comingSoon: true },
+      { text: 'Webhook support (budget alerts)', comingSoon: true },
     ],
     limits: [],
     bestFor: ['Startup teams', 'AI-native product teams', 'Shared API key environments'],
@@ -114,16 +129,16 @@ const PLAN_CARDS: PlanCard[] = [
     annualSaving: null,
     description: 'For companies that need governance, compliance, and enterprise-grade scale.',
     features: [
-      'Everything in Team, plus:',
-      'Unlimited team members',
-      'Advanced RBAC & fine-grained permissions',
-      'Organization-wide policy enforcement',
-      'Custom budget rules & model restrictions',
-      'Key rotation tracking & full audit logs',
-      '1+ year data retention',
-      'Priority support + SLA',
-      'SSO (Google / SAML)',
-      'Dedicated onboarding',
+      { text: 'Everything in Team, plus:' },
+      { text: 'Unlimited team members' },
+      { text: 'Advanced RBAC & fine-grained permissions', comingSoon: true },
+      { text: 'Model allowlists / blocklists', comingSoon: true },
+      { text: 'Spend velocity alerts', comingSoon: true },
+      { text: 'Key rotation tracking & full audit logs' },
+      { text: '1+ year data retention' },
+      { text: 'Priority support + SLA' },
+      { text: 'SSO (Google / SAML)' },
+      { text: 'Dedicated onboarding' },
     ],
     limits: [],
     bestFor: ['AI product companies', 'Multi-team enterprises', 'Compliance-sensitive environments'],
@@ -323,14 +338,19 @@ export default function PublicPricingPage() {
                   {card.features.map((f, i) => (
                     <li
                       key={i}
-                      className={`pub-pricing-feature ${i === 0 && f.includes('plus:') ? 'pub-pricing-feature-inherits' : ''}`}
+                      className={`pub-pricing-feature ${i === 0 && f.text.includes('plus:') ? 'pub-pricing-feature-inherits' : ''}`}
                     >
-                      {!(i === 0 && f.includes('plus:')) && (
+                      {!(i === 0 && f.text.includes('plus:')) && (
                         <svg className="pub-pricing-check-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                           <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       )}
-                      <span>{f}</span>
+                      <span>
+                        {f.text}
+                        {f.comingSoon && (
+                          <span className="pub-pricing-coming-soon">Coming Soon</span>
+                        )}
+                      </span>
                     </li>
                   ))}
 

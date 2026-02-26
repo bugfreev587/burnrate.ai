@@ -19,9 +19,37 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
-### Efficiency Insights (planned)
+### Planned features
 
-The following analytics features are on the roadmap to help heavy AI code-assistant users optimize spend:
+The following features are on the roadmap and marked "Coming Soon" on the landing page.
+
+**Visibility**
+
+| Feature | Available from | Description |
+|---|---|---|
+| Cost equivalent: subscription vs API | Free | Compare what "unlimited" subscription usage would cost at API rates. |
+| Usage by project / repository | Free | Per-repo and per-project usage breakdown (requires schema migration). |
+| Latency & response time tracking | Free | End-to-end latency per request for performance monitoring. |
+
+**Guardrails**
+
+| Feature | Available from | Description |
+|---|---|---|
+| Model allowlists / blocklists | Business | Restrict which models developers can use (e.g. allow Sonnet, block Opus). |
+| Max input tokens per request | Pro | Reject requests exceeding a configured input-token ceiling. |
+| Runaway loop detection | Pro | Detect and halt agents stuck in retry or infinite-generation loops. |
+| Session kill switch | Pro | Immediately terminate a specific session's access to the gateway. |
+
+**Cost Control**
+
+| Feature | Available from | Description |
+|---|---|---|
+| Per-model budget caps | Pro | Set spend limits on individual models (e.g. "$20/month for Opus"). |
+| Spend velocity alerts | Business | Alert when spending rate is abnormally high compared to recent history. |
+| Auto downgrade (Opus → Sonnet) | Pro | Automatically fall back to a cheaper model when a budget threshold is hit. |
+| Block expensive endpoints | Pro | Deny requests to specific high-cost model endpoints. |
+
+**Efficiency Insights**
 
 | Feature | Available from | Description |
 |---|---|---|
