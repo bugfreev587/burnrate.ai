@@ -364,6 +364,7 @@ function RecentRequests({ logs, billingFilter }: { logs: ReturnType<typeof useUs
               <th>Date</th>
               <th>Model</th>
               <th>Provider</th>
+              <th>API Key</th>
               <th>Input</th>
               <th>Output</th>
               <th>Cost</th>
@@ -375,6 +376,7 @@ function RecentRequests({ logs, billingFilter }: { logs: ReturnType<typeof useUs
                 <td className="text-muted">{fmtDate(log.created_at)}</td>
                 <td><code className="model-code">{log.model || '—'}</code></td>
                 <td className="text-muted">{log.provider || '—'}</td>
+                <td className="text-muted">{log.key_label || '—'}</td>
                 <td className="num-cell">{(log.prompt_tokens ?? 0).toLocaleString()}</td>
                 <td className="num-cell">{(log.completion_tokens ?? 0).toLocaleString()}</td>
                 <td className="num-cell">{log.api_usage_billed ? fmt$(log.cost) : '$0.00'}</td>

@@ -55,6 +55,7 @@ export interface UsageLog {
   api_key_fingerprint: string
   created_at: string
   api_usage_billed: boolean
+  key_label: string
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

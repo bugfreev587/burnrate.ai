@@ -36,7 +36,11 @@ func (s *UsageLogService) ListByTenantSince(ctx context.Context, tenantID uint, 
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
-	return logs, q.Find(&logs).Error
+	if err := q.Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	s.populateKeyLabels(logs)
+	return logs, nil
 }
 
 // ListByTenantBetween lists usage logs for a tenant between two timestamps (inclusive).
@@ -46,5 +50,49 @@ func (s *UsageLogService) ListByTenantBetween(ctx context.Context, tenantID uint
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
-	return logs, q.Find(&logs).Error
+	if err := q.Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	s.populateKeyLabels(logs)
+	return logs, nil
+}
+
+// populateKeyLabels looks up API key labels for the key_ids present in the
+// given logs and sets the KeyLabel field on each entry.
+func (s *UsageLogService) populateKeyLabels(logs []models.UsageLog) {
+	if len(logs) == 0 {
+		return
+	}
+
+	// Collect unique key_ids.
+	seen := make(map[string]struct{})
+	for _, l := range logs {
+		if l.KeyID != "" {
+			seen[l.KeyID] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return
+	}
+
+	keyIDs := make([]string, 0, len(seen))
+	for k := range seen {
+		keyIDs = append(keyIDs, k)
+	}
+
+	// Query labels from api_keys table.
+	var keys []models.APIKey
+	s.db.Select("key_id", "label").Where("key_id IN ?", keyIDs).Find(&keys)
+
+	labelMap := make(map[string]string, len(keys))
+	for _, k := range keys {
+		labelMap[k.KeyID] = k.Label
+	}
+
+	// Assign labels to log entries.
+	for i := range logs {
+		if label, ok := labelMap[logs[i].KeyID]; ok {
+			logs[i].KeyLabel = label
+		}
+	}
 }
