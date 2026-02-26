@@ -40,7 +40,7 @@ function configSummary(channelType: string, configStr: string): string {
 export default function NotificationsPage() {
   const navigate = useNavigate()
   const { role, isSynced } = useUserSync()
-  const { channels, loading, error, refresh, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications()
+  const { channels, loading, error, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications()
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
