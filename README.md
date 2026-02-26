@@ -19,6 +19,21 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
+### Efficiency Insights (planned)
+
+The following analytics features are on the roadmap to help heavy AI code-assistant users optimize spend:
+
+| Feature | Available from | Description |
+|---|---|---|
+| Cache hit rate & savings | Pro | Shows prompt-cache efficiency and dollars saved (or missed) via Anthropic cache tokens. |
+| Usage cap forecasting | Pro | Predicts when a subscription user will hit their daily/weekly cap at the current pace. |
+| Cost per session breakdown | Pro | Groups sequential requests into logical coding sessions and shows cost per session. |
+| Model cost-efficiency scoring | Pro | Highlights requests where a cheaper model would likely suffice based on input/output patterns. |
+| Wasted spend detection | Team | Flags anti-patterns: large-input/tiny-output prompts, retry loops, and idle streaming agents. |
+| Cost attribution by project / repo | Team | First-class per-repo and per-project cost rollups for budget allocation and client billing. |
+| Per-member efficiency benchmarks | Team | Compares per-developer cost, token volume, and model mix to surface outliers and best practices. |
+| Peak usage heatmap | Team | Hour-by-hour and day-of-week usage patterns for capacity planning and cap management. |
+
 ## Recent changes
 
 - **2026-02-25** – Refactored `mode` column into separate `auth_method` + `billing_mode` fields for cleaner provider/auth/billing separation.

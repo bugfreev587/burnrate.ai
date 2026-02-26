@@ -37,13 +37,17 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
   },
   {
     label: 'Efficiency Insights',
-    tag: 'Subscription-first',
+    tag: 'Pro+',
     tagColor: 'bg-emerald-50 text-emerald-700',
     items: [
-      { text: 'Most expensive prompts', comingSoon: true },
-      { text: 'Context bloat detection', comingSoon: true },
-      { text: 'Repeated calls / waste patterns', comingSoon: true },
-      { text: 'Recommendations to reduce caps', comingSoon: true },
+      { text: 'Cache hit rate & savings', comingSoon: true },
+      { text: 'Usage cap forecasting', comingSoon: true },
+      { text: 'Cost per session breakdown', comingSoon: true },
+      { text: 'Model cost-efficiency scoring', comingSoon: true },
+      { text: 'Wasted spend detection', comingSoon: true },
+      { text: 'Cost attribution by project / repo', comingSoon: true },
+      { text: 'Per-member efficiency benchmarks', comingSoon: true },
+      { text: 'Peak usage heatmap', comingSoon: true },
     ],
   },
 ]
