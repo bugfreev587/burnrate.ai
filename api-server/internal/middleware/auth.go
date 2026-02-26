@@ -24,7 +24,6 @@ const (
 func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Println("------- APIKeyMiddleware -------")
-		fmt.Println("---------- Headers:", c.Request.Header)
 		fmt.Println("---------- X-TokenGate-Key:", c.GetHeader("X-TokenGate-Key"))
 		token := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
 		if token == "" {
@@ -37,7 +36,6 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 		}
 
 		ak, err := svc.ValidateKey(c.Request.Context(), token)
-		fmt.Println("------- validation api-key ak:", ak, "err:", err)
 		if err != nil {
 			errStr := err.Error()
 			code := ErrCodeInvalidKey
