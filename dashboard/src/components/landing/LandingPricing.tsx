@@ -13,13 +13,13 @@ const plans = [
     annualTotal: 0,
     desc: 'For individual developers who want basic visibility into their AI usage.',
     features: [
-      'Single user',
-      'Anthropic provider',
-      'Basic usage dashboard',
-      'Per-request token & cost tracking',
-      'Monthly usage summary',
-      'Soft budget alerts',
-      '7-day data retention',
+      { text: 'Single user' },
+      { text: 'Anthropic provider' },
+      { text: 'Basic usage dashboard' },
+      { text: 'Per-request token & cost tracking' },
+      { text: 'Monthly usage summary' },
+      { text: 'Soft budget alerts' },
+      { text: '7-day data retention' },
     ],
     limit: 'Up to $200 monitored spend / month',
     cta: 'Start for free',
@@ -37,15 +37,15 @@ const plans = [
     annualSaving: 60,
     desc: 'For power users who actively use Claude Code and want real cost control.',
     features: [
-      'Everything in Free',
-      'Multiple providers (Anthropic, OpenAI)',
-      'Multiple API keys',
-      'Hard budget enforcement — auto-block at limit',
-      'Daily, weekly & monthly budget limits',
-      'Real-time usage dashboard',
-      'Slack notifications',
-      '90-day data retention',
-      'CSV export',
+      { text: 'Everything in Free' },
+      { text: 'Multiple providers (Anthropic, OpenAI)' },
+      { text: 'Multiple API keys' },
+      { text: 'Hard budget enforcement — auto-block at limit' },
+      { text: 'Daily, weekly & monthly budget limits' },
+      { text: 'Real-time usage dashboard' },
+      { text: 'Slack notifications', comingSoon: true },
+      { text: '90-day data retention' },
+      { text: 'CSV export' },
     ],
     limit: null,
     cta: 'Get started',
@@ -63,15 +63,15 @@ const plans = [
     annualSaving: 68,
     desc: 'For small teams sharing AI usage and budgets across projects.',
     features: [
-      'Everything in Pro',
-      'Up to 10 team members',
-      'Role-based access (Owner / Admin / Member / Viewer)',
-      'Shared tenant-level budgets',
-      'Per-project budget controls',
-      'Audit logs',
-      '180-day data retention',
-      'Read-only usage API',
-      'Webhook support (budget alerts)',
+      { text: 'Everything in Pro' },
+      { text: 'Up to 10 team members' },
+      { text: 'Role-based access (Owner / Admin / Member / Viewer)' },
+      { text: 'Shared tenant-level budgets' },
+      { text: 'Per-project budget controls' },
+      { text: 'Audit logs' },
+      { text: '180-day data retention' },
+      { text: 'Read-only usage API', comingSoon: true },
+      { text: 'Webhook support (budget alerts)', comingSoon: true },
     ],
     limit: null,
     cta: 'Get started',
@@ -89,16 +89,16 @@ const plans = [
     annualSaving: null,
     desc: 'For companies that need governance, compliance, and enterprise-grade scale.',
     features: [
-      'Everything in Team',
-      'Unlimited team members',
-      'Advanced RBAC & fine-grained permissions',
-      'Organization-wide policy enforcement',
-      'Custom budget rules & model restrictions',
-      'Key rotation tracking & full audit logs',
-      '1+ year data retention',
-      'Priority support + SLA',
-      'SSO (Google / SAML)',
-      'Dedicated onboarding',
+      { text: 'Everything in Team' },
+      { text: 'Unlimited team members' },
+      { text: 'Advanced RBAC & fine-grained permissions', comingSoon: true },
+      { text: 'Organization-wide policy enforcement' },
+      { text: 'Custom budget rules & model restrictions' },
+      { text: 'Key rotation tracking & full audit logs' },
+      { text: '1+ year data retention' },
+      { text: 'Priority support + SLA' },
+      { text: 'SSO (Google / SAML)' },
+      { text: 'Dedicated onboarding' },
     ],
     limit: null,
     cta: 'Contact Sales',
@@ -230,11 +230,18 @@ export default function LandingPricing() {
               {/* Features */}
               <ul className="space-y-2.5 mb-8 flex-grow" aria-label={`${plan.name} plan features`}>
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
+                  <li key={f.text} className="flex items-start gap-2 text-sm text-gray-600">
                     <svg className="mt-0.5 shrink-0 h-4 w-4 text-blue-500" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                    <span>{f}</span>
+                    <span>
+                      {f.text}
+                      {f.comingSoon && (
+                        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 border border-amber-200">
+                          Coming Soon
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
                 {plan.limit && (

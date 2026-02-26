@@ -4,10 +4,10 @@ const categories = [
     tag: 'Everyone',
     tagColor: 'bg-blue-50 text-blue-700',
     items: [
-      'Tokens, requests, latency',
-      'Usage by model / repo / project',
-      'Cost equivalent for subscription plans',
-      'History + time series',
+      { text: 'Tokens, requests, latency' },
+      { text: 'Usage by model / repo / project' },
+      { text: 'Cost equivalent for subscription plans' },
+      { text: 'History + time series' },
     ],
   },
   {
@@ -15,11 +15,11 @@ const categories = [
     tag: 'API + Subscription',
     tagColor: 'bg-purple-50 text-purple-700',
     items: [
-      'Max tokens per session',
-      'Max stream duration (SSE)',
-      'Max requests per minute',
-      'Runaway loop detection',
-      '"Kill switch" for bad sessions',
+      { text: 'Max tokens per session' },
+      { text: 'Max stream duration (SSE)' },
+      { text: 'Max requests per minute' },
+      { text: 'Runaway loop detection', comingSoon: true },
+      { text: '"Kill switch" for bad sessions', comingSoon: true },
     ],
   },
   {
@@ -27,10 +27,10 @@ const categories = [
     tag: 'API',
     tagColor: 'bg-orange-50 text-orange-700',
     items: [
-      'Monthly budget cap',
-      'Per-model caps',
-      'Auto downgrade (Opus → Sonnet)',
-      'Block expensive endpoints',
+      { text: 'Monthly budget cap' },
+      { text: 'Per-model caps' },
+      { text: 'Auto downgrade (Opus → Sonnet)', comingSoon: true },
+      { text: 'Block expensive endpoints', comingSoon: true },
     ],
   },
   {
@@ -38,10 +38,10 @@ const categories = [
     tag: 'Subscription-first',
     tagColor: 'bg-emerald-50 text-emerald-700',
     items: [
-      'Most expensive prompts',
-      'Context bloat detection',
-      'Repeated calls / waste patterns',
-      'Recommendations to reduce caps',
+      { text: 'Most expensive prompts', comingSoon: true },
+      { text: 'Context bloat detection', comingSoon: true },
+      { text: 'Repeated calls / waste patterns', comingSoon: true },
+      { text: 'Recommendations to reduce caps', comingSoon: true },
     ],
   },
 ]
@@ -74,9 +74,16 @@ export default function LandingFeatures() {
               </div>
               <ul className="space-y-2.5" aria-label={`${cat.label} features`}>
                 {cat.items.map((item) => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm text-gray-600">
+                  <li key={item.text} className="flex items-start gap-2.5 text-sm text-gray-600">
                     <span aria-hidden="true" className="mt-0.5 shrink-0 text-blue-600">✓</span>
-                    <span>{item}</span>
+                    <span>
+                      {item.text}
+                      {item.comingSoon && (
+                        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 border border-amber-200">
+                          Coming Soon
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>

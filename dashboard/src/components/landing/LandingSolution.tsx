@@ -1,9 +1,9 @@
 const capabilities = [
-  'Real-time usage visibility',
-  'Budget caps & hard stops',
-  'Quota simulation & usage limits',
-  'Runaway protection for agents and long streams',
-  'Project-based tracking — repo / workspace / key',
+  { text: 'Real-time usage visibility' },
+  { text: 'Budget caps & hard stops' },
+  { text: 'Quota simulation & usage limits', comingSoon: true },
+  { text: 'Runaway protection for agents and long streams', comingSoon: true },
+  { text: 'Project-based tracking — repo / workspace / key' },
 ]
 
 export default function LandingSolution() {
@@ -25,7 +25,7 @@ export default function LandingSolution() {
           <ul className="space-y-3" aria-label="Core capabilities">
             {capabilities.map((item) => (
               <li
-                key={item}
+                key={item.text}
                 className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 px-5 py-4"
               >
                 <span
@@ -34,7 +34,14 @@ export default function LandingSolution() {
                 >
                   ✓
                 </span>
-                <span className="text-gray-200">{item}</span>
+                <span className="text-gray-200">
+                  {item.text}
+                  {item.comingSoon && (
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 border border-amber-200">
+                      Coming Soon
+                    </span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>
