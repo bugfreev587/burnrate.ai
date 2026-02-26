@@ -84,7 +84,7 @@ const PLAN_CARDS: PlanCard[] = [
       { text: 'Usage cap forecasting', comingSoon: true },
       { text: 'Cost per session breakdown', comingSoon: true },
       { text: 'Model cost-efficiency scoring', comingSoon: true },
-      { text: 'Slack notifications', comingSoon: true },
+      { text: 'Slack notifications' },
       { text: '90-day data retention' },
       { text: 'CSV export' },
     ],
