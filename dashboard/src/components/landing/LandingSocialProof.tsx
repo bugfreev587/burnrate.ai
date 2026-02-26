@@ -10,7 +10,7 @@ export default function LandingSocialProof() {
     <section aria-label="Pain points" className="border-b border-gray-100 bg-gray-50 py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-center text-sm font-medium text-gray-500 mb-8">
-          Used by developers who rely on Claude Code every day — and don&apos;t want surprises
+          Used by developers who rely on AI Code Assistant every day — and don&apos;t want surprises
         </p>
         <ul className="flex flex-wrap justify-center gap-3" aria-label="Common problems">
           {pains.map((pain) => (

@@ -1,7 +1,7 @@
 const capabilities = [
   'Real-time usage visibility',
-  'Budget caps & hard stops (API users)',
-  'Quota simulation & usage limits (subscription users)',
+  'Budget caps & hard stops',
+  'Quota simulation & usage limits',
   'Runaway protection for agents and long streams',
   'Project-based tracking — repo / workspace / key',
 ]

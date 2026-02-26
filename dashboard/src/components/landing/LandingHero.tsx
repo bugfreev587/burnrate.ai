@@ -34,7 +34,7 @@ export default function LandingHero() {
         </p>
 
         <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
-          TokenGate is the control layer between your AI tools (Claude Code, Cursor, CLI) and LLM providers.
+          TokenGate is the control layer between your AI tools (Claude Code, Codex, etc) and LLM providers.
           Whether you pay per token or use a monthly subscription — get{' '}
           <span className="text-white font-medium">visibility + guardrails</span>.
         </p>
@@ -50,13 +50,13 @@ export default function LandingHero() {
             href="#how-it-works"
             className="inline-flex items-center justify-center rounded-lg border border-white/15 bg-white/5 px-7 py-3.5 text-base font-semibold text-white hover:bg-white/10 transition-colors"
           >
-            Connect Claude Code in 30s →
+            Connect TokenGate in 30s →
           </a>
         </div>
 
         <div className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-gray-600">
           <span className="uppercase tracking-widest font-medium">Works with</span>
-          {['Claude Code', 'Cursor', 'Claude CLI', 'Anthropic API', 'Any OpenAI-compatible client'].map(
+          {['Claude Code', 'Anthropic API', 'Codex', 'OpenAI API', 'and more...'].map(
             (tool, i, arr) => (
               <span key={tool} className="flex items-center gap-6">
                 <span className="text-gray-400">{tool}</span>
