@@ -3,10 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -117,7 +116,7 @@ func DebugHeadersMiddleware() gin.HandlerFunc {
 	if !enabled {
 		return func(c *gin.Context) { c.Next() }
 	}
-	log.Println("[DEBUG_HEADERS] header debug logging is ENABLED")
+	slog.Warn("debug_headers_enabled")
 
 	return func(c *gin.Context) {
 		r := c.Request
@@ -139,59 +138,14 @@ func DebugHeadersMiddleware() gin.HandlerFunc {
 			authSummary = fmt.Sprintf("present | len=%d | prefix=%q", len(auth), preview)
 		}
 
-		// ── Proxy / edge headers ──────────────────────────────────────────────
-		proxyHeaders := []string{
-			"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host",
-			"X-Real-IP", "Forwarded", "CF-Connecting-IP", "Fly-Client-IP",
-		}
-		var proxyLines strings.Builder
-		for _, h := range proxyHeaders {
-			v := r.Header.Get(h)
-			if v == "" {
-				v = "(absent)"
-			}
-			fmt.Fprintf(&proxyLines, "  %-22s %s\n", h+":", v)
-		}
-
-		// ── TokenGate custom headers ──────────────────────────────────────────
-		var tgLines strings.Builder
-		for k := range r.Header {
-			if strings.HasPrefix(strings.ToLower(k), "x-tokengate-") {
-				fmt.Fprintf(&tgLines, "  %-32s %s\n", k+":", r.Header.Get(k))
-			}
-		}
-		if tgLines.Len() == 0 {
-			tgLines.WriteString("  (none)\n")
-		}
-
-		log.Printf(`
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ INCOMING REQUEST ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Method:     %s
-  URL:        %s
-  Host:       %s
-  Proto:      %s
-  RemoteAddr: %s
-
-── Proxy / Edge Headers ──────────────────────────────────────────────────────
-%s
-── TokenGate Headers ─────────────────────────────────────────────────────────
-%s
-── Authorization ─────────────────────────────────────────────────────────────
-  %s
-
-── All Headers (JSON) ────────────────────────────────────────────────────────
-  %s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`,
-			r.Method,
-			r.URL.String(),
-			r.Host,
-			r.Proto,
-			r.RemoteAddr,
-			proxyLines.String(),
-			tgLines.String(),
-			authSummary,
-			string(headersJSON),
+		slog.Debug("debug_headers_request",
+			"method", r.Method,
+			"url", r.URL.String(),
+			"host", r.Host,
+			"proto", r.Proto,
+			"remote_addr", r.RemoteAddr,
+			"auth_summary", authSummary,
+			"headers", string(headersJSON),
 		)
 
 		c.Next()

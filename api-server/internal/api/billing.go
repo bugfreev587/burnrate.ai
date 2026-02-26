@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -65,7 +65,7 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 	if s.stripeSvc.IsConfigured() && tenant.StripeSubscriptionID != "" {
 		subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), caller.TenantID)
 		if err != nil {
-			log.Printf("billing: failed to fetch subscription for tenant %d: %v", caller.TenantID, err)
+			slog.Error("billing_fetch_subscription_failed", "tenant_id", caller.TenantID, "error", err)
 		} else if subInfo != nil {
 			resp["cancel_at_period_end"] = subInfo.CancelAtPeriodEnd
 			if subInfo.PaymentMethodLast4 != "" {
@@ -138,7 +138,7 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 
 	url, err := s.stripeSvc.CreateCheckoutSession(c.Request.Context(), caller.TenantID, req.Plan, req.SuccessURL, req.CancelURL)
 	if err != nil {
-		log.Printf("billing: checkout error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_checkout_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
 		return
 	}
@@ -171,7 +171,7 @@ func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
 	}
 
 	if err := s.stripeSvc.VerifyCheckoutSession(c.Request.Context(), caller.TenantID, req.SessionID); err != nil {
-		log.Printf("billing: checkout verify error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_checkout_verify_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to verify checkout session"})
 		return
 	}
@@ -226,7 +226,7 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 
 	url, err := s.stripeSvc.CreatePortalSession(c.Request.Context(), caller.TenantID, req.ReturnURL)
 	if err != nil {
-		log.Printf("billing: portal error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_portal_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create portal session"})
 		return
 	}
@@ -280,7 +280,7 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 	}
 
 	if err := s.stripeSvc.ScheduleDowngrade(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
-		log.Printf("billing: downgrade error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_downgrade_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -310,7 +310,7 @@ func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
 	}
 
 	if err := s.stripeSvc.CancelScheduledDowngrade(c.Request.Context(), caller.TenantID); err != nil {
-		log.Printf("billing: cancel-downgrade error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_cancel_downgrade_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -375,7 +375,7 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 	}
 
 	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
-		log.Printf("billing: change-plan error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_change_plan_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change plan"})
 		return
 	}
@@ -403,7 +403,7 @@ func (s *Server) handleBillingInvoices(c *gin.Context) {
 
 	invoices, err := s.stripeSvc.ListInvoices(c.Request.Context(), caller.TenantID, 24)
 	if err != nil {
-		log.Printf("billing: invoices error for tenant %d: %v", caller.TenantID, err)
+		slog.Error("billing_invoices_error", "tenant_id", caller.TenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoices"})
 		return
 	}
@@ -419,7 +419,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 		return
 	}
 	if !s.stripeSvc.IsWebhookConfigured() {
-		log.Println("billing: webhook received but STRIPE_WEBHOOK_SECRET is not configured")
+		slog.Warn("billing_webhook_secret_not_configured")
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "webhook secret not configured"})
 		return
 	}
@@ -433,7 +433,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	sigHeader := c.GetHeader("Stripe-Signature")
 	event, err := s.stripeSvc.ConstructEvent(payload, sigHeader)
 	if err != nil {
-		log.Printf("billing: webhook signature verification failed: %v", err)
+		slog.Warn("billing_webhook_signature_failed", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid signature"})
 		return
 	}
@@ -441,11 +441,11 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	// Idempotency check
 	isNew, err := s.stripeSvc.MarkEventProcessed(c.Request.Context(), event.ID)
 	if err != nil {
-		log.Printf("billing: idempotency check error for event %s: %v", event.ID, err)
+		slog.Error("billing_idempotency_check_error", "event_id", event.ID, "error", err)
 		// Continue processing — better to double-process than to drop
 	}
 	if !isNew && err == nil {
-		log.Printf("billing: skipping already-processed event %s", event.ID)
+		slog.Debug("billing_event_already_processed", "event_id", event.ID)
 		c.JSON(http.StatusOK, gin.H{"status": "already_processed"})
 		return
 	}
@@ -456,12 +456,12 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	case "checkout.session.completed":
 		var sess stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
-			log.Printf("billing: failed to parse checkout.session.completed: %v", err)
+			slog.Error("billing_webhook_parse_error", "event_type", "checkout.session.completed", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
 		if err := s.stripeSvc.HandleCheckoutCompleted(ctx, &sess); err != nil {
-			log.Printf("billing: HandleCheckoutCompleted error: %v", err)
+			slog.Error("billing_webhook_handler_error", "handler", "HandleCheckoutCompleted", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
 		}
@@ -469,12 +469,12 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	case "customer.subscription.created", "customer.subscription.updated":
 		var sub stripe.Subscription
 		if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
-			log.Printf("billing: failed to parse subscription event: %v", err)
+			slog.Error("billing_webhook_parse_error", "event_type", event.Type, "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
 		if err := s.stripeSvc.HandleSubscriptionUpdated(ctx, &sub); err != nil {
-			log.Printf("billing: HandleSubscriptionUpdated error: %v", err)
+			slog.Error("billing_webhook_handler_error", "handler", "HandleSubscriptionUpdated", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
 		}
@@ -482,12 +482,12 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	case "customer.subscription.deleted":
 		var sub stripe.Subscription
 		if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
-			log.Printf("billing: failed to parse subscription.deleted event: %v", err)
+			slog.Error("billing_webhook_parse_error", "event_type", "customer.subscription.deleted", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
 		if err := s.stripeSvc.HandleSubscriptionDeleted(ctx, &sub); err != nil {
-			log.Printf("billing: HandleSubscriptionDeleted error: %v", err)
+			slog.Error("billing_webhook_handler_error", "handler", "HandleSubscriptionDeleted", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
 		}
@@ -495,12 +495,12 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	case "invoice.paid":
 		var inv stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &inv); err != nil {
-			log.Printf("billing: failed to parse invoice.paid event: %v", err)
+			slog.Error("billing_webhook_parse_error", "event_type", "invoice.paid", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
 		if err := s.stripeSvc.HandleInvoicePaid(ctx, &inv); err != nil {
-			log.Printf("billing: HandleInvoicePaid error: %v", err)
+			slog.Error("billing_webhook_handler_error", "handler", "HandleInvoicePaid", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
 		}
@@ -508,18 +508,18 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	case "invoice.payment_failed":
 		var inv stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &inv); err != nil {
-			log.Printf("billing: failed to parse invoice.payment_failed event: %v", err)
+			slog.Error("billing_webhook_parse_error", "event_type", "invoice.payment_failed", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
 		if err := s.stripeSvc.HandleInvoicePaymentFailed(ctx, &inv); err != nil {
-			log.Printf("billing: HandleInvoicePaymentFailed error: %v", err)
+			slog.Error("billing_webhook_handler_error", "handler", "HandleInvoicePaymentFailed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
 		}
 
 	default:
-		log.Printf("billing: unhandled webhook event type: %s", event.Type)
+		slog.Debug("billing_webhook_unhandled_event", "event_type", event.Type)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

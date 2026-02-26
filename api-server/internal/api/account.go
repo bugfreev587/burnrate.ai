@@ -1,7 +1,7 @@
 package api
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -50,7 +50,7 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 	// 2. Cancel Stripe subscription immediately (best-effort)
 	if tenant.StripeSubscriptionID != "" {
 		if err := s.stripeSvc.CancelSubscriptionImmediately(tenant.StripeSubscriptionID); err != nil {
-			log.Printf("warning: failed to cancel Stripe subscription %s for tenant %d: %v", tenant.StripeSubscriptionID, tenant.ID, err)
+			slog.Warn("account_delete_cancel_stripe_failed", "subscription_id", tenant.StripeSubscriptionID, "tenant_id", tenant.ID, "error", err)
 		}
 	}
 
@@ -58,14 +58,14 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 	if err := db.Model(&models.APIKey{}).
 		Where("tenant_id = ?", tenant.ID).
 		Update("revoked", true).Error; err != nil {
-		log.Printf("warning: failed to revoke API keys for tenant %d: %v", tenant.ID, err)
+		slog.Warn("account_delete_revoke_api_keys_failed", "tenant_id", tenant.ID, "error", err)
 	}
 
 	// 4. Revoke all provider keys
 	if err := db.Model(&models.ProviderKey{}).
 		Where("tenant_id = ?", tenant.ID).
 		Update("revoked", true).Error; err != nil {
-		log.Printf("warning: failed to revoke provider keys for tenant %d: %v", tenant.ID, err)
+		slog.Warn("account_delete_revoke_provider_keys_failed", "tenant_id", tenant.ID, "error", err)
 	}
 
 	// 5. Delete all users from Clerk + DB
@@ -73,7 +73,7 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 	db.Where("tenant_id = ?", tenant.ID).Find(&users)
 	for _, u := range users {
 		if err := s.deleteClerkUser(u.ID); err != nil {
-			log.Printf("warning: failed to delete Clerk user %s: %v", u.ID, err)
+			slog.Warn("account_delete_clerk_user_failed", "user_id", u.ID, "error", err)
 		}
 	}
 	db.Where("tenant_id = ?", tenant.ID).Delete(&models.User{})
@@ -84,6 +84,6 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 		"plan_status": models.PlanStatusCanceled,
 	})
 
-	log.Printf("account deleted: tenant_id=%d name=%q by=%s", tenant.ID, tenant.Name, caller.Email)
+	slog.Info("account_deleted", "tenant_id", tenant.ID, "name", tenant.Name, "by", caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }

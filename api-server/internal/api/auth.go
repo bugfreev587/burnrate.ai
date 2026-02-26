@@ -3,7 +3,7 @@ package api
 import (
 	"crypto/subtle"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -104,16 +104,16 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 		pending.Status = models.StatusActive
 
 		if err := db.Delete(&models.User{}, "id = ?", oldID).Error; err != nil {
-			log.Printf("failed to delete pending user: %v", err)
+			slog.Error("auth_sync_delete_pending_user_failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
 			return
 		}
 		if err := db.Create(&pending).Error; err != nil {
-			log.Printf("failed to create activated user: %v", err)
+			slog.Error("auth_sync_create_activated_user_failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
 			return
 		}
-		log.Printf("activated invited user: email=%s tenant_id=%d role=%s", pending.Email, pending.TenantID, pending.Role)
+		slog.Info("auth_sync_user_activated", "email", pending.Email, "tenant_id", pending.TenantID, "role", pending.Role)
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":     pending.ID,
 			"tenant_id":   pending.TenantID,
@@ -161,7 +161,7 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 	})
 
 	if txErr != nil {
-		log.Printf("handleAuthSync: transaction failed for %s (%s): %v", req.Email, req.ClerkUserID, txErr)
+		slog.Error("auth_sync_transaction_failed", "email", req.Email, "clerk_user_id", req.ClerkUserID, "error", txErr)
 
 		// The transaction rolled back. Another concurrent request may have
 		// succeeded. Look up the user one more time before giving up.
@@ -187,7 +187,7 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 		return
 	}
 
-	log.Printf("new tenant+owner: email=%s tenant_id=%d user_id=%s", newUser.Email, newTenant.ID, newUser.ID)
+	slog.Info("auth_sync_new_tenant", "email", newUser.Email, "tenant_id", newTenant.ID, "user_id", newUser.ID)
 	c.JSON(http.StatusCreated, gin.H{
 		"user_id":     newUser.ID,
 		"tenant_id":   newTenant.ID,

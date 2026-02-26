@@ -1,7 +1,7 @@
 package pricing
 
 import (
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -140,7 +140,7 @@ func SeedInitialData(db *gorm.DB) error {
 	var count int64
 	db.Model(&models.Provider{}).Count(&count)
 	if count > 0 {
-		log.Println("pricing: seed data already present, skipping")
+		slog.Debug("pricing_seed_data_present")
 		return nil
 	}
 
@@ -227,7 +227,7 @@ func SeedInitialData(db *gorm.DB) error {
 		}
 	}
 
-	log.Println("pricing: seed data inserted successfully")
+	slog.Info("pricing_seed_data_inserted")
 	return nil
 }
 
@@ -288,7 +288,7 @@ func ensureModelsForProvider(db *gorm.DB, providerName string, entries []modelEn
 					return err
 				}
 			}
-			log.Printf("pricing: added missing model %s (%s)", me.name, providerName)
+			slog.Info("pricing_model_added", "model", me.name, "provider", providerName)
 			continue
 		} else if result.Error != nil {
 			return result.Error
@@ -316,7 +316,7 @@ func ensureModelsForProvider(db *gorm.DB, providerName string, entries []modelEn
 				if err := db.Create(&mp).Error; err != nil {
 					return err
 				}
-				log.Printf("pricing: added %s pricing for %s", priceType, me.name)
+				slog.Info("pricing_price_added", "price_type", priceType, "model", me.name)
 			} else if err != nil {
 				return err
 			} else if !existing.PricePerUnit.Equal(wantPrice) {
@@ -325,7 +325,7 @@ func ensureModelsForProvider(db *gorm.DB, providerName string, entries []modelEn
 				if err := db.Save(&existing).Error; err != nil {
 					return err
 				}
-				log.Printf("pricing: updated %s %s pricing to %s", me.name, priceType, priceStr)
+				slog.Info("pricing_price_updated", "model", me.name, "price_type", priceType, "price", priceStr)
 			}
 		}
 	}

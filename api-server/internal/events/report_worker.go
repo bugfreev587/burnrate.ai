@@ -6,7 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -46,15 +46,15 @@ func NewReportWorker(rdb *redis.Client, db *gorm.DB, auditSvc *services.AuditRep
 func (w *ReportWorker) Run(ctx context.Context) {
 	err := w.rdb.XGroupCreateMkStream(ctx, reportStreamName, reportConsumerGroup, "$").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		log.Printf("reportworker: XGROUP CREATE: %v", err)
+		slog.Error("reportworker_xgroup_create_failed", "error", err)
 	}
 
-	log.Printf("reportworker: started, reading from stream=%s group=%s", reportStreamName, reportConsumerGroup)
+	slog.Info("reportworker_started", "stream", reportStreamName, "group", reportConsumerGroup)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("reportworker: context cancelled, stopping")
+			slog.Info("reportworker_stopping", "reason", "context_cancelled")
 			return
 		default:
 		}
@@ -73,7 +73,7 @@ func (w *ReportWorker) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("reportworker: XREADGROUP error: %v", err)
+			slog.Error("reportworker_xreadgroup_error", "error", err)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -81,11 +81,11 @@ func (w *ReportWorker) Run(ctx context.Context) {
 		for _, stream := range streams {
 			for _, msg := range stream.Messages {
 				if err := w.processMessage(ctx, msg); err != nil {
-					log.Printf("reportworker: process msg %s: %v", msg.ID, err)
+					slog.Error("reportworker_process_failed", "msg_id", msg.ID, "error", err)
 					continue
 				}
 				if err := w.rdb.XAck(ctx, reportStreamName, reportConsumerGroup, msg.ID).Err(); err != nil {
-					log.Printf("reportworker: XACK msg %s: %v", msg.ID, err)
+					slog.Error("reportworker_xack_failed", "msg_id", msg.ID, "error", err)
 				}
 			}
 		}
@@ -158,7 +158,7 @@ func (w *ReportWorker) processReport(ctx context.Context, reportID uint) error {
 		return fmt.Errorf("set completed: %w", err)
 	}
 
-	log.Printf("reportworker: report %d completed (%s, %d rows, %d bytes)", reportID, report.Format, rowCount, len(data))
+	slog.Info("reportworker_report_completed", "report_id", reportID, "format", report.Format, "row_count", rowCount, "size_bytes", len(data))
 	return nil
 }
 

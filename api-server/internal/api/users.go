@@ -2,7 +2,7 @@ package api
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -167,7 +167,7 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 		return
 	}
 
-	log.Printf("user invited: email=%s role=%s by=%s tenant_id=%d", req.Email, role, caller.Email, caller.TenantID)
+	slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", caller.TenantID)
 	c.JSON(http.StatusCreated, gin.H{
 		"message":        "User invited. They will join your tenant when they sign up.",
 		"signup_url":     "https://app.tokengate.to/sign-up",
@@ -334,10 +334,10 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 	}
 
 	if err := s.deleteClerkUser(target.ID); err != nil {
-		log.Printf("warning: user %s removed from DB but Clerk deletion failed: %v", target.Email, err)
+		slog.Warn("clerk_user_deletion_failed", "email", target.Email, "error", err)
 	}
 
-	log.Printf("user removed: %s by %s", target.Email, caller.Email)
+	slog.Info("user_removed", "email", target.Email, "by", caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "User removed successfully"})
 }
 
@@ -483,7 +483,7 @@ func (s *Server) handlePromoteAdmin(c *gin.Context) {
 		return
 	}
 	target.Role = models.RoleAdmin
-	log.Printf("user promoted to admin: %s by %s", target.Email, caller.Email)
+	slog.Info("user_promoted_to_admin", "email", target.Email, "by", caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "User promoted to admin successfully", "user": toUserResponse(target)})
 }
 
@@ -514,7 +514,7 @@ func (s *Server) handleDemoteAdmin(c *gin.Context) {
 		return
 	}
 	target.Role = models.RoleEditor
-	log.Printf("admin demoted to editor: %s by %s", target.Email, caller.Email)
+	slog.Info("admin_demoted_to_editor", "email", target.Email, "by", caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "Admin demoted to editor successfully", "user": toUserResponse(target)})
 }
 
@@ -564,7 +564,7 @@ func (s *Server) handleTransferOwnership(c *gin.Context) {
 	}
 	tx.Commit()
 
-	log.Printf("ownership transferred from %s to %s", caller.Email, newOwner.Email)
+	slog.Info("ownership_transferred", "from", caller.Email, "to", newOwner.Email)
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Ownership transferred successfully",
 		"new_owner": newOwner.Email,
@@ -647,7 +647,7 @@ func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
 		return http.StatusInternalServerError, gin.H{"error": "failed to update plan"}
 	}
 
-	log.Printf("tenant %d plan changed: %s → %s", tenantID, tenant.Plan, newPlan)
+	slog.Info("tenant_plan_changed", "tenant_id", tenantID, "from_plan", tenant.Plan, "to_plan", newPlan)
 	return 0, nil
 }
 

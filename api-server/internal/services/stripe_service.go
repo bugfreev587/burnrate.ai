@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/stripe/stripe-go/v82"
@@ -54,7 +54,7 @@ func (s *StripeService) CancelSubscriptionImmediately(subscriptionID string) err
 	if err != nil {
 		return fmt.Errorf("cancel subscription %s: %w", subscriptionID, err)
 	}
-	log.Printf("stripe: subscription %s canceled immediately", subscriptionID)
+	slog.Info("stripe_subscription_canceled", "subscription_id", subscriptionID)
 	return nil
 }
 
@@ -136,7 +136,7 @@ func (s *StripeService) EnsureCustomer(ctx context.Context, tenantID uint) (stri
 		return "", fmt.Errorf("save stripe_customer_id: %w", err)
 	}
 
-	log.Printf("stripe: created customer %s for tenant %d", cust.ID, tenantID)
+	slog.Info("stripe_customer_created", "customer_id", cust.ID, "tenant_id", tenantID)
 	return cust.ID, nil
 }
 
@@ -292,7 +292,7 @@ func (s *StripeService) ScheduleDowngrade(ctx context.Context, tenantID uint, ta
 		return fmt.Errorf("save pending downgrade: %w", err)
 	}
 
-	log.Printf("stripe: scheduled downgrade for tenant %d: %s → %s (effective %v)", tenantID, tenant.Plan, targetPlan, effectiveAt)
+	slog.Info("stripe_downgrade_scheduled", "tenant_id", tenantID, "from_plan", tenant.Plan, "to_plan", targetPlan, "effective_at", effectiveAt)
 	return nil
 }
 
@@ -361,7 +361,7 @@ func (s *StripeService) CancelScheduledDowngrade(ctx context.Context, tenantID u
 		return fmt.Errorf("clear pending downgrade: %w", err)
 	}
 
-	log.Printf("stripe: canceled scheduled downgrade for tenant %d (was pending %s)", tenantID, tenant.PendingPlan)
+	slog.Info("stripe_downgrade_canceled", "tenant_id", tenantID, "pending_plan", tenant.PendingPlan)
 	return nil
 }
 
@@ -389,7 +389,7 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 		}
 		undoParams.Context = ctx
 		if _, err := subscription.Update(tenant.StripeSubscriptionID, undoParams); err != nil {
-			log.Printf("stripe: warning: failed to unset cancel_at_period_end during upgrade for tenant %d: %v", tenantID, err)
+			slog.Warn("stripe_unset_cancel_at_period_end_failed", "tenant_id", tenantID, "error", err)
 		}
 	}
 
@@ -442,7 +442,7 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 		return fmt.Errorf("update tenant plan: %w", err)
 	}
 
-	log.Printf("stripe: subscription %s upgraded to plan=%s for tenant %d", tenant.StripeSubscriptionID, newPlan, tenantID)
+	slog.Info("stripe_subscription_upgraded", "subscription_id", tenant.StripeSubscriptionID, "plan", newPlan, "tenant_id", tenantID)
 	return nil
 }
 
@@ -616,7 +616,7 @@ func (s *StripeService) HandleCheckoutCompleted(ctx context.Context, sess *strip
 	tenantIDStr := sess.Metadata["tenant_id"]
 	plan := sess.Metadata["plan"]
 	if tenantIDStr == "" || plan == "" {
-		log.Printf("stripe webhook: checkout.session.completed missing metadata (tenant_id=%q, plan=%q)", tenantIDStr, plan)
+		slog.Warn("stripe_checkout_missing_metadata", "tenant_id", tenantIDStr, "plan", plan)
 		return nil
 	}
 
@@ -646,7 +646,7 @@ func (s *StripeService) HandleCheckoutCompleted(ctx context.Context, sess *strip
 		return fmt.Errorf("update tenant after checkout: %w", err)
 	}
 
-	log.Printf("stripe: checkout completed for tenant %d → plan=%s", tenantID, plan)
+	slog.Info("stripe_checkout_completed", "tenant_id", tenantID, "plan", plan)
 	return nil
 }
 
@@ -690,7 +690,7 @@ func (s *StripeService) HandleSubscriptionUpdated(ctx context.Context, sub *stri
 		return fmt.Errorf("update tenant from subscription: %w", err)
 	}
 
-	log.Printf("stripe: subscription %s updated for tenant %d (status=%s, plan=%s, pending=%s)", sub.ID, tenantID, sub.Status, plan, tenant.PendingPlan)
+	slog.Info("stripe_subscription_updated", "subscription_id", sub.ID, "tenant_id", tenantID, "status", sub.Status, "plan", plan, "pending_plan", tenant.PendingPlan)
 	return nil
 }
 
@@ -723,7 +723,7 @@ func (s *StripeService) HandleSubscriptionDeleted(ctx context.Context, sub *stri
 		return fmt.Errorf("downgrade tenant after subscription deleted: %w", err)
 	}
 
-	log.Printf("stripe: subscription %s deleted for tenant %d → downgraded to free", sub.ID, tenantID)
+	slog.Info("stripe_subscription_deleted", "subscription_id", sub.ID, "tenant_id", tenantID)
 	return nil
 }
 
@@ -737,7 +737,7 @@ func (s *StripeService) HandleInvoicePaid(ctx context.Context, inv *stripe.Invoi
 	var tenant models.Tenant
 	if err := s.db.WithContext(ctx).Where("stripe_subscription_id = ?", subID).First(&tenant).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("stripe: invoice.paid for unknown subscription %s", subID)
+			slog.Warn("stripe_invoice_paid_unknown_subscription", "subscription_id", subID)
 			return nil
 		}
 		return err
@@ -747,7 +747,7 @@ func (s *StripeService) HandleInvoicePaid(ctx context.Context, inv *stripe.Invoi
 		return fmt.Errorf("update plan_status to active: %w", err)
 	}
 
-	log.Printf("stripe: invoice paid for tenant %d → plan_status=active", tenant.ID)
+	slog.Info("stripe_invoice_paid", "tenant_id", tenant.ID)
 	return nil
 }
 
@@ -761,7 +761,7 @@ func (s *StripeService) HandleInvoicePaymentFailed(ctx context.Context, inv *str
 	var tenant models.Tenant
 	if err := s.db.WithContext(ctx).Where("stripe_subscription_id = ?", subID).First(&tenant).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("stripe: invoice.payment_failed for unknown subscription %s", subID)
+			slog.Warn("stripe_invoice_payment_failed_unknown_subscription", "subscription_id", subID)
 			return nil
 		}
 		return err
@@ -771,7 +771,7 @@ func (s *StripeService) HandleInvoicePaymentFailed(ctx context.Context, inv *str
 		return fmt.Errorf("update plan_status to past_due: %w", err)
 	}
 
-	log.Printf("stripe: invoice payment failed for tenant %d → plan_status=past_due", tenant.ID)
+	slog.Warn("stripe_invoice_payment_failed", "tenant_id", tenant.ID)
 	return nil
 }
 
@@ -793,14 +793,14 @@ func (s *StripeService) tenantIDFromSubscription(sub *stripe.Subscription) (uint
 			if sub.Customer != nil {
 				if err := s.db.Where("stripe_customer_id = ?", sub.Customer.ID).First(&tenant).Error; err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.Printf("stripe: no tenant found for subscription %s / customer %s", sub.ID, sub.Customer.ID)
+						slog.Warn("stripe_tenant_not_found", "subscription_id", sub.ID, "customer_id", sub.Customer.ID)
 						return 0, nil
 					}
 					return 0, err
 				}
 				return tenant.ID, nil
 			}
-			log.Printf("stripe: no tenant found for subscription %s", sub.ID)
+			slog.Warn("stripe_tenant_not_found", "subscription_id", sub.ID)
 			return 0, nil
 		}
 		return 0, err

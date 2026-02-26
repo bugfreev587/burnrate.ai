@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -41,7 +42,7 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 				break
 			}
 		}
-		log.Printf("postgres not ready (attempt %d/10): %v", i, err)
+		slog.Warn("postgres_not_ready", "attempt", i, "max_attempts", 10, "error", err)
 		time.Sleep(2 * time.Second)
 	}
 	if err != nil {
@@ -110,9 +111,9 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 
 		// BYOK modes → BYOK + API_USAGE
 		if res := db.Exec(`UPDATE api_keys SET auth_method = 'BYOK', billing_mode = 'API_USAGE' WHERE mode IN ('ANTHROPIC_API_BYOK', 'OPENAI_API_BYOK', 'API_BYOK')`); res.Error != nil {
-			log.Printf("migrate api_key auth/billing: %v", res.Error)
+			slog.Error("migrate_api_key_auth_billing_failed", "error", res.Error)
 		} else if res.RowsAffected > 0 {
-			log.Printf("migrate api_key auth/billing: updated %d BYOK rows", res.RowsAffected)
+			slog.Info("migrate_api_key_auth_billing", "rows_updated", res.RowsAffected)
 		}
 
 		// Drop the legacy mode column now that auth_method + billing_mode are populated.
@@ -130,9 +131,9 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		  AND usage_logs.cost = 0
 		  AND cl.final_cost > 0`
 	if res := db.Exec(backfillSQL); res.Error != nil {
-		log.Printf("backfill usage_logs costs: %v", res.Error)
+		slog.Error("backfill_usage_logs_costs_failed", "error", res.Error)
 	} else if res.RowsAffected > 0 {
-		log.Printf("backfill usage_logs costs: updated %d rows", res.RowsAffected)
+		slog.Info("backfill_usage_logs_costs", "rows_updated", res.RowsAffected)
 	}
 
 	return &PostgresDB{db: db}, nil
