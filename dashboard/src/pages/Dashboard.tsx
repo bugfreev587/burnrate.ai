@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
 import DateRangeSelector from '../components/DateRangeSelector'
@@ -639,6 +639,21 @@ export default function Dashboard() {
   const [recentOpen, setRecentOpen] = useState(false)
   const { logs, summary, budgets, forecast, appliedRange, loading, error, refresh } = useUsageData(dateRange)
 
+  const recentRef = useRef<HTMLDivElement>(null)
+  const scrollToRecentAfterLoad = useRef(false)
+
+  const handleRecentRefresh = useCallback(() => {
+    scrollToRecentAfterLoad.current = true
+    refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    if (!loading && scrollToRecentAfterLoad.current) {
+      scrollToRecentAfterLoad.current = false
+      recentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [loading])
+
   const s = summary
 
   // Derive a human-readable label for the selected period section.
@@ -816,6 +831,7 @@ export default function Dashboard() {
 
             {/* ── Recent Requests (collapsed by default) ── */}
             <div
+              ref={recentRef}
               className="section-collapsible"
               onClick={() => setRecentOpen(o => !o)}
             >
@@ -828,7 +844,7 @@ export default function Dashboard() {
               <>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                   <button
-                    onClick={refresh}
+                    onClick={handleRecentRefresh}
                     title="Refresh requests"
                     style={{
                       background: 'var(--color-bg)',
