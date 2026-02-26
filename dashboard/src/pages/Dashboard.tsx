@@ -5,7 +5,10 @@ import DateRangeSelector from '../components/DateRangeSelector'
 import { useUsageData } from '../hooks/useUsageData'
 import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown, ForecastData } from '../hooks/useUsageData'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
+import { useRateLimits } from '../hooks/useRateLimits'
+import type { RateLimit } from '../hooks/useRateLimits'
 import './Dashboard.css'
+import './LimitsPage.css'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -629,11 +632,48 @@ function InsightsStrip({ summary, apiKeys }: { summary: ReturnType<typeof useUsa
   )
 }
 
+// ─── Rate Limit Card ──────────────────────────────────────────────────────────
+
+const METRIC_LABELS: Record<string, string> = { rpm: 'RPM', itpm: 'ITPM', otpm: 'OTPM' }
+
+function RateLimitCard({ rl }: { rl: RateLimit }) {
+  const pct = rl.LimitValue > 0 ? (rl.current_usage / rl.LimitValue) * 100 : 0
+  const color = pct >= 100 ? 'var(--color-danger)' : pct >= 80 ? '#f59e0b' : 'var(--color-accent, var(--color-primary))'
+  const barClass = pct >= 100 ? 'usage-exceeded' : pct >= 80 ? 'usage-high' : ''
+
+  return (
+    <div className="rl-card card">
+      <div className="rl-header">
+        <span className="rl-header-label">
+          {rl.Provider ? rl.Provider.charAt(0).toUpperCase() + rl.Provider.slice(1) : 'All Providers'}
+          {rl.Model && <span className="rl-header-model"> · {rl.Model}</span>}
+        </span>
+        <span className={`metric-badge metric-${rl.Metric}`}>
+          {METRIC_LABELS[rl.Metric] ?? rl.Metric.toUpperCase()}
+        </span>
+      </div>
+      <div className="usage-bar">
+        <div
+          className={`usage-bar-fill ${barClass}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+      <div className="rl-meta">
+        <span className="rl-usage-text">
+          {rl.current_usage.toLocaleString()} / {rl.LimitValue.toLocaleString()}
+        </span>
+        <span className="rl-pct" style={{ color }}>{pct.toFixed(1)}%</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { user } = useUser()
   const { config } = useDashboardConfig()
+  const { limits: rateLimits } = useRateLimits(5000)
   const [dateRange, setDateRange] = useState<DateRange>({ preset: '7d' })
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const [recentOpen, setRecentOpen] = useState(false)
@@ -771,6 +811,18 @@ export default function Dashboard() {
                       return a.provider.localeCompare(b.provider)
                     })
                     .map(b => <BudgetBar key={b.id} b={b} />)}
+                </div>
+              </>
+            )}
+
+            {/* ── Active Rate Limits ── */}
+            {rateLimits.filter(rl => rl.Enabled).length > 0 && (
+              <>
+                <div className="dash-section-title">Active Rate Limits</div>
+                <div className="rl-grid">
+                  {rateLimits
+                    .filter(rl => rl.Enabled)
+                    .map(rl => <RateLimitCard key={rl.ID} rl={rl} />)}
                 </div>
               </>
             )}

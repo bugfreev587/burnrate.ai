@@ -30,7 +30,7 @@ const ACTION_OPTIONS = [
 export default function LimitsPage() {
   const navigate = useNavigate()
   const { role, isSynced } = useUserSync()
-  const { limits: rateLimits, loading: rlLoading, error: rlError, upsertLimit: upsertRateLimit, deleteLimit: deleteRateLimit } = useRateLimits()
+  const { limits: rateLimits, loading: rlLoading, error: rlError, upsertLimit: upsertRateLimit, deleteLimit: deleteRateLimit } = useRateLimits(5000)
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
   const { catalog, activeKeys } = usePricingConfig()
 

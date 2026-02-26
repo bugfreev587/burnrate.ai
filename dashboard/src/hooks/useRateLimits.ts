@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
 
@@ -34,27 +34,38 @@ export interface UpsertRateLimitReq {
   enabled: boolean
 }
 
-export function useRateLimits() {
+export function useRateLimits(pollInterval?: number) {
   const [limits, setLimits] = useState<RateLimit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchLimits = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const fetchLimits = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError(null) }
     try {
       const res = await fetch(`${API_URL}/v1/admin/rate-limits`, { headers: authHeaders() })
       if (!res.ok) throw new Error('Failed to fetch rate limits')
       const data = await res.json()
       setLimits(data.rate_limits || [])
+      if (silent) setError(null)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
+      if (!silent) setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => { fetchLimits() }, [fetchLimits])
+
+  useEffect(() => {
+    if (pollInterval && pollInterval > 0) {
+      pollRef.current = setInterval(() => fetchLimits(true), pollInterval)
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [pollInterval, fetchLimits])
 
   async function upsertLimit(req: UpsertRateLimitReq): Promise<RateLimit> {
     const res = await fetch(`${API_URL}/v1/admin/rate-limits`, {
@@ -83,5 +94,5 @@ export function useRateLimits() {
     setLimits(prev => prev.filter(l => l.ID !== id))
   }
 
-  return { limits, loading, error, refresh: fetchLimits, upsertLimit, deleteLimit }
+  return { limits, loading, error, refresh: () => fetchLimits(), upsertLimit, deleteLimit }
 }
