@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 
 // ─── Plan definitions ────────────────────────────────────────────────────────
 
-const plans = [
+type PlanFeature = { text: string; comingSoon?: boolean }
+
+const plans: { key: string; name: string; tagline: string; monthlyPrice: number | null; annualMonthly: number | null; annualTotal: number | null; annualSaving?: number | null; desc: string; features: PlanFeature[]; limit: string | null; cta: string; to: string; highlight: boolean; contactSales: boolean }[] = [
   {
     key: 'free',
     name: 'Free',

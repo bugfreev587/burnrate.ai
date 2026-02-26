@@ -1,4 +1,6 @@
-const categories = [
+type FeatureItem = { text: string; comingSoon?: boolean }
+
+const categories: { label: string; tag: string; tagColor: string; items: FeatureItem[] }[] = [
   {
     label: 'Visibility',
     tag: 'Everyone',

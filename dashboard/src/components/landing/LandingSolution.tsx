@@ -1,4 +1,4 @@
-const capabilities = [
+const capabilities: { text: string; comingSoon?: boolean }[] = [
   { text: 'Real-time usage visibility' },
   { text: 'Budget caps & hard stops' },
   { text: 'Quota simulation & usage limits', comingSoon: true },
