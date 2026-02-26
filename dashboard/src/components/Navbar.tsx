@@ -78,9 +78,11 @@ export default function Navbar() {
                   <Link to="/profile" className="dropdown-item" onClick={() => setShowMenu(false)}>
                     Profile
                   </Link>
-                  <Link to="/settings" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                    Settings
-                  </Link>
+                  {canAccessEditor && (
+                    <Link to="/settings" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                      Settings
+                    </Link>
+                  )}
                   {canAccessAdmin && (
                     <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
                       Plan
