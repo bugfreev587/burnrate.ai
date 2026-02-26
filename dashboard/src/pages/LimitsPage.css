@@ -130,3 +130,13 @@
   color: var(--color-text-muted);
   margin-top: 0.3rem;
 }
+
+.form-hint-link {
+  color: var(--color-accent, #818cf8);
+  text-decoration: none;
+  font-size: 0.75rem;
+}
+
+.form-hint-link:hover {
+  text-decoration: underline;
+}

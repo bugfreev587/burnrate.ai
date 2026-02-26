@@ -84,6 +84,7 @@
 .ig-icon--api       { background: rgba(99, 102, 241, 0.2); color: #818cf8; font-size: 0.6rem; }
 .ig-icon--budget    { background: rgba(34, 197, 94, 0.2);  color: #22c55e; }
 .ig-icon--help      { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+.ig-icon--notification { background: rgba(251, 146, 60, 0.2); color: #fb923c; font-size: 0.75rem; }
 .ig-icon--info      { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 
 /* ── main content ─────────────────────────────────────────────────────────── */

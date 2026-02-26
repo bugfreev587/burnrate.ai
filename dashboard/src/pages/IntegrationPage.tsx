@@ -11,15 +11,16 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: 'overview',    title: 'Overview',                                    icon: 'info' },
-  { id: 'scenario-1',  title: 'Anthropic \u2014 Subscription',              icon: 'anthropic' },
-  { id: 'scenario-2',  title: 'Anthropic \u2014 API Usage',                 icon: 'anthropic' },
-  { id: 'scenario-3',  title: 'Anthropic \u2014 BYOK',                      icon: 'anthropic' },
-  { id: 'scenario-4',  title: 'OpenAI \u2014 Subscription (Codex)',         icon: 'openai' },
-  { id: 'scenario-5',  title: 'OpenAI \u2014 BYOK',                         icon: 'openai' },
-  { id: 'endpoints',   title: 'API Endpoints',                               icon: 'api' },
-  { id: 'budget',      title: 'Budget Headers',                              icon: 'budget' },
-  { id: 'troubleshoot',title: 'Troubleshooting',                             icon: 'help' },
+  { id: 'overview',       title: 'Overview',                                    icon: 'info' },
+  { id: 'scenario-1',     title: 'Anthropic \u2014 Subscription',              icon: 'anthropic' },
+  { id: 'scenario-2',     title: 'Anthropic \u2014 API Usage',                 icon: 'anthropic' },
+  { id: 'scenario-3',     title: 'Anthropic \u2014 BYOK',                      icon: 'anthropic' },
+  { id: 'scenario-4',     title: 'OpenAI \u2014 Subscription (Codex)',         icon: 'openai' },
+  { id: 'scenario-5',     title: 'OpenAI \u2014 BYOK',                         icon: 'openai' },
+  { id: 'endpoints',      title: 'API Endpoints',                               icon: 'api' },
+  { id: 'budget',         title: 'Budget Headers',                              icon: 'budget' },
+  { id: 'notifications',  title: 'Notification Setup',                          icon: 'notification' },
+  { id: 'troubleshoot',   title: 'Troubleshooting',                             icon: 'help' },
 ]
 
 /* ── icon map ─────────────────────────────────────────────────────────────── */
@@ -34,6 +35,8 @@ function SectionIcon({ type }: { type: string }) {
       return <span className="ig-icon ig-icon--api">&lt;/&gt;</span>
     case 'budget':
       return <span className="ig-icon ig-icon--budget">$</span>
+    case 'notification':
+      return <span className="ig-icon ig-icon--notification">&#x1f514;</span>
     case 'help':
       return <span className="ig-icon ig-icon--help">?</span>
     default:
@@ -101,6 +104,16 @@ function FlowDiagram({ steps }: { steps: string[] }) {
 export default function IntegrationPage() {
   const [activeSection, setActiveSection] = useState('overview')
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  /* scroll to hash on mount (e.g. /integration#notifications) */
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '')
+    if (hash && sectionRefs.current[hash]) {
+      setTimeout(() => {
+        sectionRefs.current[hash]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [])
 
   /* scroll spy */
   useEffect(() => {
@@ -549,6 +562,62 @@ export OPENAI_API_KEY="<tokengate-api-key>"
   "error": "budget_exceeded",
   "message": "Budget limit exceeded for period=monthly. Limit: 100.0000, Current: 105.2300"
 }`}</CodeBlock>
+          </section>
+
+          {/* ── Notification Setup ─────────────────────────────────────── */}
+          <section id="notifications" ref={ref('notifications')} className="ig-section">
+            <h2 className="ig-h2">
+              <SectionIcon type="notification" />
+              Notification Setup
+            </h2>
+            <p className="ig-desc">
+              Get real-time alerts in Slack, email, or a custom webhook when budget limits or rate limits
+              are triggered. Below is a step-by-step guide for setting up <strong>Slack incoming webhooks</strong>.
+            </p>
+
+            <div className="ig-steps">
+              <div className="ig-step">
+                <h3><StepNumber n={1} /> Create a Slack App</h3>
+                <ol className="ig-ol">
+                  <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">api.slack.com/apps</a> and click <strong>Create New App</strong>.</li>
+                  <li>Choose <strong>From scratch</strong>, give it a name (e.g. "TokenGate Alerts"), and select your workspace.</li>
+                  <li>Click <strong>Create App</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={2} /> Enable Incoming Webhooks</h3>
+                <ol className="ig-ol">
+                  <li>In your app settings, navigate to <strong>Incoming Webhooks</strong> in the left sidebar.</li>
+                  <li>Toggle <strong>Activate Incoming Webhooks</strong> to <strong>On</strong>.</li>
+                  <li>Click <strong>Add New Webhook to Workspace</strong> at the bottom of the page.</li>
+                  <li>Select the channel where you want alerts to appear (e.g. <code>#tokengate-alerts</code>) and click <strong>Allow</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={3} /> Copy the Webhook URL</h3>
+                <p>After authorizing, you'll see a new webhook URL that looks like:</p>
+                <CodeBlock>{`https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`}</CodeBlock>
+                <p>Click <strong>Copy</strong> to save this URL to your clipboard.</p>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={4} /> Add the Webhook in TokenGate</h3>
+                <ol className="ig-ol">
+                  <li>Go to the <a href="/notifications"><strong>Notifications</strong></a> page in your TokenGate dashboard.</li>
+                  <li>Click <strong>Add Channel</strong> and select <strong>Slack</strong> as the channel type.</li>
+                  <li>Paste the webhook URL you copied in Step 3.</li>
+                  <li>Select the event types you want to be notified about (budget blocked, budget warning, rate limit exceeded).</li>
+                  <li>Click <strong>Save</strong>, then use the <strong>Test</strong> button to verify the integration.</li>
+                </ol>
+              </div>
+            </div>
+
+            <Callout type="info">
+              Each Slack webhook URL is tied to a specific channel. To send alerts to multiple channels,
+              create a separate webhook for each and add them as individual notification channels in TokenGate.
+            </Callout>
           </section>
 
           {/* ── Troubleshooting ────────────────────────────────────────── */}

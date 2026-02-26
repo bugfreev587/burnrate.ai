@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { useNotifications } from '../hooks/useNotifications'
 import type { CreateNotificationChannelReq } from '../hooks/useNotifications'
@@ -168,6 +168,7 @@ export default function NotificationsPage() {
                 <p className="section-desc">
                   Configure Email, Slack, or Webhook channels to receive real-time alerts when budget limits
                   or rate limits are triggered. Notifications are debounced (5 min cooldown per event type).
+                  {' '}<Link to="/integration#notifications" className="form-hint-link">Need help setting up a Slack webhook?</Link>
                 </p>
               </div>
               <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true) }}>
@@ -293,7 +294,10 @@ export default function NotificationsPage() {
                     onChange={e => setConfigSlackUrl(e.target.value)}
                     placeholder="https://hooks.slack.com/services/..."
                   />
-                  <span className="form-hint">Create an incoming webhook in your Slack workspace settings.</span>
+                  <span className="form-hint">
+                    Create an incoming webhook in your Slack workspace settings.
+                    {' '}<Link to="/integration#notifications" className="form-hint-link" onClick={() => setShowModal(false)}>Don't know where to find the webhook URL?</Link>
+                  </span>
                 </div>
               )}
 
