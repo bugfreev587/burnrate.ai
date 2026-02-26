@@ -826,7 +826,24 @@ export default function Dashboard() {
             </div>
             {recentOpen && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <button
+                    onClick={refresh}
+                    title="Refresh requests"
+                    style={{
+                      background: 'var(--color-bg)',
+                      color: 'var(--color-text-muted)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '4px',
+                      padding: '0.25rem 0.5rem',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    ↻ Refresh
+                  </button>
                   <select
                     value={billingFilter}
                     onChange={e => setBillingFilter(e.target.value as BillingFilter)}
