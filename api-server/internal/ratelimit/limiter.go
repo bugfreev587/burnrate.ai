@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"time"
 
@@ -43,7 +42,7 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 
 	limits, err := l.loadLimits(ctx, tenantID)
 	if err != nil {
-		log.Printf("ratelimit: failed to load limits for tenant %d: %v", tenantID, err)
+		slog.Error("ratelimit_load_limits_failed", "tenant_id", tenantID, "error", err)
 		return nil, nil // don't block on config errors
 	}
 
@@ -101,7 +100,7 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 		// Atomically increment and check
 		newVal, err := l.rdb.IncrBy(ctx, key, amount).Result()
 		if err != nil {
-			log.Printf("ratelimit: redis INCRBY error: %v", err)
+			slog.Error("ratelimit_redis_incrby_error", "error", err)
 			continue // don't block on Redis errors
 		}
 

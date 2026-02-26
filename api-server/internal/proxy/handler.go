@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -232,7 +231,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 		APIUsageBilled:      billed,
 	}
 	if pubErr := h.eventQueue.Publish(ctx, msg); pubErr != nil {
-		log.Printf("proxy: publish usage event (tenant=%d): %v", tenantID, pubErr)
+		slog.Error("proxy_publish_usage_failed", "tenant_id", tenantID, "error", pubErr)
 	}
 }
 
@@ -324,12 +323,12 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		if isSSE {
 			counts, err = ParseSSE(c.Request.Context(), resp.Body, c.Writer)
 			if err != nil {
-				log.Printf("proxy: SSE parse error (tenant=%d): %v", tenantID, err)
+				slog.Error("proxy_sse_parse_error", "tenant_id", tenantID, "error", err)
 			}
 		} else {
 			respBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
-				log.Printf("proxy: read response body (tenant=%d): %v", tenantID, readErr)
+				slog.Error("proxy_read_response_body_error", "tenant_id", tenantID, "error", readErr)
 				return
 			}
 			c.Writer.Write(respBody)

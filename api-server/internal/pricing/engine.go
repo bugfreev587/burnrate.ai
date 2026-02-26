@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"time"
 
@@ -47,7 +46,7 @@ func (e *PricingEngine) Process(ctx context.Context, event UsageEvent) (*Pricing
 	if err != nil {
 		var notFound *ErrModelNotFound
 		if errors.As(err, &notFound) {
-			log.Printf("pricing: model not found (provider=%s model=%s), returning zero cost", event.Provider, event.Model)
+			slog.Debug("pricing_model_not_found", "provider", event.Provider, "model", event.Model)
 			return &PricingResult{
 				BaseCost:     decimal.Zero,
 				MarkupAmount: decimal.Zero,
@@ -491,7 +490,7 @@ func (e *PricingEngine) writeLedger(ctx context.Context, event UsageEvent, resul
 	if err := e.db.WithContext(ctx).Create(ledger).Error; err != nil {
 		// Silently ignore duplicate idempotency_key (unique constraint violation)
 		if isDuplicateKeyError(err) {
-			log.Printf("pricing: duplicate idempotency_key=%s, skipping ledger write", event.IdempotencyKey)
+			slog.Debug("pricing_duplicate_ledger_skipped", "idempotency_key", event.IdempotencyKey)
 			return nil
 		}
 		return fmt.Errorf("pricing: write ledger: %w", err)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -186,12 +185,12 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 	if isSSE {
 		counts, err = ParseOpenAIResponsesSSE(c.Request.Context(), resp.Body, c.Writer)
 		if err != nil {
-			log.Printf("proxy: OpenAI Responses SSE parse error (tenant=%d): %v", c.GetUint("tenant_id"), err)
+			slog.Error("proxy_openai_responses_sse_error", "tenant_id", c.GetUint("tenant_id"), "error", err)
 		}
 	} else {
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			log.Printf("proxy: read OpenAI Responses body (tenant=%d): %v", c.GetUint("tenant_id"), readErr)
+			slog.Error("proxy_read_openai_responses_body_error", "tenant_id", c.GetUint("tenant_id"), "error", readErr)
 			return TokenCounts{}, readErr
 		}
 		respBodyLen = int64(len(respBody))
@@ -225,8 +224,11 @@ func (h *ProxyHandler) handleResponsesOpenAI(c *gin.Context, body []byte, req Re
 				counts.OutputTokens = 1
 			}
 		}
-		log.Printf("proxy: codex passthrough usage — MessageID=%s Model=%s InputTokens=%d OutputTokens=%d (tenant=%d)",
-			counts.MessageID, counts.Model, counts.InputTokens, counts.OutputTokens, c.GetUint("tenant_id"))
+		slog.Info("proxy_codex_passthrough_usage",
+			"tenant_id", c.GetUint("tenant_id"),
+			"message_id", counts.MessageID, "model", counts.Model,
+			"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
+		)
 	}
 
 	return counts, nil
@@ -292,12 +294,12 @@ func (h *ProxyHandler) handleResponsesAnthropic(c *gin.Context, body []byte, req
 
 		counts, err = TranslateAnthropicSSEToResponses(c.Request.Context(), resp.Body, c.Writer)
 		if err != nil {
-			log.Printf("proxy: Anthropic→Responses SSE translation error (tenant=%d): %v", c.GetUint("tenant_id"), err)
+			slog.Error("proxy_anthropic_responses_sse_error", "tenant_id", c.GetUint("tenant_id"), "error", err)
 		}
 	} else {
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			log.Printf("proxy: read Anthropic response body (tenant=%d): %v", c.GetUint("tenant_id"), readErr)
+			slog.Error("proxy_read_anthropic_response_body_error", "tenant_id", c.GetUint("tenant_id"), "error", readErr)
 			return TokenCounts{}, readErr
 		}
 		translated, translatedCounts, transErr := translateAnthropicToResponsesJSON(respBody)
