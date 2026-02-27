@@ -66,10 +66,10 @@ const PLANS: Array<{
   export: boolean
   webhooks: boolean
 }> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  perKey: false, retention: '7 days',    spendLimits: '1', rateLimits: '1', notifications: '1', export: false, webhooks: false },
-  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  perKey: false, retention: '90 days',   spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: false },
-  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', perKey: true,  retention: '180 days',  spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: true  },
-  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: true  },
+  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',   maxProviderKeys: '1',  maxMembers: '1',  perKey: false, retention: '7 days',    spendLimits: '1',   rateLimits: '1',   notifications: '1',   export: false, webhooks: false },
+  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',   maxProviderKeys: '3',  maxMembers: '1',  perKey: false, retention: '90 days',   spendLimits: '5',   rateLimits: '5',   notifications: '5',   export: true,  webhooks: false },
+  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '50',  maxProviderKeys: '10', maxMembers: '10', perKey: true,  retention: '180 days',  spendLimits: '20',  rateLimits: '20',  notifications: '20',  export: true,  webhooks: true  },
+  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '200', maxProviderKeys: '50', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '100', rateLimits: '100', notifications: '100', export: true,  webhooks: true  },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

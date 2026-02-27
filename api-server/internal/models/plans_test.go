@@ -9,8 +9,8 @@ func TestGetPlanLimits(t *testing.T) {
 	}{
 		{PlanFree, 1},
 		{PlanPro, 5},
-		{PlanTeam, -1},
-		{PlanBusiness, -1},
+		{PlanTeam, 50},
+		{PlanBusiness, 200},
 		{"unknown", 1},  // falls back to free
 		{"", 1},          // falls back to free
 	}

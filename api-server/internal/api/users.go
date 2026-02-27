@@ -623,6 +623,23 @@ func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
 		}
 	}
 
+	// Provider key count
+	if newLimits.MaxProviderKeys != -1 {
+		var activeProviderKeys int64
+		db.Model(&models.ProviderKey{}).
+			Where("tenant_id = ? AND revoked = false", tenantID).
+			Count(&activeProviderKeys)
+		if int(activeProviderKeys) > newLimits.MaxProviderKeys {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":              "downgrade_blocked",
+				"reason":            "provider_keys_exceed_limit",
+				"message":           fmt.Sprintf("The %s plan allows %d provider key(s), but this tenant has %d active key(s). Revoke %d key(s) before downgrading.", newPlan, newLimits.MaxProviderKeys, activeProviderKeys, int(activeProviderKeys)-newLimits.MaxProviderKeys),
+				"limit":             newLimits.MaxProviderKeys,
+				"provider_key_count": activeProviderKeys,
+			}
+		}
+	}
+
 	// Member count (all users regardless of status, matching invite enforcement)
 	if newLimits.MaxMembers != -1 {
 		var memberCount int64
