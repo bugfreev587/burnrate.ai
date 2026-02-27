@@ -28,7 +28,7 @@ const plans: { key: string; name: string; tagline: string; monthlyPrice: number 
       { text: 'Single Slack or email notifications' },
       { text: '7-day data retention' },
     ],
-    limit: 'Up to $200 monitored spend / month',
+    limit: null,
     cta: 'Start for free',
     to: '/sign-up',
     highlight: false,
