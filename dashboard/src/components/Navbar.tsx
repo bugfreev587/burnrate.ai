@@ -80,18 +80,18 @@ export default function Navbar() {
                     Profile
                   </Link>
                   {canAccessAdmin && (
-                    <Link to="/settings" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                      Settings
-                    </Link>
-                  )}
-                  {canAccessAdmin && (
                     <Link to="/plan" className="dropdown-item" onClick={() => setShowMenu(false)}>
-                      Plan
+                      Plans
                     </Link>
                   )}
                   {canAccessAdmin && (
                     <Link to="/billing" className="dropdown-item" onClick={() => setShowMenu(false)}>
                       Billing
+                    </Link>
+                  )}
+                  {canAccessAdmin && (
+                    <Link to="/settings" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                      Settings
                     </Link>
                   )}
                   <div className="dropdown-divider" />
