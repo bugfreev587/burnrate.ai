@@ -1074,21 +1074,33 @@ export default function Dashboard() {
                 <p className="summary-label">Input Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.input_total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
+                {s && s.tokens.billed_input_total > 0 && (
+                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_input_total)} API usage billed</p>
+                )}
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Output Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.output_total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
+                {s && s.tokens.billed_output_total > 0 && (
+                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_output_total)} API usage billed</p>
+                )}
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Total Tokens</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
+                {s && s.tokens.billed_total > 0 && (
+                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_total)} API usage billed</p>
+                )}
               </div>
               <div className="card summary-card">
                 <p className="summary-label">Avg / Request</p>
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.avg_per_request) : '—'}</p>
                 <p className="summary-sub">tokens</p>
+                {s && s.tokens.billed_avg > 0 && (
+                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_avg)} API usage billed</p>
+                )}
               </div>
             </div>
 

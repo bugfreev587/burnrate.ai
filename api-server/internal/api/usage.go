@@ -313,6 +313,23 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 		OutputTotal int64
 		Requests    int64
 	}
+
+	// All tokens (regardless of billing mode)
+	var allTokens tokenRow
+	allTokenQ := db.Model(&models.UsageLog{}).Where("tenant_id = ?", tenantID)
+	if rangeQueryStart != nil {
+		allTokenQ = allTokenQ.Where("created_at >= ? AND created_at <= ?", *rangeQueryStart, *rangeQueryEnd)
+	}
+	allTokenQ.Select("COALESCE(SUM(prompt_tokens), 0) as input_total, COALESCE(SUM(completion_tokens), 0) as output_total, COUNT(*) as requests").
+		Scan(&allTokens)
+
+	allTotal := allTokens.InputTotal + allTokens.OutputTotal
+	var allAvg int64
+	if allTokens.Requests > 0 {
+		allAvg = allTotal / allTokens.Requests
+	}
+
+	// API-usage-billed tokens only
 	var tokens tokenRow
 	tokenQ := db.Model(&models.UsageLog{}).Where("tenant_id = ? AND api_usage_billed = ?", tenantID, true)
 	if rangeQueryStart != nil {
@@ -475,10 +492,14 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 			"cumulative": cumulative.Requests,
 		},
 		"tokens": gin.H{
-			"input_total":     tokens.InputTotal,
-			"output_total":    tokens.OutputTotal,
-			"total":           totalTokens,
-			"avg_per_request": avgTokensPerRequest,
+			"input_total":         allTokens.InputTotal,
+			"output_total":        allTokens.OutputTotal,
+			"total":               allTotal,
+			"avg_per_request":     allAvg,
+			"billed_input_total":  tokens.InputTotal,
+			"billed_output_total": tokens.OutputTotal,
+			"billed_total":        totalTokens,
+			"billed_avg":          avgTokensPerRequest,
 		},
 		"by_model":    byModelOut,
 		"by_api_key":  byAPIKeyOut,

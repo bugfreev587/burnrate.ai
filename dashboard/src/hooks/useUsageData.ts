@@ -78,6 +78,10 @@ export interface TokenSummary {
   output_total: number
   total: number
   avg_per_request: number
+  billed_input_total: number
+  billed_output_total: number
+  billed_total: number
+  billed_avg: number
 }
 export interface ModelBreakdown {
   model: string
