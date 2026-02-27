@@ -141,6 +141,21 @@
   text-decoration: underline;
 }
 
+/* ── Action buttons in table rows ─────────────────────────────────────── */
+
+.mgmt-table td .btn + .btn {
+  margin-left: 0.4rem;
+}
+
+.btn-edit {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+.btn-edit:not(:disabled):hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
 /* ── Disabled / locked buttons ──────────────────────────────────────────── */
 
 .btn:disabled {

@@ -324,7 +324,7 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
-                          <button className="btn btn-small btn-secondary" onClick={() => handleEditSL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                          <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                             {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Edit
                           </button>
@@ -410,7 +410,7 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
-                          <button className="btn btn-small btn-secondary" onClick={() => handleEditRL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                          <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                             {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Edit
                           </button>
