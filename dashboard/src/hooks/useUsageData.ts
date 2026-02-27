@@ -210,6 +210,8 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
 
   useEffect(() => {
     fetchData()
+    const id = setInterval(fetchData, 15_000)
+    return () => clearInterval(id)
   }, [fetchData])
 
   return { ...state, refresh: fetchData }
