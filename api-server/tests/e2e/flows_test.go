@@ -87,6 +87,7 @@ func TestMain(m *testing.M) {
 		stripeSvc,
 		nil, // auditSvc
 		nil, // reportQueue
+		nil, // notifWorker
 	)
 	testRouter = srv.Router()
 
