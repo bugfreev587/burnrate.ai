@@ -1138,7 +1138,7 @@ export default function Dashboard() {
               <>
                 <div className="dash-section-title">Gateway Performance</div>
                 <p className="dash-section-hint">
-                  Measures gateway processing overhead only (excludes upstream provider time). Cold cache misses (&gt;200ms) are excluded from metrics as they reflect one-time cache warming, not steady-state performance.
+                  Measures gateway processing overhead only (excludes upstream provider time). Early metrics may be higher due to cold cache misses. With more traffic and samples, latency will better reflect real gateway performance.
                 </p>
                 <div className="summary-grid summary-grid-4">
                   <div className="card summary-card">
