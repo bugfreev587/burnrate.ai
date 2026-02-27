@@ -1075,7 +1075,7 @@ export default function Dashboard() {
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.input_total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
                 {s && s.tokens.billed_input_total > 0 && (
-                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_input_total)} API usage billed</p>
+                  <p className="summary-footnote"><span className="summary-footnote-value">{fmtTokens(s.tokens.billed_input_total)}</span> API usage billed</p>
                 )}
               </div>
               <div className="card summary-card">
@@ -1083,7 +1083,7 @@ export default function Dashboard() {
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.output_total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
                 {s && s.tokens.billed_output_total > 0 && (
-                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_output_total)} API usage billed</p>
+                  <p className="summary-footnote"><span className="summary-footnote-value">{fmtTokens(s.tokens.billed_output_total)}</span> API usage billed</p>
                 )}
               </div>
               <div className="card summary-card">
@@ -1091,7 +1091,7 @@ export default function Dashboard() {
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.total) : '—'}</p>
                 <p className="summary-sub">{periodLabel.toLowerCase()}</p>
                 {s && s.tokens.billed_total > 0 && (
-                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_total)} API usage billed</p>
+                  <p className="summary-footnote"><span className="summary-footnote-value">{fmtTokens(s.tokens.billed_total)}</span> API usage billed</p>
                 )}
               </div>
               <div className="card summary-card">
@@ -1099,7 +1099,7 @@ export default function Dashboard() {
                 <p className="summary-value summary-value-sm">{s ? fmtTokens(s.tokens.avg_per_request) : '—'}</p>
                 <p className="summary-sub">tokens</p>
                 {s && s.tokens.billed_avg > 0 && (
-                  <p className="summary-footnote">{fmtTokens(s.tokens.billed_avg)} API usage billed</p>
+                  <p className="summary-footnote"><span className="summary-footnote-value">{fmtTokens(s.tokens.billed_avg)}</span> API usage billed</p>
                 )}
               </div>
             </div>

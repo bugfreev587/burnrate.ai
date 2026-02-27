@@ -147,6 +147,11 @@
   padding-top: 0.3rem;
 }
 
+.summary-footnote-value {
+  color: var(--color-primary);
+  opacity: 1;
+}
+
 /* ─── Growth pill ────────────────────────────────────────────────────────── */
 
 .growth-pill {
