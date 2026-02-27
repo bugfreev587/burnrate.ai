@@ -225,6 +225,9 @@ export default function LimitsPage() {
             <div className="section-hdr">
               <div>
                 <h2>Spend Limits</h2>
+                <span className="section-count">
+                  {spendLimits.length} / {spendLimitCapped ? planLimits!.max_budget_limits : 'Unlimited'}
+                </span>
                 <p className="section-desc">
                   Set budget caps to control spending. Alert-only limits warn via response headers;
                   hard-block limits reject requests (HTTP 402) when exceeded.
@@ -345,6 +348,9 @@ export default function LimitsPage() {
             <div className="section-hdr">
               <div>
                 <h2>Rate Limits</h2>
+                <span className="section-count">
+                  {rateLimits.length} / {rateLimitCapped ? planLimits!.max_rate_limits : 'Unlimited'}
+                </span>
                 <p className="section-desc">
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>

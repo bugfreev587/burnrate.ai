@@ -167,3 +167,14 @@
   margin-right: 0.35rem;
   vertical-align: -0.1em;
 }
+
+/* ── Section count badge ──────────────────────────────────────────────── */
+
+.section-count {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}

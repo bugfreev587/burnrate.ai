@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { useNotifications } from '../hooks/useNotifications'
+import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import type { CreateNotificationChannelReq } from '../hooks/useNotifications'
 import Navbar from '../components/Navbar'
 import './LimitsPage.css'
@@ -41,6 +42,9 @@ export default function NotificationsPage() {
   const navigate = useNavigate()
   const { role, isSynced } = useUserSync()
   const { channels, loading, error, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications()
+  const { config } = useDashboardConfig()
+  const planLimits = config?.plan_limits
+  const channelCapped = planLimits != null && planLimits.max_notification_channels !== -1
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -165,13 +169,16 @@ export default function NotificationsPage() {
             <div className="section-hdr">
               <div>
                 <h2>Notification Channels</h2>
+                <span className="section-count">
+                  {channels.length} / {channelCapped ? planLimits!.max_notification_channels : 'Unlimited'}
+                </span>
                 <p className="section-desc">
                   Configure Email, Slack, or Webhook channels to receive real-time alerts when budget limits
                   or rate limits are triggered. Notifications are debounced (5 min cooldown per event type).
                   {' '}<Link to="/integration#notifications" className="form-hint-link">Need help setting up a Slack webhook?</Link>
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true) }}>
+              <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true) }} disabled={channelCapped && channels.length >= planLimits!.max_notification_channels} title={channelCapped && channels.length >= planLimits!.max_notification_channels ? 'Limit reached — upgrade to add more' : undefined}>
                 Add Channel
               </button>
             </div>
