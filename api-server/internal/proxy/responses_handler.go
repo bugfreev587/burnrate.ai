@@ -67,9 +67,9 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	}
 
 	// Resolve provider from model name, falling back to the API key's provider field.
+	keyProvider := Provider(c.GetString("provider"))
 	provider, resolved := ResolveProviderFromModel(req.Model)
 	if !resolved {
-		keyProvider := Provider(c.GetString("provider"))
 		if keyProvider != "" {
 			provider = keyProvider
 		} else {
@@ -79,6 +79,16 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 			}})
 			return
 		}
+	}
+
+	// Enforce provider match: the model's provider must match the API key's provider.
+	// e.g. an Anthropic key cannot be used to proxy requests to OpenAI models and vice versa.
+	if keyProvider != "" && provider != keyProvider {
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+			"type":    "tg_provider_mismatch",
+			"message": fmt.Sprintf("API key provider %q does not match model provider %q for model %q.", string(keyProvider), string(provider), req.Model),
+		}})
+		return
 	}
 	// Compute max_tokens for rate limiting / budget.
 	maxTokens := 0
