@@ -3,7 +3,7 @@ import { useUser } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
 import DateRangeSelector from '../components/DateRangeSelector'
 import { useUsageData } from '../hooks/useUsageData'
-import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown, ForecastData } from '../hooks/useUsageData'
+import type { DateRange, BudgetStatus, DailyTrend, ModelBreakdown, ApiKeyBreakdown, ForecastData, MetricsData, DailyActivity } from '../hooks/useUsageData'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import { useRateLimits } from '../hooks/useRateLimits'
 import type { RateLimit } from '../hooks/useRateLimits'
@@ -28,6 +28,15 @@ function fmtTokens(n: number): string {
 
 function fmtNum(n: number): string {
   return n.toLocaleString()
+}
+
+function fmtMs(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(2) + 's'
+  return Math.round(n) + 'ms'
+}
+
+function fmtPct(n: number): string {
+  return n.toFixed(1) + '%'
 }
 
 function growthPct(current: string, prior: string): number | null {
@@ -326,6 +335,236 @@ function TrendChart({ data, mode }: { data: DailyTrend[]; mode: 'cost' | 'tokens
         )
       })}
     </svg>
+  )
+}
+
+// ─── Latency Trend Chart (dual-line: p50 + p95) ──────────────────────────────
+
+function LatencyTrendChart({ data }: { data: DailyActivity[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
+  if (data.length === 0) {
+    return <div className="trend-empty">No latency data for the selected period.</div>
+  }
+
+  const p50s = data.map(d => d.p50_latency)
+  const p95s = data.map(d => d.p95_latency)
+  const maxVal = Math.max(...p50s, ...p95s, 1)
+
+  const W = 600
+  const H = 132
+  const PAD = { top: 10, right: 8, bottom: 26, left: 52 }
+  const chartW = W - PAD.left - PAD.right
+  const chartH = H - PAD.top - PAD.bottom
+
+  const xOf = (i: number) => PAD.left + (i / (data.length - 1 || 1)) * chartW
+  const yOf = (v: number) => PAD.top + chartH - (v / maxVal) * chartH
+
+  const p50Pts = data.map((_, i) => `${xOf(i)},${yOf(p50s[i])}`).join(' ')
+  const p95Pts = data.map((_, i) => `${xOf(i)},${yOf(p95s[i])}`).join(' ')
+
+  const labelStep = Math.ceil(data.length / 5)
+
+  const yTicks = [
+    { val: 0,          label: '0ms' },
+    { val: maxVal / 2, label: fmtMs(maxVal / 2) },
+    { val: maxVal,     label: fmtMs(maxVal) },
+  ]
+
+  const axisTitleX = 10
+  const axisTitleY = PAD.top + chartH / 2
+
+  const hoverPoint = hoverIdx !== null ? data[hoverIdx] : null
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="trend-svg"
+      preserveAspectRatio="none"
+      onMouseLeave={() => setHoverIdx(null)}
+    >
+      {/* Y-axis title */}
+      <text
+        x={axisTitleX}
+        y={axisTitleY}
+        textAnchor="middle"
+        fontSize="8.5"
+        fill="var(--color-text-muted)"
+        transform={`rotate(-90, ${axisTitleX}, ${axisTitleY})`}
+      >
+        Latency (ms)
+      </text>
+
+      {/* Y-axis ticks */}
+      {yTicks.map((tick, i) => {
+        const y = yOf(tick.val)
+        return (
+          <g key={i}>
+            <line
+              x1={PAD.left} y1={y}
+              x2={PAD.left + chartW} y2={y}
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth="1"
+            />
+            <text
+              x={PAD.left - 4}
+              y={y + 3}
+              textAnchor="end"
+              fontSize="8"
+              fill="var(--color-text-muted)"
+            >
+              {tick.label}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Y-axis line */}
+      <line
+        x1={PAD.left} y1={PAD.top}
+        x2={PAD.left} y2={PAD.top + chartH}
+        stroke="rgba(255,255,255,0.1)"
+        strokeWidth="1"
+      />
+
+      {/* p95 line (orange) */}
+      <polyline points={p95Pts} fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="4,3" />
+      {/* p50 line (primary) */}
+      <polyline points={p50Pts} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinejoin="round" />
+
+      {/* Hover guide line */}
+      {hoverIdx !== null && (
+        <line
+          x1={xOf(hoverIdx)} y1={PAD.top}
+          x2={xOf(hoverIdx)} y2={PAD.top + chartH}
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="1"
+          strokeDasharray="3,3"
+        />
+      )}
+
+      {/* Dots: p50 */}
+      {data.map((_, i) => (
+        <circle
+          key={`p50-${i}`}
+          cx={xOf(i)}
+          cy={yOf(p50s[i])}
+          r={hoverIdx === i ? 5 : 2.5}
+          fill={hoverIdx === i ? '#fff' : 'var(--color-primary)'}
+          stroke={hoverIdx === i ? 'var(--color-primary)' : 'none'}
+          strokeWidth={hoverIdx === i ? 2 : 0}
+        />
+      ))}
+
+      {/* Dots: p95 */}
+      {data.map((_, i) => (
+        <circle
+          key={`p95-${i}`}
+          cx={xOf(i)}
+          cy={yOf(p95s[i])}
+          r={hoverIdx === i ? 4 : 2}
+          fill={hoverIdx === i ? '#fff' : '#f59e0b'}
+          stroke={hoverIdx === i ? '#f59e0b' : 'none'}
+          strokeWidth={hoverIdx === i ? 2 : 0}
+        />
+      ))}
+
+      {/* Hit areas */}
+      {data.map((_, i) => (
+        <circle
+          key={`hit-${i}`}
+          cx={xOf(i)}
+          cy={yOf((p50s[i] + p95s[i]) / 2)}
+          r={10}
+          fill="transparent"
+          style={{ cursor: 'pointer' }}
+          onMouseEnter={() => setHoverIdx(i)}
+        />
+      ))}
+
+      {/* Tooltip */}
+      {hoverIdx !== null && hoverPoint && (() => {
+        const cx = xOf(hoverIdx)
+        const cy = yOf(p50s[hoverIdx])
+        const tooltipY = cy - 12 > PAD.top ? cy - 22 : cy + 24
+        const anchor = cx < PAD.left + 60 ? 'start' : cx > PAD.left + chartW - 60 ? 'end' : 'middle'
+        return (
+          <g>
+            <text x={cx} y={tooltipY - 9} textAnchor={anchor} fontSize="8" fill="var(--color-text-muted)">
+              {hoverPoint.date}
+            </text>
+            <text x={cx} y={tooltipY} textAnchor={anchor} fontSize="9" fontWeight="600" fill="var(--color-primary)">
+              p50: {fmtMs(hoverPoint.p50_latency)}
+            </text>
+            <text x={cx} y={tooltipY + 10} textAnchor={anchor} fontSize="9" fontWeight="600" fill="#f59e0b">
+              p95: {fmtMs(hoverPoint.p95_latency)}
+            </text>
+          </g>
+        )
+      })()}
+
+      {/* X-axis labels */}
+      {data.map((d, i) => {
+        if (i % labelStep !== 0 && i !== data.length - 1) return null
+        return (
+          <text key={i} x={xOf(i)} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--color-text-muted)">
+            {d.date.slice(5)}
+          </text>
+        )
+      })}
+
+      {/* Legend */}
+      <circle cx={PAD.left + 8} cy={H - 14} r={3} fill="var(--color-primary)" />
+      <text x={PAD.left + 14} y={H - 11} fontSize="8" fill="var(--color-text-muted)">p50</text>
+      <circle cx={PAD.left + 38} cy={H - 14} r={3} fill="#f59e0b" />
+      <text x={PAD.left + 44} y={H - 11} fontSize="8" fill="var(--color-text-muted)">p95</text>
+    </svg>
+  )
+}
+
+// ─── Request Outcome Chart (horizontal bar) ──────────────────────────────────
+
+function RequestOutcomeChart({ metrics }: { metrics: MetricsData }) {
+  const { total_requests, blocked_rate_limit, blocked_budget } = metrics.activity
+  const success = total_requests
+  const total = success + blocked_rate_limit + blocked_budget
+  if (total === 0) {
+    return <p className="model-empty">No request data for the selected period.</p>
+  }
+
+  const segments = [
+    { label: 'Success', count: success, color: '#22c55e' },
+    { label: 'Rate Limited', count: blocked_rate_limit, color: '#f59e0b' },
+    { label: 'Budget Exceeded', count: blocked_budget, color: '#ef4444' },
+  ].filter(s => s.count > 0)
+
+  return (
+    <>
+      <div className="provider-bar-track">
+        {segments.map(s => {
+          const pct = (s.count / total) * 100
+          return (
+            <div
+              key={s.label}
+              className="provider-bar-segment"
+              style={{ width: `${pct}%`, background: s.color }}
+              title={`${s.label}: ${fmtNum(s.count)} (${pct.toFixed(1)}%)`}
+            />
+          )
+        })}
+      </div>
+      <div className="provider-legend">
+        {segments.map(s => (
+          <div key={s.label} className="provider-legend-item">
+            <div className="provider-legend-swatch" style={{ background: s.color }} />
+            <div>
+              <span className="provider-legend-name">{s.label}</span>
+              <span className="provider-legend-detail"> {fmtNum(s.count)} ({((s.count / total) * 100).toFixed(1)}%)</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -678,7 +917,7 @@ export default function Dashboard() {
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const [recentOpen, setRecentOpen] = useState(false)
   const pollInterval = recentOpen ? 5_000 : 300_000 // 5s when watching requests, 5min when collapsed
-  const { logs, summary, budgets, forecast, appliedRange, loading, error, refresh } = useUsageData(dateRange, pollInterval)
+  const { logs, summary, budgets, forecast, metrics, appliedRange, loading, error, refresh } = useUsageData(dateRange, pollInterval)
 
   const recentRef = useRef<HTMLDivElement>(null)
   const scrollToRecentAfterLoad = useRef(false)
@@ -792,6 +1031,81 @@ export default function Dashboard() {
                 <p className="summary-sub">{forecast ? `over ${forecast.days_elapsed} days this month` : ''}</p>
               </div>
             </div>
+
+            {/* ── Gateway Performance ── */}
+            {metrics && metrics.latency.sample_count > 0 && (
+              <>
+                <div className="dash-section-title">Gateway Performance</div>
+                <div className="summary-grid summary-grid-4">
+                  <div className="card summary-card">
+                    <p className="summary-label">p50 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p50)}</p>
+                    <p className="summary-sub">median response time</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">p95 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p95)}</p>
+                    <p className="summary-sub">95th percentile</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">p99 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p99)}</p>
+                    <p className="summary-sub">99th percentile</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Avg Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.avg)}</p>
+                    <p className="summary-sub">{fmtNum(metrics.latency.sample_count)} samples</p>
+                  </div>
+                </div>
+                <div className="dash-split">
+                  <div className="card dash-split-left">
+                    <p className="card-subtitle">Latency Trend</p>
+                    <LatencyTrendChart data={metrics.daily_activity} />
+                  </div>
+                  <div className="card dash-split-right">
+                    <p className="card-subtitle">Request Outcomes</p>
+                    <RequestOutcomeChart metrics={metrics} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Activity ── */}
+            {metrics && (
+              <>
+                <div className="dash-section-title">Activity</div>
+                <div className="summary-grid summary-grid-4">
+                  <div className="card summary-card">
+                    <p className="summary-label">Total Requests</p>
+                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.total_requests)}</p>
+                    <p className="summary-sub">{periodLabel.toLowerCase()}</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Active API Keys</p>
+                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.active_api_keys)}</p>
+                    <p className="summary-sub">keys with traffic</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Blocked Requests</p>
+                    <p className="summary-value summary-value-sm" style={{ color: metrics.activity.total_blocked > 0 ? 'var(--color-danger)' : undefined }}>
+                      {fmtNum(metrics.activity.total_blocked)}
+                    </p>
+                    <p className="summary-sub">
+                      {metrics.activity.blocked_rate_limit > 0 && `${fmtNum(metrics.activity.blocked_rate_limit)} rate limit`}
+                      {metrics.activity.blocked_rate_limit > 0 && metrics.activity.blocked_budget > 0 && ' · '}
+                      {metrics.activity.blocked_budget > 0 && `${fmtNum(metrics.activity.blocked_budget)} budget`}
+                      {metrics.activity.total_blocked === 0 && 'none blocked'}
+                    </p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Success Rate</p>
+                    <p className="summary-value summary-value-sm">{fmtPct(metrics.activity.success_rate)}</p>
+                    <p className="summary-sub">requests completed</p>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* ── Budget bars (moved after cost overview) ── */}
             {budgets.length > 0 && (

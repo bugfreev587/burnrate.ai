@@ -136,12 +136,60 @@ export interface ForecastData {
   month: string
 }
 
+// ─── Metrics ──────────────────────────────────────────────────────────────────
+export interface LatencyStats {
+  p50: number
+  p95: number
+  p99: number
+  avg: number
+  sample_count: number
+}
+export interface ActivityStats {
+  active_api_keys: number
+  total_requests: number
+  total_blocked: number
+  blocked_rate_limit: number
+  blocked_budget: number
+  success_rate: number
+}
+export interface DailyActivity {
+  date: string
+  requests: number
+  blocked: number
+  active_keys: number
+  p50_latency: number
+  p95_latency: number
+}
+export interface MetricsModelBreakdown {
+  model: string
+  provider: string
+  requests: number
+  blocked: number
+  p50_latency: number
+  p95_latency: number
+}
+export interface MetricsKeyBreakdown {
+  key_id: string
+  label: string
+  requests: number
+  blocked: number
+  p50_latency: number
+}
+export interface MetricsData {
+  latency: LatencyStats
+  activity: ActivityStats
+  daily_activity: DailyActivity[]
+  by_model: MetricsModelBreakdown[]
+  by_api_key: MetricsKeyBreakdown[]
+}
+
 // ─── Combined state ───────────────────────────────────────────────────────────
 interface DashboardState {
   logs: UsageLog[]
   summary: UsageSummary | null
   budgets: BudgetStatus[]
   forecast: ForecastData | null
+  metrics: MetricsData | null
   appliedRange: { start: string; end: string } | null
   loading: boolean
   error: string | null
@@ -153,6 +201,7 @@ export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): Da
     summary: null,
     budgets: [],
     forecast: null,
+    metrics: null,
     appliedRange: null,
     loading: false,
     error: null,
@@ -182,17 +231,19 @@ export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): Da
         }
       }
 
-      const [logsRes, summaryRes, budgetRes, forecastRes] = await Promise.all([
+      const [logsRes, summaryRes, budgetRes, forecastRes, metricsRes] = await Promise.all([
         fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/budget?tz=${encodeURIComponent(tz)}`, { headers }),
         fetch(`${API_SERVER_URL}/v1/usage/forecast?tz=${encodeURIComponent(tz)}`, { headers }),
+        fetch(`${API_SERVER_URL}/v1/usage/metrics${dateQS}`, { headers }),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }
       const summaryData: UsageSummary | null = summaryRes.ok ? await summaryRes.json() : null
       const budgetData = budgetRes.ok ? await budgetRes.json() : { budget_limits: [] }
       const forecastData: ForecastData | null = forecastRes.ok ? await forecastRes.json() : null
+      const metricsData: MetricsData | null = metricsRes.ok ? await metricsRes.json() : null
 
       initialLoadDone.current = true
       setState({
@@ -200,6 +251,7 @@ export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): Da
         summary: summaryData,
         budgets: budgetData.budget_limits ?? [],
         forecast: forecastData,
+        metrics: metricsData,
         appliedRange: summaryData?.applied_range ?? null,
         loading: false,
         error: null,

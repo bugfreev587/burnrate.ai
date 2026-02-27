@@ -110,6 +110,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		apiKeyFingerprint = ""
 	}
 	apiUsageBilled := fmt.Sprintf("%v", v["api_usage_billed"]) == "true"
+	latencyMs, _ := strconv.ParseInt(fmt.Sprintf("%v", v["latency_ms"]), 10, 64)
 
 	var ts time.Time
 	if tsStr, ok := v["timestamp"]; ok {
@@ -147,6 +148,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		CompletionTokens:    outputTokens,
 		CacheCreationTokens: cacheCreationTokens,
 		CacheReadTokens:     cacheReadTokens,
+		LatencyMs:           latencyMs,
 		Cost:                result.FinalCost,
 		RequestID:           messageID,
 		KeyID:               keyID,

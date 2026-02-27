@@ -192,6 +192,22 @@ type UsageLog struct {
 	KeyID               string          `gorm:"column:key_id;size:64;index"              json:"key_id"`
 	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index" json:"api_key_fingerprint"`
 	CreatedAt           time.Time       `gorm:"index"                                   json:"created_at"`
+	LatencyMs           int64           `gorm:"column:latency_ms;default:0"                         json:"latency_ms"`
 	APIUsageBilled      bool            `gorm:"column:api_usage_billed;not null;default:false;index" json:"api_usage_billed"`
 	KeyLabel            string          `gorm:"-"                                                   json:"key_label"`
+}
+
+// GatewayEvent records blocked requests (rate limit 429, budget exceeded 402)
+// that return early before usage events are published, so they never appear in usage_logs.
+type GatewayEvent struct {
+	ID         uint      `gorm:"primaryKey"                           json:"id"`
+	TenantID   uint      `gorm:"index"                                json:"tenant_id"`
+	KeyID      string    `gorm:"column:key_id;size:64;index"          json:"key_id"`
+	Provider   string    `gorm:"size:32"                              json:"provider"`
+	Model      string    `gorm:"size:128"                             json:"model"`
+	EventType  string    `gorm:"size:32;index"                        json:"event_type"` // "rate_limit_429" | "budget_exceeded_402"
+	StatusCode int       `                                            json:"status_code"`
+	LatencyMs  int64     `gorm:"column:latency_ms;default:0"          json:"latency_ms"`
+	Details    string    `gorm:"type:text"                            json:"details"`
+	CreatedAt  time.Time `gorm:"index"                                json:"created_at"`
 }

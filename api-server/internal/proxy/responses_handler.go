@@ -99,11 +99,35 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	apiUsageBilled := determineBillable(billingMode)
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, req.Model, len(bodyBytes), maxTokens) {
+		if h.gatewayEventSvc != nil {
+			h.gatewayEventSvc.Record(c.Request.Context(), &models.GatewayEvent{
+				TenantID:   tenantID,
+				KeyID:      keyIDStr,
+				Provider:   string(provider),
+				Model:      req.Model,
+				EventType:  "rate_limit_429",
+				StatusCode: http.StatusTooManyRequests,
+				LatencyMs:  time.Since(start).Milliseconds(),
+				CreatedAt:  time.Now(),
+			})
+		}
 		return
 	}
 
 	reservedAmount, ok := h.preCheckBudget(c, tenantID, keyIDStr, provider, req.Model, maxTokens)
 	if !ok {
+		if h.gatewayEventSvc != nil {
+			h.gatewayEventSvc.Record(c.Request.Context(), &models.GatewayEvent{
+				TenantID:   tenantID,
+				KeyID:      keyIDStr,
+				Provider:   string(provider),
+				Model:      req.Model,
+				EventType:  "budget_exceeded_402",
+				StatusCode: http.StatusPaymentRequired,
+				LatencyMs:  time.Since(start).Milliseconds(),
+				CreatedAt:  time.Now(),
+			})
+		}
 		return
 	}
 
@@ -137,13 +161,14 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		counts.Model = req.Model
 	}
 
+	latencyMs := time.Since(start).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, latencyMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,
 		"provider", string(provider), "model", req.Model,
-		"latency_ms", time.Since(start).Milliseconds(),
+		"latency_ms", latencyMs,
 		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
 		"api_usage_billed", apiUsageBilled, "endpoint", "responses",
 	)

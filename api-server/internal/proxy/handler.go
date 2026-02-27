@@ -25,20 +25,22 @@ const defaultAnthropicVersion = "2023-06-01"
 
 // ProxyHandler handles reverse proxy requests to upstream AI providers.
 type ProxyHandler struct {
-	providerKeySvc *services.ProviderKeyService
-	eventQueue     *events.EventQueue
-	pricingEngine  *pricing.PricingEngine
-	rateLimiter    *ratelimit.Limiter
-	httpClient     *http.Client
+	providerKeySvc  *services.ProviderKeyService
+	eventQueue      *events.EventQueue
+	pricingEngine   *pricing.PricingEngine
+	rateLimiter     *ratelimit.Limiter
+	gatewayEventSvc *services.GatewayEventService
+	httpClient      *http.Client
 }
 
 // NewProxyHandler creates a new ProxyHandler.
-func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue, pricingEngine *pricing.PricingEngine, rateLimiter *ratelimit.Limiter) *ProxyHandler {
+func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *events.EventQueue, pricingEngine *pricing.PricingEngine, rateLimiter *ratelimit.Limiter, gatewayEventSvc *services.GatewayEventService) *ProxyHandler {
 	return &ProxyHandler{
-		providerKeySvc: providerKeySvc,
-		eventQueue:     eventQueue,
-		pricingEngine:  pricingEngine,
-		rateLimiter:    rateLimiter,
+		providerKeySvc:  providerKeySvc,
+		eventQueue:      eventQueue,
+		pricingEngine:   pricingEngine,
+		rateLimiter:     rateLimiter,
+		gatewayEventSvc: gatewayEventSvc,
 		// No overall Timeout: streaming responses can run arbitrarily long.
 		// Client disconnect is handled via context cancellation on the upstream request.
 		// ResponseHeaderTimeout ensures we fail fast if the upstream is unresponsive.
@@ -210,7 +212,7 @@ func (h *ProxyHandler) reconcilePostResponse(ctx context.Context, tenantID uint,
 }
 
 // publishUsageEvent publishes a usage event to Redis Streams (fire-and-forget).
-func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, ts time.Time) {
+func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, latencyMs int64, ts time.Time) {
 	if tenantID == 0 {
 		return
 	}
@@ -227,6 +229,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 		CacheCreationTokens: counts.CacheCreationTokens,
 		CacheReadTokens:     counts.CacheReadTokens,
 		MessageID:           counts.MessageID,
+		LatencyMs:           latencyMs,
 		Timestamp:           ts,
 		APIUsageBilled:      billed,
 	}
@@ -267,11 +270,35 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	reqMeta := parseRequestMeta(bodyBytes)
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, reqMeta.Model, len(bodyBytes), reqMeta.MaxTokens) {
+		if h.gatewayEventSvc != nil {
+			h.gatewayEventSvc.Record(c.Request.Context(), &models.GatewayEvent{
+				TenantID:   tenantID,
+				KeyID:      keyIDStr,
+				Provider:   string(provider),
+				Model:      reqMeta.Model,
+				EventType:  "rate_limit_429",
+				StatusCode: http.StatusTooManyRequests,
+				LatencyMs:  time.Since(start).Milliseconds(),
+				CreatedAt:  time.Now(),
+			})
+		}
 		return
 	}
 
 	reservedAmount, ok := h.preCheckBudget(c, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens)
 	if !ok {
+		if h.gatewayEventSvc != nil {
+			h.gatewayEventSvc.Record(c.Request.Context(), &models.GatewayEvent{
+				TenantID:   tenantID,
+				KeyID:      keyIDStr,
+				Provider:   string(provider),
+				Model:      reqMeta.Model,
+				EventType:  "budget_exceeded_402",
+				StatusCode: http.StatusPaymentRequired,
+				LatencyMs:  time.Since(start).Milliseconds(),
+				CreatedAt:  time.Now(),
+			})
+		}
 		return
 	}
 	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
@@ -355,13 +382,14 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 
+	latencyMs := time.Since(start).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, latencyMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,
 		"provider", string(provider), "model", reqMeta.Model,
-		"status", resp.StatusCode, "latency_ms", time.Since(start).Milliseconds(),
+		"status", resp.StatusCode, "latency_ms", latencyMs,
 		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
 		"cache_read_tokens", counts.CacheReadTokens,
 		"api_usage_billed", apiUsageBilled, "is_sse", isSSE,

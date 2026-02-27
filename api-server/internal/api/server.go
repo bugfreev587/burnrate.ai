@@ -135,6 +135,7 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/summary", s.handleUsageSummary)
 		viewer.GET("/cost-ledger", s.handleListCostLedger)
 		viewer.GET("/usage/forecast", s.handleUsageForecast)
+		viewer.GET("/usage/metrics", s.handleUsageMetrics)
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
 		viewer.GET("/budget", s.handleGetBudget)
 		viewer.GET("/audit/reports", s.handleListAuditReports)

@@ -168,8 +168,11 @@ func main() {
 		slog.Warn("Stripe not configured — billing endpoints will return 503/empty")
 	}
 
+	// Gateway event service (records blocked requests: rate limits, budget exceeded)
+	gatewayEventSvc := services.NewGatewayEventService(postgresDB.GetDB())
+
 	// Proxy handler
-	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter)
+	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter, gatewayEventSvc)
 
 	// API server
 	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue, notifWorker)

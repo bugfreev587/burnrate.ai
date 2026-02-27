@@ -33,6 +33,7 @@ type UsageEventMsg struct {
 	CacheReadTokens     int64
 	MessageID           string // Anthropic message ID used as idempotency key
 	APIKeyFingerprint   string // "ak:<sha256-hex>" derived from X-Api-Key; raw key never stored
+	LatencyMs           int64
 	Timestamp           time.Time
 	APIUsageBilled      bool
 }
@@ -51,6 +52,7 @@ func (q *EventQueue) Publish(ctx context.Context, msg UsageEventMsg) error {
 		"cache_read_tokens":     strconv.FormatInt(msg.CacheReadTokens, 10),
 		"message_id":            msg.MessageID,
 		"api_key_fingerprint":   msg.APIKeyFingerprint,
+		"latency_ms":            strconv.FormatInt(msg.LatencyMs, 10),
 		"timestamp":             msg.Timestamp.UTC().Format(time.RFC3339),
 		"api_usage_billed":      strconv.FormatBool(msg.APIUsageBilled),
 	}

@@ -90,9 +90,14 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.ProcessedStripeEvent{},
 		&models.AuditReport{},
 		&models.NotificationChannel{},
+		&models.GatewayEvent{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
+
+	// Composite indexes for metrics queries.
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_usage_logs_latency ON usage_logs (tenant_id, created_at, latency_ms) WHERE latency_ms > 0`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_gateway_events_type ON gateway_events (tenant_id, event_type, created_at)`)
 
 	if err := pricing.SeedInitialData(db); err != nil {
 		return nil, fmt.Errorf("seed pricing data: %w", err)
