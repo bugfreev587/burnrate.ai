@@ -60,6 +60,13 @@
   margin: 1.75rem 0 0.75rem;
 }
 
+.dash-section-hint {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  margin: -0.5rem 0 0.75rem;
+}
+
 .card-subtitle {
   font-size: 0.875rem;
   font-weight: 600;

@@ -95,16 +95,16 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
 
-	// One-time: reset latency_ms data recorded before the Redis caching + pipeline
-	// optimisation so dashboards start fresh with accurate numbers.
-	// Uses a sentinel row in processed_stripe_events to ensure it runs only once.
+	// One-time: reset latency data that included cold-cache-miss samples before
+	// the >200ms suppression was added. Cold misses are now recorded as 0 and
+	// automatically excluded from percentile metrics.
 	var alreadyRan bool
-	db.Raw(`SELECT EXISTS (SELECT 1 FROM processed_stripe_events WHERE event_id = 'migration:reset_latency_data_v2')`).Scan(&alreadyRan)
+	db.Raw(`SELECT EXISTS (SELECT 1 FROM processed_stripe_events WHERE event_id = 'migration:reset_latency_data_v3')`).Scan(&alreadyRan)
 	if !alreadyRan {
 		db.Exec(`UPDATE usage_logs SET latency_ms = 0 WHERE latency_ms > 0`)
 		db.Exec(`DELETE FROM gateway_events`)
-		db.Exec(`INSERT INTO processed_stripe_events (event_id, processed_at) VALUES ('migration:reset_latency_data_v2', NOW())`)
-		slog.Info("one_time_migration: reset stale latency data (v2 – post caching/pipeline)")
+		db.Exec(`INSERT INTO processed_stripe_events (event_id, processed_at) VALUES ('migration:reset_latency_data_v3', NOW())`)
+		slog.Info("one_time_migration: reset stale latency data (v3 – cold-miss suppression)")
 	}
 
 	// Composite indexes for metrics queries.

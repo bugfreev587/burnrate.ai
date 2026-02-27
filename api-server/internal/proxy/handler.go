@@ -391,6 +391,15 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 
 	// Gateway latency = pre-upstream processing + post-upstream bookkeeping.
 	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
+
+	// Suppress latency recording for cold-cache requests (cache warming hits
+	// the database and inflates the number). Setting to 0 excludes the sample
+	// from percentile metrics (SQL filters latency_ms > 0) while the request
+	// is still fully tracked for tokens, cost, etc.
+	if gatewayMs > 200 {
+		gatewayMs = 0
+	}
+
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
 
