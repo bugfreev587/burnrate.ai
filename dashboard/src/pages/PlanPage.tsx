@@ -58,18 +58,18 @@ const PLANS: Array<{
   maxKeys: string
   maxProviderKeys: string
   maxMembers: string
-  periods: string
-  block: boolean
   perKey: boolean
   retention: string
   spendLimits: string
   rateLimits: string
   notifications: string
+  export: boolean
+  webhooks: boolean
 }> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days',   spendLimits: '1', rateLimits: '1', notifications: '1' },
-  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days',  spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
-  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days', spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
-  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited', spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
+  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  perKey: false, retention: '7 days',    spendLimits: '1', rateLimits: '1', notifications: '1', export: false, webhooks: false },
+  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  perKey: false, retention: '90 days',   spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: false },
+  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', perKey: true,  retention: '180 days',  spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: true  },
+  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '∞', rateLimits: '∞', notifications: '∞', export: true,  webhooks: true  },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -574,24 +574,6 @@ export default function PlanPage() {
                       ))}
                     </tr>
                     <tr>
-                      <td>Budget periods</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.periods}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Hard block</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.block
-                            ? <span className="check">✓</span>
-                            : <span className="dash">—</span>}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
                       <td>Per-key budget</td>
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
@@ -630,6 +612,26 @@ export default function PlanPage() {
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
                           {p.notifications}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Audit export</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.export
+                            ? <span className="check">✓</span>
+                            : <span className="dash">—</span>}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Webhooks</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.webhooks
+                            ? <span className="check">✓</span>
+                            : <span className="dash">—</span>}
                         </td>
                       ))}
                     </tr>
