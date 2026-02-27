@@ -120,5 +120,6 @@ func (s *Server) handleDashboardConfig(c *gin.Context) {
 			"min_start_date": effectiveMin.Format("2006-01-02"),
 		},
 		"preset_options": presetOptions,
+		"plan_limits":    lim,
 	})
 }

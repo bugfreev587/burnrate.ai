@@ -20,6 +20,12 @@ interface PlanLimits {
   allow_block_action: boolean
   allow_per_key_budget: boolean
   data_retention_days: number
+  allow_rate_limits: boolean
+  allow_per_key_rate_limit: boolean
+  allow_export: boolean
+  max_budget_limits: number
+  max_rate_limits: number
+  max_notification_channels: number
 }
 
 interface OwnerSettings {
@@ -56,11 +62,14 @@ const PLANS: Array<{
   block: boolean
   perKey: boolean
   retention: string
+  spendLimits: string
+  rateLimits: string
+  notifications: string
 }> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days'    },
-  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days'   },
-  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days'  },
-  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited' },
+  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',  maxProviderKeys: '1',  maxMembers: '1',  periods: 'Monthly', block: false, perKey: false, retention: '7 days',   spendLimits: '1', rateLimits: '1', notifications: '1' },
+  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',  maxProviderKeys: '3',  maxMembers: '1',  periods: 'All',     block: true,  perKey: false, retention: '90 days',  spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
+  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '∞',  maxProviderKeys: '5',  maxMembers: '10', periods: 'All',     block: true,  perKey: true,  retention: '180 days', spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
+  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '∞',  maxProviderKeys: '20', maxMembers: '∞',  periods: 'All',     block: true,  perKey: true,  retention: 'Unlimited', spendLimits: '∞', rateLimits: '∞', notifications: '∞' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -597,6 +606,30 @@ export default function PlanPage() {
                       {PLANS.map(p => (
                         <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
                           {p.retention}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Spend limits</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.spendLimits}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Rate limits</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.rateLimits}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Notifications</td>
+                      {PLANS.map(p => (
+                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                          {p.notifications}
                         </td>
                       ))}
                     </tr>

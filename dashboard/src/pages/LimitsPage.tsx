@@ -35,7 +35,10 @@ export default function LimitsPage() {
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
   const { catalog, activeKeys } = usePricingConfig()
   const { config } = useDashboardConfig()
-  const isFreePlan = config?.plan === 'free'
+  const planLimits = config?.plan_limits
+
+  const spendLimitCapped = planLimits != null && planLimits.max_budget_limits !== -1
+  const rateLimitCapped = planLimits != null && planLimits.max_rate_limits !== -1
 
   // ── Provider / model options from catalog ─────────────────────────────────
   const providerOptions = useMemo(() => {
@@ -227,8 +230,7 @@ export default function LimitsPage() {
                   hard-block limits reject requests (HTTP 402) when exceeded.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+              <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits} title={spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits ? 'Limit reached — upgrade to add more' : undefined}>
                 Add Spend Limit
               </button>
             </div>
@@ -254,8 +256,7 @@ export default function LimitsPage() {
                       <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                          <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }}>
                             Add Your First Spend Limit
                           </button>
                         </div>
@@ -324,8 +325,7 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
-                          <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                          <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)}>
                             Edit
                           </button>
                           <button className="btn btn-small btn-danger" onClick={() => handleDeleteSL(l.id)}>
@@ -349,8 +349,7 @@ export default function LimitsPage() {
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+              <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits} title={rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits ? 'Limit reached — upgrade to add more' : undefined}>
                 Add Rate Limit
               </button>
             </div>
@@ -375,8 +374,7 @@ export default function LimitsPage() {
                       <td colSpan={8} className="empty-cell">
                         <div className="empty-cta">
                           <p>No rate limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                          <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }}>
                             Add Your First Rate Limit
                           </button>
                         </div>
@@ -410,8 +408,7 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
-                          <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
-                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                          <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)}>
                             Edit
                           </button>
                           <button className="btn btn-small btn-danger" onClick={() => handleDeleteRL(l.ID)}>

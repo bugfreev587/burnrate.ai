@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -151,6 +152,22 @@ func (s *Server) handleUpsertRateLimit(c *gin.Context) {
 		}
 		limit = existing
 	} else {
+		// Enforce rate limit count for new records.
+		if planLimits.MaxRateLimits != -1 {
+			var rlCount int64
+			db.Model(&models.RateLimit{}).Where("tenant_id = ?", tenantID).Count(&rlCount)
+			if int(rlCount) >= planLimits.MaxRateLimits {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{
+					"error":   "plan_limit_reached",
+					"message": fmt.Sprintf("Your %s plan allows up to %d rate limit(s). Upgrade to add more.", tenant.Plan, planLimits.MaxRateLimits),
+					"limit":   planLimits.MaxRateLimits,
+					"current": rlCount,
+					"plan":    tenant.Plan,
+				})
+				return
+			}
+		}
+
 		// Create new
 		if err := db.Create(&limit).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

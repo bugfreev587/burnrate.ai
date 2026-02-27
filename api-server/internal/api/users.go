@@ -638,6 +638,51 @@ func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
 		}
 	}
 
+	// Budget limit count
+	if newLimits.MaxBudgetLimits != -1 {
+		var budgetCount int64
+		db.Model(&models.BudgetLimit{}).Where("tenant_id = ?", tenantID).Count(&budgetCount)
+		if int(budgetCount) > newLimits.MaxBudgetLimits {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":        "downgrade_blocked",
+				"reason":       "budget_limits_exceed_limit",
+				"message":      fmt.Sprintf("The %s plan allows %d spend limit(s), but this tenant has %d. Remove %d spend limit(s) before downgrading.", newPlan, newLimits.MaxBudgetLimits, budgetCount, int(budgetCount)-newLimits.MaxBudgetLimits),
+				"limit":        newLimits.MaxBudgetLimits,
+				"budget_count": budgetCount,
+			}
+		}
+	}
+
+	// Rate limit count
+	if newLimits.MaxRateLimits != -1 {
+		var rlCount int64
+		db.Model(&models.RateLimit{}).Where("tenant_id = ?", tenantID).Count(&rlCount)
+		if int(rlCount) > newLimits.MaxRateLimits {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":          "downgrade_blocked",
+				"reason":         "rate_limits_exceed_limit",
+				"message":        fmt.Sprintf("The %s plan allows %d rate limit(s), but this tenant has %d. Remove %d rate limit(s) before downgrading.", newPlan, newLimits.MaxRateLimits, rlCount, int(rlCount)-newLimits.MaxRateLimits),
+				"limit":          newLimits.MaxRateLimits,
+				"rate_limit_count": rlCount,
+			}
+		}
+	}
+
+	// Notification channel count
+	if newLimits.MaxNotificationChannels != -1 {
+		var ncCount int64
+		db.Model(&models.NotificationChannel{}).Where("tenant_id = ?", tenantID).Count(&ncCount)
+		if int(ncCount) > newLimits.MaxNotificationChannels {
+			return http.StatusUnprocessableEntity, gin.H{
+				"error":         "downgrade_blocked",
+				"reason":        "notification_channels_exceed_limit",
+				"message":       fmt.Sprintf("The %s plan allows %d notification channel(s), but this tenant has %d. Remove %d channel(s) before downgrading.", newPlan, newLimits.MaxNotificationChannels, ncCount, int(ncCount)-newLimits.MaxNotificationChannels),
+				"limit":         newLimits.MaxNotificationChannels,
+				"channel_count": ncCount,
+			}
+		}
+	}
+
 	// ── Apply ────────────────────────────────────────────────────────────────
 	// max_api_keys tracks the plan ceiling; reset it to the new plan's limit
 	// (-1 = unlimited stored as -1 in DB, which existing enforcement already handles).

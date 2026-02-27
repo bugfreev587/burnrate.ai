@@ -538,6 +538,29 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		Action:         action,
 	}
 
+	// Check if this is an update to an existing record or a new one.
+	var existingBudget models.BudgetLimit
+	isNewRecord := s.postgresDB.GetDB().
+		Where("tenant_id = ? AND scope_type = ? AND scope_id = ? AND period_type = ? AND provider = ?",
+			tenantID, scopeType, req.ScopeID, req.PeriodType, provider).
+		First(&existingBudget).Error != nil
+
+	// Enforce budget limit count for new records.
+	if isNewRecord && planLim.MaxBudgetLimits != -1 {
+		var budgetCount int64
+		s.postgresDB.GetDB().Model(&models.BudgetLimit{}).Where("tenant_id = ?", tenantID).Count(&budgetCount)
+		if int(budgetCount) >= planLim.MaxBudgetLimits {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "plan_limit_reached",
+				"message": fmt.Sprintf("Your %s plan allows up to %d spend limit(s). Upgrade to add more.", tenant.Plan, planLim.MaxBudgetLimits),
+				"limit":   planLim.MaxBudgetLimits,
+				"current": budgetCount,
+				"plan":    tenant.Plan,
+			})
+			return
+		}
+	}
+
 	// Upsert: find by (tenant_id, scope_type, scope_id, period_type, provider) and update, or create.
 	result := s.postgresDB.GetDB().
 		Where("tenant_id = ? AND scope_type = ? AND scope_id = ? AND period_type = ? AND provider = ?",

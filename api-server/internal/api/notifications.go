@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -81,6 +82,28 @@ func (s *Server) handleCreateNotificationChannel(c *gin.Context) {
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
+	}
+
+	// Enforce notification channel count.
+	var tenant models.Tenant
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
+		return
+	}
+	planLim := models.GetPlanLimits(tenant.Plan)
+	if planLim.MaxNotificationChannels != -1 {
+		var channelCount int64
+		s.postgresDB.GetDB().Model(&models.NotificationChannel{}).Where("tenant_id = ?", tenantID).Count(&channelCount)
+		if int(channelCount) >= planLim.MaxNotificationChannels {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "plan_limit_reached",
+				"message": fmt.Sprintf("Your %s plan allows up to %d notification channel(s). Upgrade to add more.", tenant.Plan, planLim.MaxNotificationChannels),
+				"limit":   planLim.MaxNotificationChannels,
+				"current": channelCount,
+				"plan":    tenant.Plan,
+			})
+			return
+		}
 	}
 
 	channel := models.NotificationChannel{
