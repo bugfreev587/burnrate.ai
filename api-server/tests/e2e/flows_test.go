@@ -223,6 +223,11 @@ func TestFlow_TeamManagement(t *testing.T) {
 	}
 	ownerHeaders := map[string]string{"X-User-ID": "e2e_tm_owner"}
 
+	// Upgrade tenant to team plan (free and pro only allow 1 member)
+	var tmUser models.User
+	testDB.Where("id = ?", "e2e_tm_owner").First(&tmUser)
+	testDB.Model(&models.Tenant{}).Where("id = ?", tmUser.TenantID).Update("plan", models.PlanTeam)
+
 	// Step 2: Invite a new team member as editor
 	inviteBody := `{"email":"tm-editor@e2e.test","name":"Team Editor","role":"editor"}`
 	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite", inviteBody, ownerHeaders)
@@ -450,10 +455,10 @@ func TestFlow_BudgetManagement(t *testing.T) {
 		t.Fatalf("create budget = %d; body: %s", w.Code, w.Body.String())
 	}
 	budgetResp := testutil.ParseJSON(t, w)
-	budgetID := budgetResp["id"]
+	budgetID := budgetResp["ID"]
 
 	if budgetID == nil || budgetID == float64(0) {
-		t.Fatal("expected budget id in response")
+		t.Fatal("expected budget ID in response")
 	}
 
 	// Step 4: Get budget → verify limit
@@ -537,9 +542,9 @@ func TestFlow_RateLimitCRUD(t *testing.T) {
 		t.Fatalf("create rate limit = %d; body: %s", w.Code, w.Body.String())
 	}
 	rlResp := testutil.ParseJSON(t, w)
-	rlID := rlResp["id"]
+	rlID := rlResp["ID"]
 	if rlID == nil || rlID == float64(0) {
-		t.Fatal("expected rate limit id in response")
+		t.Fatal("expected rate limit ID in response")
 	}
 
 	// Step 4: List rate limits → 1 entry
@@ -592,6 +597,11 @@ func TestFlow_RBACEscalation(t *testing.T) {
 		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
 	}
 	ownerH := map[string]string{"X-User-ID": "e2e_rbac_owner"}
+
+	// Upgrade tenant to team plan (free and pro only allow 1 member)
+	var rbacUser models.User
+	testDB.Where("id = ?", "e2e_rbac_owner").First(&rbacUser)
+	testDB.Model(&models.Tenant{}).Where("id = ?", rbacUser.TenantID).Update("plan", models.PlanTeam)
 
 	// Invite editor
 	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite",
