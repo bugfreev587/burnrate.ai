@@ -677,7 +677,8 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange>({ preset: '7d' })
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const [recentOpen, setRecentOpen] = useState(false)
-  const { logs, summary, budgets, forecast, appliedRange, loading, error, refresh } = useUsageData(dateRange)
+  const pollInterval = recentOpen ? 5_000 : 300_000 // 5s when watching requests, 5min when collapsed
+  const { logs, summary, budgets, forecast, appliedRange, loading, error, refresh } = useUsageData(dateRange, pollInterval)
 
   const recentRef = useRef<HTMLDivElement>(null)
   const scrollToRecentAfterLoad = useRef(false)

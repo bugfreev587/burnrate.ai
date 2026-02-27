@@ -147,7 +147,7 @@ interface DashboardState {
   error: string | null
 }
 
-export function useUsageData(dateRange?: DateRange): DashboardState & { refresh: () => void } {
+export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): DashboardState & { refresh: () => void } {
   const [state, setState] = useState<DashboardState>({
     logs: [],
     summary: null,
@@ -214,12 +214,17 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange?.preset, dateRange?.startDate, dateRange?.endDate])
 
+  // Reset initial-load flag when fetchData changes (i.e. date range changed),
+  // but NOT when only the poll interval changes (toggling Recent Requests).
   useEffect(() => {
     initialLoadDone.current = false
     fetchData()
-    const id = setInterval(fetchData, 15_000)
-    return () => clearInterval(id)
   }, [fetchData])
+
+  useEffect(() => {
+    const id = setInterval(fetchData, pollIntervalMs)
+    return () => clearInterval(id)
+  }, [fetchData, pollIntervalMs])
 
   return { ...state, refresh: fetchData }
 }
