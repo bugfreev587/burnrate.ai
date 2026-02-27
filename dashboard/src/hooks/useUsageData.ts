@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
@@ -157,12 +157,17 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
     loading: false,
     error: null,
   })
+  const initialLoadDone = useRef(false)
 
   const fetchData = useCallback(async () => {
     const userId = localStorage.getItem('user_id')
     if (!userId) return
 
-    setState(prev => ({ ...prev, loading: true, error: null }))
+    // Only show the global loading spinner on the initial load.
+    // Subsequent (auto-refresh) fetches update data silently in the background.
+    if (!initialLoadDone.current) {
+      setState(prev => ({ ...prev, loading: true, error: null }))
+    }
 
     try {
       const headers = { 'X-User-ID': userId }
@@ -189,6 +194,7 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
       const budgetData = budgetRes.ok ? await budgetRes.json() : { budget_limits: [] }
       const forecastData: ForecastData | null = forecastRes.ok ? await forecastRes.json() : null
 
+      initialLoadDone.current = true
       setState({
         logs: logsData.usage_logs ?? [],
         summary: summaryData,
@@ -209,6 +215,7 @@ export function useUsageData(dateRange?: DateRange): DashboardState & { refresh:
   }, [dateRange?.preset, dateRange?.startDate, dateRange?.endDate])
 
   useEffect(() => {
+    initialLoadDone.current = false
     fetchData()
     const id = setInterval(fetchData, 15_000)
     return () => clearInterval(id)
