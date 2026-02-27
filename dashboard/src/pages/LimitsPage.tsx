@@ -4,6 +4,7 @@ import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { useRateLimits } from '../hooks/useRateLimits'
 import { useSpendLimits } from '../hooks/useSpendLimits'
 import { usePricingConfig } from '../hooks/usePricingConfig'
+import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import type { UpsertRateLimitReq } from '../hooks/useRateLimits'
 import type { UpsertSpendLimitReq } from '../hooks/useSpendLimits'
 import Navbar from '../components/Navbar'
@@ -33,6 +34,8 @@ export default function LimitsPage() {
   const { limits: rateLimits, loading: rlLoading, error: rlError, upsertLimit: upsertRateLimit, deleteLimit: deleteRateLimit } = useRateLimits(5000)
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
   const { catalog, activeKeys } = usePricingConfig()
+  const { config } = useDashboardConfig()
+  const isFreePlan = config?.plan === 'free'
 
   // ── Provider / model options from catalog ─────────────────────────────────
   const providerOptions = useMemo(() => {
@@ -195,7 +198,8 @@ export default function LimitsPage() {
                   hard-block limits reject requests (HTTP 402) when exceeded.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }}>
+              <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                 Add Spend Limit
               </button>
             </div>
@@ -221,7 +225,8 @@ export default function LimitsPage() {
                       <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }}>
+                          <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Add Your First Spend Limit
                           </button>
                         </div>
@@ -311,7 +316,8 @@ export default function LimitsPage() {
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }}>
+              <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                 Add Rate Limit
               </button>
             </div>
@@ -336,7 +342,8 @@ export default function LimitsPage() {
                       <td colSpan={8} className="empty-cell">
                         <div className="empty-cta">
                           <p>No rate limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }}>
+                          <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Add Your First Rate Limit
                           </button>
                         </div>

@@ -681,6 +681,26 @@ func (s *StripeService) HandleSubscriptionUpdated(ctx context.Context, sub *stri
 	}
 
 	plan := s.planFromSubscription(sub)
+	if plan == "" && sub.ID != "" {
+		// Webhook payload may have incomplete price data; re-fetch from Stripe API
+		var priceIDs []string
+		if sub.Items != nil {
+			for _, item := range sub.Items.Data {
+				if item.Price != nil {
+					priceIDs = append(priceIDs, item.Price.ID)
+				}
+			}
+		}
+		slog.Warn("stripe_plan_not_detected_from_webhook", "subscription_id", sub.ID, "price_ids", priceIDs)
+		params := &stripe.SubscriptionParams{}
+		params.Context = ctx
+		freshSub, err := subscription.Get(sub.ID, params)
+		if err == nil {
+			plan = s.planFromSubscription(freshSub)
+		} else {
+			slog.Error("stripe_refetch_subscription_failed", "subscription_id", sub.ID, "error", err)
+		}
+	}
 
 	updates := map[string]any{
 		"plan_status":            s.mapStripeStatus(sub.Status),

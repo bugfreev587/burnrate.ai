@@ -140,3 +140,15 @@
 .form-hint-link:hover {
   text-decoration: underline;
 }
+
+/* ── Disabled / locked buttons ──────────────────────────────────────────── */
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lock-icon {
+  margin-right: 0.35rem;
+  vertical-align: -0.1em;
+}
