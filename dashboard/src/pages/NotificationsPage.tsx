@@ -168,10 +168,9 @@ export default function NotificationsPage() {
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
-                <h2>Notification Channels</h2>
-                <span className="section-count">
+                <h2>Notification Channels <span className="section-count">
                   {channels.length} / {channelCapped ? planLimits!.max_notification_channels : 'Unlimited'}
-                </span>
+                </span></h2>
                 <p className="section-desc">
                   Configure Email, Slack, or Webhook channels to receive real-time alerts when budget limits
                   or rate limits are triggered. Notifications are debounced (5 min cooldown per event type).
