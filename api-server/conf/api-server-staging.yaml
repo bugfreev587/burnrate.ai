@@ -6,6 +6,7 @@ server:
   cors_origins:
     - "https://tokengate.to"
     - "https://app.tokengate.to"
+    - "*.vercel.app"
   rate_limit_per_minute: 120
 
 postgres:

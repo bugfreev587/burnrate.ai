@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,16 +35,34 @@ func LoggerMiddleware() gin.HandlerFunc {
 }
 
 // CORSMiddleware sets permissive CORS headers for allowed origins.
+// Origins starting with "*." are treated as suffix patterns (e.g. "*.vercel.app"
+// matches any subdomain of vercel.app).
 func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 	originSet := make(map[string]bool, len(allowedOrigins))
+	var suffixPatterns []string
 	for _, o := range allowedOrigins {
-		originSet[o] = true
+		if strings.HasPrefix(o, "*.") {
+			// "*.vercel.app" → ".vercel.app" suffix match against host
+			suffixPatterns = append(suffixPatterns, strings.TrimPrefix(o, "*"))
+		} else {
+			originSet[o] = true
+		}
 	}
 	allowAll := len(allowedOrigins) == 0 || (len(allowedOrigins) == 1 && allowedOrigins[0] == "*")
 
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		if allowAll || originSet[origin] {
+		allowed := allowAll || originSet[origin]
+		if !allowed {
+			// Check suffix patterns (e.g. https://foo.vercel.app matches "*.vercel.app")
+			for _, suffix := range suffixPatterns {
+				if strings.HasPrefix(origin, "https://") && strings.HasSuffix(origin, suffix) {
+					allowed = true
+					break
+				}
+			}
+		}
+		if allowed {
 			c.Header("Access-Control-Allow-Origin", origin)
 		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
