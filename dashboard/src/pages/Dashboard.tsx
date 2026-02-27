@@ -1032,81 +1032,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── Gateway Performance ── */}
-            {metrics && metrics.latency.sample_count > 0 && (
-              <>
-                <div className="dash-section-title">Gateway Performance</div>
-                <div className="summary-grid summary-grid-4">
-                  <div className="card summary-card">
-                    <p className="summary-label">p50 Latency</p>
-                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p50)}</p>
-                    <p className="summary-sub">median response time</p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">p95 Latency</p>
-                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p95)}</p>
-                    <p className="summary-sub">95th percentile</p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">p99 Latency</p>
-                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p99)}</p>
-                    <p className="summary-sub">99th percentile</p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">Avg Latency</p>
-                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.avg)}</p>
-                    <p className="summary-sub">{fmtNum(metrics.latency.sample_count)} samples</p>
-                  </div>
-                </div>
-                <div className="dash-split">
-                  <div className="card dash-split-left">
-                    <p className="card-subtitle">Latency Trend</p>
-                    <LatencyTrendChart data={metrics.daily_activity} />
-                  </div>
-                  <div className="card dash-split-right">
-                    <p className="card-subtitle">Request Outcomes</p>
-                    <RequestOutcomeChart metrics={metrics} />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ── Activity ── */}
-            {metrics && (
-              <>
-                <div className="dash-section-title">Activity</div>
-                <div className="summary-grid summary-grid-4">
-                  <div className="card summary-card">
-                    <p className="summary-label">Total Requests</p>
-                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.total_requests)}</p>
-                    <p className="summary-sub">{periodLabel.toLowerCase()}</p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">Active API Keys</p>
-                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.active_api_keys)}</p>
-                    <p className="summary-sub">keys with traffic</p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">Blocked Requests</p>
-                    <p className="summary-value summary-value-sm" style={{ color: metrics.activity.total_blocked > 0 ? 'var(--color-danger)' : undefined }}>
-                      {fmtNum(metrics.activity.total_blocked)}
-                    </p>
-                    <p className="summary-sub">
-                      {metrics.activity.blocked_rate_limit > 0 && `${fmtNum(metrics.activity.blocked_rate_limit)} rate limit`}
-                      {metrics.activity.blocked_rate_limit > 0 && metrics.activity.blocked_budget > 0 && ' · '}
-                      {metrics.activity.blocked_budget > 0 && `${fmtNum(metrics.activity.blocked_budget)} budget`}
-                      {metrics.activity.total_blocked === 0 && 'none blocked'}
-                    </p>
-                  </div>
-                  <div className="card summary-card">
-                    <p className="summary-label">Success Rate</p>
-                    <p className="summary-value summary-value-sm">{fmtPct(metrics.activity.success_rate)}</p>
-                    <p className="summary-sub">requests completed</p>
-                  </div>
-                </div>
-              </>
-            )}
-
             {/* ── Budget bars (moved after cost overview) ── */}
             {budgets.length > 0 && (
               <>
@@ -1195,6 +1120,81 @@ export default function Dashboard() {
             {/* ── Insights Strip ── */}
             <div className="dash-section-title">Insights</div>
             <InsightsStrip summary={s} apiKeys={s?.by_api_key ?? []} />
+
+            {/* ── Gateway Performance ── */}
+            {metrics && metrics.latency.sample_count > 0 && (
+              <>
+                <div className="dash-section-title">Gateway Performance</div>
+                <div className="summary-grid summary-grid-4">
+                  <div className="card summary-card">
+                    <p className="summary-label">p50 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p50)}</p>
+                    <p className="summary-sub">median response time</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">p95 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p95)}</p>
+                    <p className="summary-sub">95th percentile</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">p99 Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.p99)}</p>
+                    <p className="summary-sub">99th percentile</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Avg Latency</p>
+                    <p className="summary-value summary-value-sm">{fmtMs(metrics.latency.avg)}</p>
+                    <p className="summary-sub">{fmtNum(metrics.latency.sample_count)} samples</p>
+                  </div>
+                </div>
+                <div className="dash-split">
+                  <div className="card dash-split-left">
+                    <p className="card-subtitle">Latency Trend</p>
+                    <LatencyTrendChart data={metrics.daily_activity} />
+                  </div>
+                  <div className="card dash-split-right">
+                    <p className="card-subtitle">Request Outcomes</p>
+                    <RequestOutcomeChart metrics={metrics} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Activity ── */}
+            {metrics && (
+              <>
+                <div className="dash-section-title">Activity</div>
+                <div className="summary-grid summary-grid-4">
+                  <div className="card summary-card">
+                    <p className="summary-label">Total Requests</p>
+                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.total_requests)}</p>
+                    <p className="summary-sub">{periodLabel.toLowerCase()}</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Active API Keys</p>
+                    <p className="summary-value summary-value-sm">{fmtNum(metrics.activity.active_api_keys)}</p>
+                    <p className="summary-sub">keys with traffic</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Blocked Requests</p>
+                    <p className="summary-value summary-value-sm" style={{ color: metrics.activity.total_blocked > 0 ? 'var(--color-danger)' : undefined }}>
+                      {fmtNum(metrics.activity.total_blocked)}
+                    </p>
+                    <p className="summary-sub">
+                      {metrics.activity.blocked_rate_limit > 0 && `${fmtNum(metrics.activity.blocked_rate_limit)} rate limit`}
+                      {metrics.activity.blocked_rate_limit > 0 && metrics.activity.blocked_budget > 0 && ' · '}
+                      {metrics.activity.blocked_budget > 0 && `${fmtNum(metrics.activity.blocked_budget)} budget`}
+                      {metrics.activity.total_blocked === 0 && 'none blocked'}
+                    </p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Success Rate</p>
+                    <p className="summary-value summary-value-sm">{fmtPct(metrics.activity.success_rate)}</p>
+                    <p className="summary-sub">requests completed</p>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* ── Recent Requests (collapsed by default) ── */}
             <div
