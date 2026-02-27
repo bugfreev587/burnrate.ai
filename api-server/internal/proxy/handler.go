@@ -465,6 +465,83 @@ func (h *ProxyHandler) HandleModels(c *gin.Context) {
 	io.Copy(c.Writer, resp.Body)
 }
 
+// HandleCountTokens handles POST /v1/messages/count_tokens — Anthropic token
+// counting passthrough.  No rate limiting, budget checks, or usage tracking;
+// the upstream endpoint is free and only rate-limited by Anthropic.
+func (h *ProxyHandler) HandleCountTokens(c *gin.Context) {
+	tenantID := c.GetUint("tenant_id")
+	authMethod := c.GetString("auth_method")
+
+	var resolvedKey string
+	if authMethod == models.AuthMethodBYOK {
+		plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, "anthropic")
+		if err != nil {
+			if !errors.Is(err, services.ErrNoActiveKey) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve provider key"})
+				return
+			}
+		} else {
+			resolvedKey = string(plaintextKey)
+		}
+	}
+
+	if resolvedKey == "" {
+		if v := c.Request.Header.Get("x-api-key"); v != "" {
+			resolvedKey = v
+		} else if v := c.Request.Header.Get("Authorization"); v != "" {
+			resolvedKey = strings.TrimPrefix(v, "Bearer ")
+		}
+		if resolvedKey == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no_active_provider_key"})
+			return
+		}
+	}
+
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	upstreamURL := upstreamBase(ProviderAnthropic) + "/v1/messages/count_tokens"
+	upstreamReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstreamURL, newBodyReader(bodyBytes))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build upstream request"})
+		return
+	}
+
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("x-api-key", resolvedKey)
+	upstreamReq.Header.Set("anthropic-version", defaultAnthropicVersion)
+	if v := c.GetHeader("anthropic-version"); v != "" {
+		upstreamReq.Header.Set("anthropic-version", v)
+	}
+	if v := c.GetHeader("anthropic-beta"); v != "" {
+		upstreamReq.Header.Set("anthropic-beta", v)
+	}
+
+	resp, err := h.httpClient.Do(upstreamReq)
+	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": "upstream request failed"})
+		return
+	}
+	defer resp.Body.Close()
+
+	for key, vals := range resp.Header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, v := range vals {
+			c.Writer.Header().Add(key, v)
+		}
+	}
+	c.Writer.WriteHeader(resp.StatusCode)
+	io.Copy(c.Writer, resp.Body)
+}
+
 // copyClientHeaders copies safe Anthropic-specific headers from the client request
 // to the upstream request. Kept for backward compatibility.
 func copyClientHeaders(src *http.Request, dst *http.Request) {
