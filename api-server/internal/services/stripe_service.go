@@ -486,6 +486,7 @@ type SubscriptionInfo struct {
 	PaymentMethodLast4    string `json:"payment_method_last4,omitempty"`
 	PaymentMethodExpMonth int64  `json:"payment_method_exp_month,omitempty"`
 	PaymentMethodExpYear  int64  `json:"payment_method_exp_year,omitempty"`
+	DetectedPlan          string `json:"-"` // plan detected from Stripe price IDs (internal use only)
 }
 
 // GetSubscription fetches the current subscription details from Stripe.
@@ -514,6 +515,7 @@ func (s *StripeService) GetSubscription(ctx context.Context, tenantID uint) (*Su
 		Status:            string(sub.Status),
 		CurrentPeriodEnd:  currentPeriodEndFromSub(sub),
 		CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
+		DetectedPlan:      s.planFromSubscription(sub),
 	}
 
 	// Try subscription's default payment method first, then fall back to customer's
@@ -760,6 +762,23 @@ func (s *StripeService) HandleSubscriptionDeleted(ctx context.Context, sub *stri
 		return err
 	}
 	if tenantID == 0 {
+		return nil
+	}
+
+	// Guard: only downgrade if this is the tenant's current subscription.
+	// When upgrading via Portal, Stripe may cancel the old subscription and create
+	// a new one. If the delete event for the old sub arrives after the create event
+	// for the new sub, we must not overwrite the upgrade.
+	var tenant models.Tenant
+	if err := s.db.First(&tenant, tenantID).Error; err != nil {
+		return fmt.Errorf("fetch tenant: %w", err)
+	}
+	if tenant.StripeSubscriptionID != "" && tenant.StripeSubscriptionID != sub.ID {
+		slog.Info("stripe_subscription_deleted_stale",
+			"deleted_subscription_id", sub.ID,
+			"current_subscription_id", tenant.StripeSubscriptionID,
+			"tenant_id", tenantID,
+		)
 		return nil
 	}
 

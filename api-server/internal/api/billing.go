@@ -76,6 +76,25 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 					"exp_year":  subInfo.PaymentMethodExpYear,
 				}
 			}
+
+			// Self-heal: if Stripe's actual plan differs from DB (e.g. Portal
+			// upgrade webhook was missed or failed), correct it on read.
+			if subInfo.DetectedPlan != "" && subInfo.DetectedPlan != tenant.Plan && tenant.PendingPlan == "" {
+				newLimits := models.GetPlanLimits(subInfo.DetectedPlan)
+				if err := s.postgresDB.GetDB().Model(&tenant).Updates(map[string]any{
+					"plan":         subInfo.DetectedPlan,
+					"max_api_keys": newLimits.MaxAPIKeys,
+				}).Error; err != nil {
+					slog.Error("billing_plan_sync_failed", "tenant_id", caller.TenantID, "error", err)
+				} else {
+					slog.Info("billing_plan_synced_from_stripe",
+						"tenant_id", caller.TenantID,
+						"old_plan", tenant.Plan,
+						"new_plan", subInfo.DetectedPlan,
+					)
+					resp["plan"] = subInfo.DetectedPlan
+				}
+			}
 		}
 	}
 
