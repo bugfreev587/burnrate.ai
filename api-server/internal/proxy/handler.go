@@ -336,8 +336,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	postUpstreamStart := time.Now()
-
 	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	copyAndWriteResponseHeaders(resp, c.Writer, isSSE)
 	c.Writer.WriteHeader(resp.StatusCode)
@@ -387,7 +385,11 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 
-	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
+	// Post-processing timer starts after response body is fully consumed.
+	// This excludes upstream call time AND SSE streaming / body read time.
+	postUpstreamStart := time.Now()
+
+	// Gateway latency = pre-upstream processing + post-upstream bookkeeping.
 	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
