@@ -402,7 +402,12 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
-.role-option:hover { border-color: var(--color-primary); }
+.role-option:hover:not(.disabled) { border-color: var(--color-primary); }
+
+.role-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .role-option.selected {
   border-color: var(--color-primary);

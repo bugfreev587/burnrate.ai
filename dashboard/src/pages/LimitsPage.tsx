@@ -5,8 +5,8 @@ import { useRateLimits } from '../hooks/useRateLimits'
 import { useSpendLimits } from '../hooks/useSpendLimits'
 import { usePricingConfig } from '../hooks/usePricingConfig'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
-import type { UpsertRateLimitReq } from '../hooks/useRateLimits'
-import type { UpsertSpendLimitReq } from '../hooks/useSpendLimits'
+import type { RateLimit, UpsertRateLimitReq } from '../hooks/useRateLimits'
+import type { SpendLimit, UpsertSpendLimitReq } from '../hooks/useSpendLimits'
 import Navbar from '../components/Navbar'
 import './LimitsPage.css'
 import './ManagementPage.css'
@@ -81,6 +81,10 @@ export default function LimitsPage() {
   const [slFormError, setSlFormError] = useState<string | null>(null)
   const [slSaving, setSlSaving] = useState(false)
 
+  // ── Editing state ─────────────────────────────────────────────────────────
+  const [editingSL, setEditingSL] = useState<SpendLimit | null>(null)
+  const [editingRL, setEditingRL] = useState<RateLimit | null>(null)
+
   // ── Shared state ──────────────────────────────────────────────────────────
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -111,7 +115,7 @@ export default function LimitsPage() {
         metric: rlMetric, limit_value: limitVal, window_seconds: windowSec, enabled: true,
       }
       await upsertRateLimit(req)
-      showSuccess('Rate limit saved'); setShowRLModal(false); resetRLForm()
+      showSuccess('Rate limit saved'); setShowRLModal(false); setEditingRL(null); resetRLForm()
     } catch (e) { setRlFormError(e instanceof Error ? e.message : 'Failed to save') }
     finally { setRlSaving(false) }
   }
@@ -146,7 +150,7 @@ export default function LimitsPage() {
         limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
       }
       await upsertSpendLimit(req)
-      showSuccess('Spend limit saved'); setShowSLModal(false); resetSLForm()
+      showSuccess('Spend limit saved'); setShowSLModal(false); setEditingSL(null); resetSLForm()
     } catch (e) { setSlFormError(e instanceof Error ? e.message : 'Failed to save') }
     finally { setSlSaving(false) }
   }
@@ -155,6 +159,31 @@ export default function LimitsPage() {
     if (!confirm('Delete this spend limit?')) return
     try { await deleteSpendLimit(id); showSuccess('Spend limit deleted') }
     catch (e) { showError(e instanceof Error ? e.message : 'Failed to delete') }
+  }
+
+  const handleEditSL = (l: SpendLimit) => {
+    setEditingSL(l)
+    setSlScope(l.scope_type as 'account' | 'api_key')
+    setSlKeyId(l.scope_id || '')
+    setSlProvider(l.provider || '')
+    setSlPeriod(l.period_type)
+    setSlLimitAmount(l.limit_amount)
+    setSlThreshold(l.alert_threshold || '80')
+    const actions: string[] = l.action === 'alert_block' ? ['alert', 'block'] : [l.action]
+    setSlActions(actions)
+    setSlFormError(null)
+    setShowSLModal(true)
+  }
+
+  const handleEditRL = (l: RateLimit) => {
+    setEditingRL(l)
+    setRlProvider(l.Provider || '')
+    setRlModel(l.Model || '')
+    setRlMetric(l.Metric)
+    setRlLimitValue(String(l.LimitValue))
+    setRlWindowSeconds(String(l.WindowSeconds))
+    setRlFormError(null)
+    setShowRLModal(true)
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -198,7 +227,7 @@ export default function LimitsPage() {
                   hard-block limits reject requests (HTTP 402) when exceeded.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+              <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                 {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                 Add Spend Limit
               </button>
@@ -225,7 +254,7 @@ export default function LimitsPage() {
                       <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                          <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                             {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Add Your First Spend Limit
                           </button>
@@ -295,6 +324,10 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
+                          <button className="btn btn-small btn-secondary" onClick={() => handleEditSL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                            Edit
+                          </button>
                           <button className="btn btn-small btn-danger" onClick={() => handleDeleteSL(l.id)}>
                             Delete
                           </button>
@@ -316,7 +349,7 @@ export default function LimitsPage() {
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+              <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                 {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                 Add Rate Limit
               </button>
@@ -342,7 +375,7 @@ export default function LimitsPage() {
                       <td colSpan={8} className="empty-cell">
                         <div className="empty-cta">
                           <p>No rate limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                          <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
                             {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
                             Add Your First Rate Limit
                           </button>
@@ -377,6 +410,10 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
+                          <button className="btn btn-small btn-secondary" onClick={() => handleEditRL(l)} disabled={isFreePlan} title={isFreePlan ? 'Upgrade to unlock' : undefined}>
+                            {isFreePlan && <svg className="lock-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>}
+                            Edit
+                          </button>
                           <button className="btn btn-small btn-danger" onClick={() => handleDeleteRL(l.ID)}>
                             Delete
                           </button>
@@ -394,10 +431,10 @@ export default function LimitsPage() {
 
       {/* ── Add Spend Limit Modal ──────────────────────────────────────────── */}
       {showSLModal && (
-        <div className="modal-overlay" onClick={() => { setShowSLModal(false); setSlFormError(null) }}>
+        <div className="modal-overlay" onClick={() => { setShowSLModal(false); setEditingSL(null); setSlFormError(null) }}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
-              <h2>Add Spend Limit</h2>
+              <h2>{editingSL ? 'Edit Spend Limit' : 'Add Spend Limit'}</h2>
             </div>
             <div className="modal-body">
               <p className="modal-hint">
@@ -408,18 +445,20 @@ export default function LimitsPage() {
               <div className="form-group">
                 <label>Scope <span className="required">*</span></label>
                 <div className="role-select">
-                  <label className={`role-option ${slScope === 'account' ? 'selected' : ''}`}>
+                  <label className={`role-option ${slScope === 'account' ? 'selected' : ''} ${editingSL ? 'disabled' : ''}`}>
                     <input type="radio" name="sl-scope" value="account"
                       checked={slScope === 'account'}
+                      disabled={!!editingSL}
                       onChange={() => { setSlScope('account'); setSlKeyId('') }} />
                     <div>
                       <strong>Account</strong>
                       <span className="role-desc">Applies to all usage across the account</span>
                     </div>
                   </label>
-                  <label className={`role-option ${slScope === 'api_key' ? 'selected' : ''}`}>
+                  <label className={`role-option ${slScope === 'api_key' ? 'selected' : ''} ${editingSL ? 'disabled' : ''}`}>
                     <input type="radio" name="sl-scope" value="api_key"
                       checked={slScope === 'api_key'}
+                      disabled={!!editingSL}
                       onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? ''); setSlProvider('') }} />
                     <div>
                       <strong>Per API Key</strong>
@@ -435,7 +474,7 @@ export default function LimitsPage() {
                   {activeKeys.length === 0 ? (
                     <p className="text-muted">No active API keys. Create one in Management first.</p>
                   ) : (
-                    <select value={slKeyId} onChange={e => setSlKeyId(e.target.value)}>
+                    <select value={slKeyId} onChange={e => setSlKeyId(e.target.value)} disabled={!!editingSL}>
                       {activeKeys.map(k => (
                         <option key={k.key_id} value={k.key_id}>
                           {k.label} ({k.key_id.slice(0, 8)}…)
@@ -449,7 +488,7 @@ export default function LimitsPage() {
               {slScope === 'account' && (
                 <div className="form-group">
                   <label>Provider <span className="required">*</span></label>
-                  <select value={slProvider} onChange={e => setSlProvider(e.target.value)}>
+                  <select value={slProvider} onChange={e => setSlProvider(e.target.value)} disabled={!!editingSL}>
                     <option value="">All Providers</option>
                     <option value="anthropic">Anthropic</option>
                     <option value="openai">OpenAI</option>
@@ -459,7 +498,7 @@ export default function LimitsPage() {
 
               <div className="form-group">
                 <label>Period <span className="required">*</span></label>
-                <select value={slPeriod} onChange={e => setSlPeriod(e.target.value)}>
+                <select value={slPeriod} onChange={e => setSlPeriod(e.target.value)} disabled={!!editingSL}>
                   {PERIOD_OPTIONS.map(p => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
@@ -513,7 +552,7 @@ export default function LimitsPage() {
             {slFormError && <div className="flash flash-error modal-flash">{slFormError}</div>}
 
             <div className="modal-ftr">
-              <button className="btn btn-secondary" onClick={() => { setShowSLModal(false); setSlFormError(null) }}
+              <button className="btn btn-secondary" onClick={() => { setShowSLModal(false); setEditingSL(null); setSlFormError(null) }}
                 disabled={slSaving}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSaveSL}
                 disabled={!slLimitAmount || slSaving}>
@@ -526,10 +565,10 @@ export default function LimitsPage() {
 
       {/* ── Add Rate Limit Modal ───────────────────────────────────────────── */}
       {showRLModal && (
-        <div className="modal-overlay" onClick={() => { setShowRLModal(false); setRlFormError(null) }}>
+        <div className="modal-overlay" onClick={() => { setShowRLModal(false); setEditingRL(null); setRlFormError(null) }}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-hdr">
-              <h2>Add Rate Limit</h2>
+              <h2>{editingRL ? 'Edit Rate Limit' : 'Add Rate Limit'}</h2>
             </div>
             <div className="modal-body">
               <p className="modal-hint">
@@ -538,7 +577,7 @@ export default function LimitsPage() {
 
               <div className="form-group">
                 <label>Provider</label>
-                <select value={rlProvider} onChange={e => { setRlProvider(e.target.value); setRlModel('') }}>
+                <select value={rlProvider} onChange={e => { setRlProvider(e.target.value); setRlModel('') }} disabled={!!editingRL}>
                   {providerOptions.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
@@ -547,7 +586,7 @@ export default function LimitsPage() {
 
               <div className="form-group">
                 <label>Model</label>
-                <select value={rlModel} onChange={e => setRlModel(e.target.value)}>
+                <select value={rlModel} onChange={e => setRlModel(e.target.value)} disabled={!!editingRL}>
                   {modelOptions.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
@@ -556,7 +595,7 @@ export default function LimitsPage() {
 
               <div className="form-group">
                 <label>Metric</label>
-                <select value={rlMetric} onChange={e => setRlMetric(e.target.value)}>
+                <select value={rlMetric} onChange={e => setRlMetric(e.target.value)} disabled={!!editingRL}>
                   {METRIC_OPTIONS.map(m => (
                     <option key={m.value} value={m.value}>{m.label} — {m.description}</option>
                   ))}
@@ -586,7 +625,7 @@ export default function LimitsPage() {
             {rlFormError && <div className="flash flash-error modal-flash">{rlFormError}</div>}
 
             <div className="modal-ftr">
-              <button className="btn btn-secondary" onClick={() => { setShowRLModal(false); setRlFormError(null) }}
+              <button className="btn btn-secondary" onClick={() => { setShowRLModal(false); setEditingRL(null); setRlFormError(null) }}
                 disabled={rlSaving}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSaveRL}
                 disabled={!rlLimitValue || rlSaving}>
