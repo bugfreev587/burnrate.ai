@@ -400,8 +400,15 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		gatewayMs = 0
 	}
 
-	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
+	// Run post-response bookkeeping in a goroutine so the HTTP handler
+	// returns immediately and the client connection is freed sooner.
+	// Use context.Background() because c.Request.Context() is cancelled
+	// when the handler exits.
+	go func() {
+		bgCtx := context.Background()
+		h.reconcilePostResponse(bgCtx, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
+		h.publishUsageEvent(bgCtx, tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
+	}()
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,
