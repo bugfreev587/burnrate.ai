@@ -682,21 +682,45 @@ func (s *StripeService) HandleSubscriptionUpdated(ctx context.Context, sub *stri
 
 	plan := s.planFromSubscription(sub)
 	if plan == "" && sub.ID != "" {
-		// Webhook payload may have incomplete price data; re-fetch from Stripe API
-		var priceIDs []string
+		// Price IDs from webhook didn't match any configured STRIPE_PRICE_* env vars.
+		// This commonly happens on Portal upgrades where the webhook payload may have
+		// incomplete price data, or subscription metadata "plan" was stale.
+		// Re-fetch the full subscription from Stripe API and retry.
+		var webhookPriceIDs []string
 		if sub.Items != nil {
 			for _, item := range sub.Items.Data {
 				if item.Price != nil {
-					priceIDs = append(priceIDs, item.Price.ID)
+					webhookPriceIDs = append(webhookPriceIDs, item.Price.ID)
 				}
 			}
 		}
-		slog.Warn("stripe_plan_not_detected_from_webhook", "subscription_id", sub.ID, "price_ids", priceIDs)
+		slog.Warn("stripe_plan_not_detected_from_webhook",
+			"subscription_id", sub.ID,
+			"webhook_price_ids", webhookPriceIDs,
+			"configured_pro", s.cfg.PriceProMonthly,
+			"configured_team", s.cfg.PriceTeamMonthly,
+			"configured_business", s.cfg.PriceBusinessMonthly,
+		)
 		params := &stripe.SubscriptionParams{}
 		params.Context = ctx
 		freshSub, err := subscription.Get(sub.ID, params)
 		if err == nil {
 			plan = s.planFromSubscription(freshSub)
+			if plan == "" {
+				// Still can't match — log the API-fetched price IDs too
+				var apiPriceIDs []string
+				if freshSub.Items != nil {
+					for _, item := range freshSub.Items.Data {
+						if item.Price != nil {
+							apiPriceIDs = append(apiPriceIDs, item.Price.ID)
+						}
+					}
+				}
+				slog.Error("stripe_plan_not_detected_after_refetch",
+					"subscription_id", sub.ID,
+					"api_price_ids", apiPriceIDs,
+				)
+			}
 		} else {
 			slog.Error("stripe_refetch_subscription_failed", "subscription_id", sub.ID, "error", err)
 		}
@@ -843,6 +867,8 @@ func (s *StripeService) tenantIDFromSubscription(sub *stripe.Subscription) (uint
 }
 
 // planFromSubscription determines the plan from the subscription's line items.
+// It only uses price ID matching — subscription metadata is intentionally NOT used
+// as a fallback because it can become stale after plan changes via the Stripe Portal.
 func (s *StripeService) planFromSubscription(sub *stripe.Subscription) string {
 	if sub.Items != nil {
 		for _, item := range sub.Items.Data {
@@ -852,9 +878,6 @@ func (s *StripeService) planFromSubscription(sub *stripe.Subscription) string {
 				}
 			}
 		}
-	}
-	if plan, ok := sub.Metadata["plan"]; ok {
-		return plan
 	}
 	return ""
 }
