@@ -135,6 +135,10 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	// Measure only TokenGate's own overhead, excluding upstream provider time.
+	preUpstreamMs := time.Since(start).Milliseconds()
+
 	now := time.Now()
 	var counts TokenCounts
 
@@ -151,6 +155,8 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		return
 	}
 
+	postUpstreamStart := time.Now()
+
 	if err != nil {
 		// Error response already written by the sub-handler.
 		return
@@ -161,14 +167,15 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		counts.Model = req.Model
 	}
 
-	latencyMs := time.Since(start).Milliseconds()
+	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
+	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, latencyMs, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,
 		"provider", string(provider), "model", req.Model,
-		"latency_ms", latencyMs,
+		"gateway_latency_ms", gatewayMs,
 		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
 		"api_usage_billed", apiUsageBilled, "endpoint", "responses",
 	)

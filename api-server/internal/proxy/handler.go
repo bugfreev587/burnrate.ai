@@ -320,6 +320,9 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		return
 	}
 
+	// Measure only TokenGate's own overhead, excluding upstream provider time.
+	preUpstreamMs := time.Since(start).Milliseconds()
+
 	resp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
 		if c.Request.Context().Err() != nil {
@@ -332,6 +335,8 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
+
+	postUpstreamStart := time.Now()
 
 	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	copyAndWriteResponseHeaders(resp, c.Writer, isSSE)
@@ -382,14 +387,15 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 
-	latencyMs := time.Since(start).Milliseconds()
+	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
+	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, latencyMs, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,
 		"provider", string(provider), "model", reqMeta.Model,
-		"status", resp.StatusCode, "latency_ms", latencyMs,
+		"status", resp.StatusCode, "gateway_latency_ms", gatewayMs,
 		"input_tokens", counts.InputTokens, "output_tokens", counts.OutputTokens,
 		"cache_read_tokens", counts.CacheReadTokens,
 		"api_usage_billed", apiUsageBilled, "is_sse", isSSE,
