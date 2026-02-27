@@ -272,6 +272,27 @@ export default function BillingPage() {
                   >
                     {hasSubscription ? 'Change Plan' : 'Upgrade Plan'}
                   </button>
+                  {hasSubscription && billingStatus.stripe_configured && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${API_BASE}/v1/billing/portal`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-User-ID': userId! },
+                            body: JSON.stringify({ return_url: window.location.href }),
+                          })
+                          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                          const data = await res.json()
+                          window.location.href = data.url
+                        } catch {
+                          setFlash({ type: 'error', msg: 'Failed to open subscription management portal.' })
+                        }
+                      }}
+                    >
+                      Manage Subscription
+                    </button>
+                  )}
                 </div>
               )}
             </div>

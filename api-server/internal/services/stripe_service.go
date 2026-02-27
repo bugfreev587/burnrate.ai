@@ -501,6 +501,7 @@ func (s *StripeService) GetSubscription(ctx context.Context, tenantID uint) (*Su
 
 	params := &stripe.SubscriptionParams{}
 	params.AddExpand("default_payment_method")
+	params.AddExpand("customer.invoice_settings.default_payment_method")
 	params.Context = ctx
 
 	sub, err := subscription.Get(tenant.StripeSubscriptionID, params)
@@ -515,8 +516,16 @@ func (s *StripeService) GetSubscription(ctx context.Context, tenantID uint) (*Su
 		CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
 	}
 
+	// Try subscription's default payment method first, then fall back to customer's
+	var card *stripe.PaymentMethodCard
 	if sub.DefaultPaymentMethod != nil && sub.DefaultPaymentMethod.Card != nil {
-		card := sub.DefaultPaymentMethod.Card
+		card = sub.DefaultPaymentMethod.Card
+	} else if sub.Customer != nil && sub.Customer.InvoiceSettings != nil &&
+		sub.Customer.InvoiceSettings.DefaultPaymentMethod != nil &&
+		sub.Customer.InvoiceSettings.DefaultPaymentMethod.Card != nil {
+		card = sub.Customer.InvoiceSettings.DefaultPaymentMethod.Card
+	}
+	if card != nil {
 		info.PaymentMethodBrand = string(card.Brand)
 		info.PaymentMethodLast4 = card.Last4
 		info.PaymentMethodExpMonth = card.ExpMonth
@@ -636,6 +645,11 @@ func (s *StripeService) HandleCheckoutCompleted(ctx context.Context, sess *strip
 
 	if sess.Subscription != nil {
 		updates["stripe_subscription_id"] = sess.Subscription.ID
+		// Save current_period_end from the expanded subscription
+		if periodEnd := currentPeriodEndFromSub(sess.Subscription); periodEnd > 0 {
+			t := time.Unix(periodEnd, 0)
+			updates["current_period_end"] = &t
+		}
 	}
 
 	if sess.CustomerDetails != nil && sess.CustomerDetails.Email != "" {
