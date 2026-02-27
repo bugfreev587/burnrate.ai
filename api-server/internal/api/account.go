@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -71,10 +72,19 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 	// 5. Delete all users from Clerk + DB
 	var users []models.User
 	db.Where("tenant_id = ?", tenant.ID).Find(&users)
+	var clerkErrors []string
 	for _, u := range users {
 		if err := s.deleteClerkUser(u.ID); err != nil {
-			slog.Warn("account_delete_clerk_user_failed", "user_id", u.ID, "error", err)
+			slog.Error("account_delete_clerk_user_failed", "user_id", u.ID, "tenant_id", tenant.ID, "error", err)
+			clerkErrors = append(clerkErrors, fmt.Sprintf("%s: %v", u.ID, err))
 		}
+	}
+	if len(clerkErrors) > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "clerk_deletion_failed",
+			"message": fmt.Sprintf("Failed to delete %d user(s) from Clerk. Account cleanup was not completed. Please try again or contact support.", len(clerkErrors)),
+		})
+		return
 	}
 	db.Where("tenant_id = ?", tenant.ID).Delete(&models.User{})
 

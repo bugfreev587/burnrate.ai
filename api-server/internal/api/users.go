@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -29,7 +30,8 @@ func (s *Server) deleteClerkUser(clerkUserID string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("clerk returned HTTP %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("clerk returned HTTP %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
 }
