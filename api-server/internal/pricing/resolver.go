@@ -14,6 +14,7 @@ import (
 )
 
 const resolverCacheTTL = 5 * time.Minute
+const resolvedPricesCacheTTL = 60 * time.Second
 
 // PricingResolver resolves effective prices for a usage event.
 type PricingResolver struct {
@@ -30,6 +31,36 @@ func NewPricingResolver(db *gorm.DB, rdb *redis.Client) *PricingResolver {
 // Contract overrides take precedence over standard versioned pricing.
 // Returns ErrModelNotFound if the provider+model pair is unknown.
 func (r *PricingResolver) Resolve(ctx context.Context, event UsageEvent) (*ResolvedPrices, error) {
+	// Try Redis cache for the full resolved result.
+	cacheKey := fmt.Sprintf("pricing:resolved:%d:%s:%s:%s",
+		event.TenantID, event.APIKeyRef,
+		strings.ToLower(event.Provider), strings.ToLower(event.Model))
+
+	if r.rdb != nil {
+		if cached, err := r.rdb.Get(ctx, cacheKey).Bytes(); err == nil {
+			var resolved ResolvedPrices
+			if json.Unmarshal(cached, &resolved) == nil {
+				return &resolved, nil
+			}
+		}
+	}
+
+	resolved, err := r.resolveFromDB(ctx, event)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.rdb != nil {
+		if b, err := json.Marshal(resolved); err == nil {
+			r.rdb.Set(ctx, cacheKey, b, resolvedPricesCacheTTL)
+		}
+	}
+
+	return resolved, nil
+}
+
+// resolveFromDB performs the full pricing resolution against the database.
+func (r *PricingResolver) resolveFromDB(ctx context.Context, event UsageEvent) (*ResolvedPrices, error) {
 	provider, err := r.resolveProvider(ctx, event.Provider)
 	if err != nil {
 		return nil, err

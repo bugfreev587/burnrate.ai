@@ -95,16 +95,16 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
 
-	// One-time: reset latency_ms data recorded before the measurement fix
-	// (previously included upstream LLM response time instead of just gateway overhead).
+	// One-time: reset latency_ms data recorded before the Redis caching + pipeline
+	// optimisation so dashboards start fresh with accurate numbers.
 	// Uses a sentinel row in processed_stripe_events to ensure it runs only once.
 	var alreadyRan bool
-	db.Raw(`SELECT EXISTS (SELECT 1 FROM processed_stripe_events WHERE event_id = 'migration:reset_latency_data_v1')`).Scan(&alreadyRan)
+	db.Raw(`SELECT EXISTS (SELECT 1 FROM processed_stripe_events WHERE event_id = 'migration:reset_latency_data_v2')`).Scan(&alreadyRan)
 	if !alreadyRan {
 		db.Exec(`UPDATE usage_logs SET latency_ms = 0 WHERE latency_ms > 0`)
 		db.Exec(`DELETE FROM gateway_events`)
-		db.Exec(`INSERT INTO processed_stripe_events (event_id, processed_at) VALUES ('migration:reset_latency_data_v1', NOW())`)
-		slog.Info("one_time_migration: reset stale latency data")
+		db.Exec(`INSERT INTO processed_stripe_events (event_id, processed_at) VALUES ('migration:reset_latency_data_v2', NOW())`)
+		slog.Info("one_time_migration: reset stale latency data (v2 – post caching/pipeline)")
 	}
 
 	// Composite indexes for metrics queries.

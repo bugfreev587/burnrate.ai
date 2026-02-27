@@ -54,6 +54,15 @@ func (l *Limiter) SetNotificationQueue(nq NotificationPublisher) {
 	l.notifQueue = nq
 }
 
+// rlEntry holds the pre-computed info for a single rate limit check.
+type rlEntry struct {
+	limit     models.RateLimit
+	key       string
+	amount    int64
+	windowSec int
+	windowID  int64
+}
+
 // Check evaluates all applicable rate limits for the request.
 // Returns a *RateLimitResult if any limit is exceeded, or nil if all pass.
 func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, model string, estimatedInputTokens int64, maxTokens int) (*RateLimitResult, error) {
@@ -73,27 +82,22 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 
 	now := time.Now()
 
+	// Phase 1: collect all matching limits and build INCRBY pipeline.
+	var entries []rlEntry
 	for _, limit := range limits {
 		if !limit.Enabled {
 			continue
 		}
-
-		// Check provider match
 		if limit.Provider != "" && limit.Provider != provider {
 			continue
 		}
-
-		// Check model match
 		if limit.Model != "" && limit.Model != model {
 			continue
 		}
-
-		// Check scope match
 		if limit.ScopeType == models.BudgetScopeAPIKey && limit.ScopeID != keyID {
 			continue
 		}
 
-		// Determine increment amount based on metric
 		var amount int64
 		switch limit.Metric {
 		case models.RateLimitMetricRPM:
@@ -101,11 +105,10 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 		case models.RateLimitMetricITPM:
 			amount = estimatedInputTokens
 		case models.RateLimitMetricOTPM:
-			amount = int64(maxTokens) // worst-case reservation
+			amount = int64(maxTokens)
 		default:
 			continue
 		}
-
 		if amount <= 0 {
 			continue
 		}
@@ -114,55 +117,147 @@ func (l *Limiter) Check(ctx context.Context, tenantID uint, keyID, provider, mod
 		if windowSec <= 0 {
 			windowSec = 60
 		}
-
 		windowID := now.Unix() / int64(windowSec)
 		key := l.counterKey(tenantID, limit, windowID)
 
-		// Atomically increment and check
-		newVal, err := l.rdb.IncrBy(ctx, key, amount).Result()
+		entries = append(entries, rlEntry{
+			limit:     limit,
+			key:       key,
+			amount:    amount,
+			windowSec: windowSec,
+			windowID:  windowID,
+		})
+	}
+
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	// Fast path: single limit — no pipeline overhead needed.
+	if len(entries) == 1 {
+		return l.checkSingle(ctx, tenantID, keyID, provider, model, now, entries[0])
+	}
+
+	// Phase 2: pipeline all INCRBYs in one round trip.
+	incrPipe := l.rdb.Pipeline()
+	incrCmds := make([]*redis.IntCmd, len(entries))
+	for i, e := range entries {
+		incrCmds[i] = incrPipe.IncrBy(ctx, e.key, e.amount)
+	}
+	if _, err := incrPipe.Exec(ctx); err != nil && err != redis.Nil {
+		slog.Error("ratelimit_pipeline_incrby_error", "error", err)
+		return nil, nil // don't block on Redis errors
+	}
+
+	// Phase 3: inspect results, collect EXPIRE / rollback commands.
+	postPipe := l.rdb.Pipeline()
+	var exceeded *RateLimitResult
+	exceededIdx := -1
+
+	for i, e := range entries {
+		newVal, err := incrCmds[i].Result()
 		if err != nil {
 			slog.Error("ratelimit_redis_incrby_error", "error", err)
-			continue // don't block on Redis errors
+			continue
 		}
 
-		// Set expiry on first increment (2x window to handle edge cases)
-		if newVal == amount {
-			l.rdb.Expire(ctx, key, time.Duration(windowSec*2)*time.Second)
+		// Set expiry on first increment (2x window to handle edge cases).
+		if newVal == e.amount {
+			postPipe.Expire(ctx, e.key, time.Duration(e.windowSec*2)*time.Second)
 		}
 
-		if newVal > limit.LimitValue {
-			// Exceeded — compute retry-after
-			windowEnd := (windowID + 1) * int64(windowSec)
+		if exceeded == nil && newVal > e.limit.LimitValue {
+			exceededIdx = i
+			windowEnd := (e.windowID + 1) * int64(e.windowSec)
 			retryAfterMs := (windowEnd - now.Unix()) * 1000
 
-			// Roll back the increment since we're rejecting the request
-			l.rdb.DecrBy(ctx, key, amount)
-
-			slog.Warn("rate_limit_exceeded",
-				"tenant_id", tenantID, "key_id", keyID,
-				"provider", provider, "model", model,
-				"metric", limit.Metric, "limit", limit.LimitValue,
-				"used", newVal-amount, "retry_after_ms", retryAfterMs,
-			)
-			if l.notifQueue != nil {
-				_ = l.notifQueue.Publish(ctx, NotificationEventMsg{
-					TenantID:  tenantID,
-					EventType: models.EventRateLimitExceeded,
-					KeyID:     keyID,
-					Provider:  provider,
-					Model:     model,
-					Details:   fmt.Sprintf(`{"metric":"%s","limit":%d,"used":%d}`, limit.Metric, limit.LimitValue, newVal-amount),
-				})
-			}
-
-			return &RateLimitResult{
+			exceeded = &RateLimitResult{
 				Exceeded:     true,
-				Metric:       limit.Metric,
-				Limit:        limit.LimitValue,
-				Used:         newVal - amount,
+				Metric:       e.limit.Metric,
+				Limit:        e.limit.LimitValue,
+				Used:         newVal - e.amount,
 				RetryAfterMs: retryAfterMs,
-			}, nil
+			}
 		}
+	}
+
+	if exceeded != nil {
+		// Roll back ALL incremented counters since the request is rejected.
+		for i, e := range entries {
+			if incrCmds[i].Err() == nil {
+				postPipe.DecrBy(ctx, e.key, e.amount)
+			}
+		}
+	}
+
+	postPipe.Exec(ctx)
+
+	if exceeded != nil {
+		e := entries[exceededIdx]
+		slog.Warn("rate_limit_exceeded",
+			"tenant_id", tenantID, "key_id", keyID,
+			"provider", provider, "model", model,
+			"metric", e.limit.Metric, "limit", e.limit.LimitValue,
+			"used", exceeded.Used, "retry_after_ms", exceeded.RetryAfterMs,
+		)
+		if l.notifQueue != nil {
+			_ = l.notifQueue.Publish(ctx, NotificationEventMsg{
+				TenantID:  tenantID,
+				EventType: models.EventRateLimitExceeded,
+				KeyID:     keyID,
+				Provider:  provider,
+				Model:     model,
+				Details:   fmt.Sprintf(`{"metric":"%s","limit":%d,"used":%d}`, e.limit.Metric, e.limit.LimitValue, exceeded.Used),
+			})
+		}
+		return exceeded, nil
+	}
+
+	return nil, nil
+}
+
+// checkSingle handles the common case of a single matching rate limit without pipeline overhead.
+func (l *Limiter) checkSingle(ctx context.Context, tenantID uint, keyID, provider, model string, now time.Time, e rlEntry) (*RateLimitResult, error) {
+	newVal, err := l.rdb.IncrBy(ctx, e.key, e.amount).Result()
+	if err != nil {
+		slog.Error("ratelimit_redis_incrby_error", "error", err)
+		return nil, nil
+	}
+
+	if newVal == e.amount {
+		l.rdb.Expire(ctx, e.key, time.Duration(e.windowSec*2)*time.Second)
+	}
+
+	if newVal > e.limit.LimitValue {
+		windowEnd := (e.windowID + 1) * int64(e.windowSec)
+		retryAfterMs := (windowEnd - now.Unix()) * 1000
+
+		l.rdb.DecrBy(ctx, e.key, e.amount)
+
+		slog.Warn("rate_limit_exceeded",
+			"tenant_id", tenantID, "key_id", keyID,
+			"provider", provider, "model", model,
+			"metric", e.limit.Metric, "limit", e.limit.LimitValue,
+			"used", newVal-e.amount, "retry_after_ms", retryAfterMs,
+		)
+		if l.notifQueue != nil {
+			_ = l.notifQueue.Publish(ctx, NotificationEventMsg{
+				TenantID:  tenantID,
+				EventType: models.EventRateLimitExceeded,
+				KeyID:     keyID,
+				Provider:  provider,
+				Model:     model,
+				Details:   fmt.Sprintf(`{"metric":"%s","limit":%d,"used":%d}`, e.limit.Metric, e.limit.LimitValue, newVal-e.amount),
+			})
+		}
+
+		return &RateLimitResult{
+			Exceeded:     true,
+			Metric:       e.limit.Metric,
+			Limit:        e.limit.LimitValue,
+			Used:         newVal - e.amount,
+			RetryAfterMs: retryAfterMs,
+		}, nil
 	}
 
 	return nil, nil
@@ -194,6 +289,8 @@ func (l *Limiter) Reconcile(ctx context.Context, tenantID uint, keyID, provider,
 
 	now := time.Now()
 
+	pipe := l.rdb.Pipeline()
+	cmds := 0
 	for _, limit := range limits {
 		if !limit.Enabled || limit.Metric != models.RateLimitMetricOTPM {
 			continue
@@ -216,7 +313,11 @@ func (l *Limiter) Reconcile(ctx context.Context, tenantID uint, keyID, provider,
 		windowID := now.Unix() / int64(windowSec)
 		key := l.counterKey(tenantID, limit, windowID)
 
-		l.rdb.DecrBy(ctx, key, diff)
+		pipe.DecrBy(ctx, key, diff)
+		cmds++
+	}
+	if cmds > 0 {
+		pipe.Exec(ctx)
 	}
 }
 

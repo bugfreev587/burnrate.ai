@@ -560,6 +560,10 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		})
 	}
 
+	if s.pricingEngine != nil {
+		s.pricingEngine.InvalidateBudgetCache(c.Request.Context(), tenantID)
+	}
+
 	c.JSON(http.StatusOK, budgetLimit)
 }
 
@@ -586,6 +590,11 @@ func (s *Server) handleDeleteBudget(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "budget limit not found"})
 		return
 	}
+
+	if s.pricingEngine != nil {
+		s.pricingEngine.InvalidateBudgetCache(c.Request.Context(), tenantID)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 

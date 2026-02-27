@@ -31,6 +31,8 @@ type NotificationEventMsg struct {
 	Details   string
 }
 
+const budgetLimitsCacheTTL = 60 * time.Second
+
 // PricingEngine orchestrates the full pricing pipeline:
 // UsageEvent → Resolve → Calculate → Markup → Budget Check → Ledger Write
 type PricingEngine struct {
@@ -54,6 +56,44 @@ func NewPricingEngine(db *gorm.DB, rdb *redis.Client) *PricingEngine {
 // SetNotificationQueue sets the notification publisher for budget/warning events.
 func (e *PricingEngine) SetNotificationQueue(nq NotificationPublisher) {
 	e.notifQueue = nq
+}
+
+// loadBudgetLimits loads budget limits for a tenant, with 60s Redis cache.
+func (e *PricingEngine) loadBudgetLimits(ctx context.Context, tenantID uint) ([]models.BudgetLimit, error) {
+	cacheKey := fmt.Sprintf("bl:config:%d", tenantID)
+
+	if e.rdb != nil {
+		if val, err := e.rdb.Get(ctx, cacheKey).Result(); err == nil {
+			var limits []models.BudgetLimit
+			if json.Unmarshal([]byte(val), &limits) == nil {
+				return limits, nil
+			}
+		}
+	}
+
+	var limits []models.BudgetLimit
+	if err := e.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Find(&limits).Error; err != nil {
+		return nil, err
+	}
+
+	if e.rdb != nil {
+		if data, err := json.Marshal(limits); err == nil {
+			e.rdb.Set(ctx, cacheKey, string(data), budgetLimitsCacheTTL)
+		}
+	}
+
+	return limits, nil
+}
+
+// InvalidateBudgetCache removes the cached budget limits for a tenant.
+func (e *PricingEngine) InvalidateBudgetCache(ctx context.Context, tenantID uint) {
+	if e.rdb == nil {
+		return
+	}
+	cacheKey := fmt.Sprintf("bl:config:%d", tenantID)
+	e.rdb.Del(ctx, cacheKey)
 }
 
 // Process runs the full pricing pipeline for a usage event.
@@ -156,16 +196,17 @@ func (e *PricingEngine) resolveMarkups(ctx context.Context, event UsageEvent, re
 // limit is at or above its alert threshold; the error is non-nil when a blocking
 // limit is exceeded.
 func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID string, provider string, now time.Time) (*BudgetStatus, error) {
+	allLimits, err := e.loadBudgetLimits(ctx, tenantID)
+	if err != nil {
+		return nil, nil // don't block on cache/DB errors
+	}
+
+	// Filter to account-scope limits and key-scope limits matching this keyID.
 	var limits []models.BudgetLimit
-	query := e.db.WithContext(ctx).
-		Where("tenant_id = ? AND (scope_type = ? OR (scope_type = ? AND scope_id = ?))",
-			tenantID,
-			models.BudgetScopeAccount,
-			models.BudgetScopeAPIKey, keyID,
-		).
-		Find(&limits)
-	if query.Error != nil {
-		return nil, nil // don't block on DB errors
+	for _, l := range allLimits {
+		if l.ScopeType == models.BudgetScopeAccount || (l.ScopeType == models.BudgetScopeAPIKey && l.ScopeID == keyID) {
+			limits = append(limits, l)
+		}
 	}
 
 	var nearestStatus *BudgetStatus
@@ -288,18 +329,20 @@ func (e *PricingEngine) ReserveSpend(ctx context.Context, tenantID uint, keyID, 
 	now := time.Now()
 	amount := reservedAmount.InexactFloat64()
 
-	// Increment reservation counters for all periods
+	// Increment reservation counters for all periods using a pipeline.
+	pipe := e.rdb.Pipeline()
 	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
 		key := e.reservationRedisKey(tenantID, period, now)
-		e.rdb.IncrByFloat(ctx, key, amount)
-		e.rdb.ExpireAt(ctx, key, periodEnd(period, now))
+		pipe.IncrByFloat(ctx, key, amount)
+		pipe.ExpireAt(ctx, key, periodEnd(period, now))
 
 		if keyID != "" {
 			keyKey := e.reservationRedisKeyForKey(keyID, period, now)
-			e.rdb.IncrByFloat(ctx, keyKey, amount)
-			e.rdb.ExpireAt(ctx, keyKey, periodEnd(period, now))
+			pipe.IncrByFloat(ctx, keyKey, amount)
+			pipe.ExpireAt(ctx, keyKey, periodEnd(period, now))
 		}
 	}
+	pipe.Exec(ctx)
 
 	return reservedAmount, nil
 }
@@ -314,15 +357,17 @@ func (e *PricingEngine) ReleaseReservation(ctx context.Context, tenantID uint, k
 	now := time.Now()
 	amount := reservedAmount.InexactFloat64()
 
+	pipe := e.rdb.Pipeline()
 	for _, period := range []string{models.PeriodMonthly, models.PeriodWeekly, models.PeriodDaily} {
 		key := e.reservationRedisKey(tenantID, period, now)
-		e.rdb.IncrByFloat(ctx, key, -amount)
+		pipe.IncrByFloat(ctx, key, -amount)
 
 		if keyID != "" {
 			keyKey := e.reservationRedisKeyForKey(keyID, period, now)
-			e.rdb.IncrByFloat(ctx, keyKey, -amount)
+			pipe.IncrByFloat(ctx, keyKey, -amount)
 		}
 	}
+	pipe.Exec(ctx)
 }
 
 // getReserved returns the current reservation amount from Redis.
