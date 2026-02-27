@@ -1,0 +1,31 @@
+environment: test
+
+server:
+  host: "0.0.0.0"
+  port: "8080"
+  cors_origins:
+    - "*"
+  rate_limit_per_minute: 120
+
+postgres:
+  dsn: ""  # set via POSTGRES_DB_URL env var
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+security:
+  api_key_pepper: ""  # set via API_KEY_PEPPER env var
+  api_key_cache_ttl_seconds: 300
+  fingerprint_ttl_days: 30  # how long a fingerprint→tenant_id mapping lives in Redis
+  provider_key_encryption_key: ""  # set via PROVIDER_KEY_ENCRYPTION_KEY env var
+  auth_sync_secret: ""  # set via AUTH_SYNC_SECRET env var
+
+stripe:
+  secret_key: ""
+  webhook_secret: ""
+  price_pro_monthly: ""
+  price_team_monthly: ""
+  price_business_monthly: ""
+  portal_configuration_id: ""

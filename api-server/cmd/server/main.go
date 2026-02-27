@@ -32,9 +32,25 @@ func main() {
 	flush := logging.Init(os.Getenv("BETTERSTACK_SOURCE_TOKEN"))
 	defer flush()
 
-	confFile := "/app/conf/api-server-prod.yaml"
+	env := strings.ToLower(os.Getenv("ENVIRONMENT"))
+	confFile := ""
+	switch env {
+	case "staging":
+		confFile = "/app/conf/api-server-staging.yaml"
+	case "test":
+		confFile = "/app/conf/api-server-test.yaml"
+	default:
+		confFile = "/app/conf/api-server-prod.yaml"
+	}
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
-		confFile = "./conf/api-server-prod.yaml"
+		switch env {
+		case "staging":
+			confFile = "./conf/api-server-staging.yaml"
+		case "test":
+			confFile = "./conf/api-server-test.yaml"
+		default:
+			confFile = "./conf/api-server-prod.yaml"
+		}
 	}
 	slog.Info("loading config", "file", confFile)
 
