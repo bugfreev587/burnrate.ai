@@ -35,6 +35,53 @@ const (
 
 var ErrProviderKeyNotFound = errors.New("provider key not found")
 var ErrNoActiveKey = errors.New("no active provider key configured")
+var ErrInvalidProviderKeyFormat = errors.New("invalid provider key format")
+
+// ValidateProviderKeyFormat checks that an API key string looks correct for
+// the declared provider. It uses well-known key prefixes to catch obvious
+// misconfigurations (e.g. storing an Anthropic key as an OpenAI key).
+// Unknown providers are silently accepted for forward-compatibility.
+func ValidateProviderKeyFormat(provider, apiKey string) error {
+	isAnthropic := strings.HasPrefix(apiKey, "sk-ant-")
+	isOpenAIShaped := strings.HasPrefix(apiKey, "sk-") && !isAnthropic
+
+	switch provider {
+	case "anthropic":
+		if !isAnthropic {
+			return fmt.Errorf("%w: anthropic keys must start with \"sk-ant-\"; the provided key does not look like an Anthropic key", ErrInvalidProviderKeyFormat)
+		}
+	case "openai":
+		if isAnthropic {
+			return fmt.Errorf("%w: the provided key looks like an Anthropic key (sk-ant-…), not an OpenAI key", ErrInvalidProviderKeyFormat)
+		}
+		if !strings.HasPrefix(apiKey, "sk-") {
+			return fmt.Errorf("%w: openai keys must start with \"sk-\"; the provided key does not look like an OpenAI key", ErrInvalidProviderKeyFormat)
+		}
+	case "gemini":
+		if isAnthropic {
+			return fmt.Errorf("%w: the provided key looks like an Anthropic key (sk-ant-…), not a Gemini key", ErrInvalidProviderKeyFormat)
+		}
+		if isOpenAIShaped {
+			return fmt.Errorf("%w: the provided key looks like an OpenAI key (sk-…), not a Gemini key", ErrInvalidProviderKeyFormat)
+		}
+	case "bedrock":
+		if isAnthropic {
+			return fmt.Errorf("%w: the provided key looks like an Anthropic key (sk-ant-…), not a Bedrock access key", ErrInvalidProviderKeyFormat)
+		}
+		if isOpenAIShaped {
+			return fmt.Errorf("%w: the provided key looks like an OpenAI key (sk-…), not a Bedrock access key", ErrInvalidProviderKeyFormat)
+		}
+	case "vertex":
+		if isAnthropic {
+			return fmt.Errorf("%w: the provided key looks like an Anthropic key (sk-ant-…), not a Vertex AI service account key", ErrInvalidProviderKeyFormat)
+		}
+		if isOpenAIShaped {
+			return fmt.Errorf("%w: the provided key looks like an OpenAI key (sk-…), not a Vertex AI service account key", ErrInvalidProviderKeyFormat)
+		}
+	}
+	// Unknown providers: skip validation (forward-compatible).
+	return nil
+}
 
 // tpsCacheEntry is the value stored under tpsCacheKey in Redis.
 // HardExpiry enforces an absolute max lifetime even for hot keys.
@@ -112,6 +159,10 @@ func (s *ProviderKeyService) invalidateTPS(ctx context.Context, tenantID uint, p
 
 // Store encrypts the plaintext key with envelope encryption and persists it.
 func (s *ProviderKeyService) Store(ctx context.Context, tenantID uint, provider, label, plaintextKey string) (*models.ProviderKey, error) {
+	if err := ValidateProviderKeyFormat(provider, plaintextKey); err != nil {
+		return nil, err
+	}
+
 	// Generate a random 32-byte DEK
 	dek := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
@@ -268,6 +319,12 @@ func (s *ProviderKeyService) GetActiveKey(ctx context.Context, tenantID uint, pr
 		return nil, fmt.Errorf("misconfigured BYOK: the active %q provider key is a TokenGate API key, not a %s key — please store the correct upstream API key", provider, provider)
 	}
 
+	// Guard: validate the key format matches the provider. This catches keys
+	// that were stored before provider key format validation was added.
+	if err := ValidateProviderKeyFormat(provider, string(plaintext)); err != nil {
+		return nil, fmt.Errorf("misconfigured BYOK: %w", err)
+	}
+
 	return plaintext, nil
 }
 
@@ -331,6 +388,10 @@ func (s *ProviderKeyService) Rotate(ctx context.Context, tenantID uint, oldKeyID
 	}
 	if oldKey.Revoked {
 		return nil, fmt.Errorf("cannot rotate an already-revoked key")
+	}
+
+	if err := ValidateProviderKeyFormat(oldKey.Provider, plaintextKey); err != nil {
+		return nil, err
 	}
 
 	// Encrypt the new key outside the transaction (no I/O inside tx).

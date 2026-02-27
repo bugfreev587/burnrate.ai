@@ -35,6 +35,11 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 		return
 	}
 
+	if err := services.ValidateProviderKeyFormat(req.Provider, req.APIKey); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Enforce plan-based provider key limit.
 	var tenant models.Tenant
 	s.postgresDB.GetDB().First(&tenant, tenantID)
@@ -58,6 +63,10 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 
 	pk, err := s.providerKeySvc.Store(c.Request.Context(), tenantID, req.Provider, req.Label, req.APIKey)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidProviderKeyFormat) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store provider key"})
 		return
 	}
@@ -187,6 +196,10 @@ func (s *Server) handleRotateProviderKey(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, services.ErrProviderKeyNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "provider key not found"})
+			return
+		}
+		if errors.Is(err, services.ErrInvalidProviderKeyFormat) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
