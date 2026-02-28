@@ -123,6 +123,80 @@ func TestTranslateAnthropicSSEToResponses(t *testing.T) {
 	}
 }
 
+func TestParseOpenAIChatCompletionsSSE(t *testing.T) {
+	// Simulate OpenAI Chat Completions SSE format with usage in the final chunk.
+	sseData := strings.Join([]string{
+		`data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","model":"gpt-4.1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","model":"gpt-4.1","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","model":"gpt-4.1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":15,"completion_tokens":7,"total_tokens":22}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	recorder := httptest.NewRecorder()
+	counts, err := ParseOpenAIChatCompletionsSSE(context.Background(), strings.NewReader(sseData), recorder)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if counts.MessageID != "chatcmpl-abc123" {
+		t.Errorf("MessageID = %q, want chatcmpl-abc123", counts.MessageID)
+	}
+	if counts.Model != "gpt-4.1" {
+		t.Errorf("Model = %q, want gpt-4.1", counts.Model)
+	}
+	if counts.InputTokens != 15 {
+		t.Errorf("InputTokens = %d, want 15", counts.InputTokens)
+	}
+	if counts.OutputTokens != 7 {
+		t.Errorf("OutputTokens = %d, want 7", counts.OutputTokens)
+	}
+
+	// All events should be passed through
+	body := recorder.Body.String()
+	if !strings.Contains(body, "chatcmpl-abc123") {
+		t.Error("expected chatcmpl-abc123 in passthrough output")
+	}
+	if !strings.Contains(body, "[DONE]") {
+		t.Error("expected [DONE] in passthrough output")
+	}
+}
+
+func TestParseOpenAIChatCompletionsSSE_NoUsage(t *testing.T) {
+	// Simulate SSE without usage data (stream_options.include_usage not set).
+	sseData := strings.Join([]string{
+		`data: {"id":"chatcmpl-xyz","object":"chat.completion.chunk","model":"gpt-4.1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl-xyz","object":"chat.completion.chunk","model":"gpt-4.1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	recorder := httptest.NewRecorder()
+	counts, err := ParseOpenAIChatCompletionsSSE(context.Background(), strings.NewReader(sseData), recorder)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if counts.MessageID != "chatcmpl-xyz" {
+		t.Errorf("MessageID = %q, want chatcmpl-xyz", counts.MessageID)
+	}
+	if counts.Model != "gpt-4.1" {
+		t.Errorf("Model = %q, want gpt-4.1", counts.Model)
+	}
+	// No usage data — tokens should be zero
+	if counts.InputTokens != 0 {
+		t.Errorf("InputTokens = %d, want 0", counts.InputTokens)
+	}
+	if counts.OutputTokens != 0 {
+		t.Errorf("OutputTokens = %d, want 0", counts.OutputTokens)
+	}
+}
+
 // mockResponseWriter is a minimal http.ResponseWriter + http.Flusher for tests.
 type mockResponseWriter struct {
 	buf     bytes.Buffer

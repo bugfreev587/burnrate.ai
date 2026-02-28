@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
@@ -389,8 +390,29 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			c.Writer.Write(respBody)
 			counts = extractTokensFromJSON(respBody)
 		}
+	} else if provider == ProviderOpenAI {
+		// OpenAI: parse response to extract token counts for billing.
+		if isSSE {
+			counts, err = ParseOpenAIChatCompletionsSSE(c.Request.Context(), resp.Body, c.Writer)
+			if err != nil {
+				slog.Error("proxy_openai_chat_sse_error", "tenant_id", tenantID, "error", err)
+			}
+		} else {
+			respBody, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				slog.Error("proxy_read_openai_response_body_error", "tenant_id", tenantID, "error", readErr)
+				return
+			}
+			c.Writer.Write(respBody)
+			counts = extractTokensFromOpenAIResponsesJSON(respBody)
+		}
+		// Generate a synthetic ID if the response didn't include one, so the
+		// usage event is always published.
+		if counts.MessageID == "" {
+			counts.MessageID = "openai_" + uuid.New().String()
+		}
 	} else {
-		// Non-Anthropic providers: pass through without token extraction for now.
+		// Other providers: pass through without token extraction.
 		if isSSE {
 			flusher, canFlush := c.Writer.(http.Flusher)
 			scanner := bufio.NewScanner(resp.Body)

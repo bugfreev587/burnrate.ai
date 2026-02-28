@@ -178,6 +178,73 @@ func extractTokensFromOpenAIResponsesJSON(body []byte) TokenCounts {
 	}
 }
 
+// ParseOpenAIChatCompletionsSSE reads SSE from OpenAI's /v1/chat/completions
+// endpoint, passes all events through to the client, and extracts token counts
+// from the final chunk's usage field (sent when stream_options.include_usage is set).
+//
+// OpenAI Chat Completions SSE format differs from the Responses API:
+//   - No "event:" field — only "data:" lines
+//   - Stream ends with "data: [DONE]"
+//   - Usage (if present) appears in the last data chunk before [DONE]
+func ParseOpenAIChatCompletionsSSE(ctx context.Context, body io.Reader, w http.ResponseWriter) (TokenCounts, error) {
+	flusher, canFlush := w.(http.Flusher)
+
+	var counts TokenCounts
+	scanner := bufio.NewScanner(body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Write raw line to client.
+		if _, err := io.WriteString(w, line+"\n"); err != nil {
+			break // client disconnected
+		}
+		if canFlush {
+			flusher.Flush()
+		}
+
+		// Parse "data:" lines for token extraction.
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" || data == "" {
+			continue
+		}
+
+		// Try to extract usage and metadata from each chunk. The final chunk
+		// with usage will overwrite earlier zero values.
+		var chunk struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+			Usage *struct {
+				PromptTokens     int64 `json:"prompt_tokens"`
+				CompletionTokens int64 `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if chunk.ID != "" {
+			counts.MessageID = chunk.ID
+		}
+		if chunk.Model != "" {
+			counts.Model = chunk.Model
+		}
+		if chunk.Usage != nil {
+			counts.InputTokens = chunk.Usage.PromptTokens
+			counts.OutputTokens = chunk.Usage.CompletionTokens
+		}
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return counts, err
+	}
+	return counts, nil
+}
+
 // isStreamingRequest checks whether the request body asks for stream: true.
 func isStreamingRequest(body []byte) bool {
 	var req struct {

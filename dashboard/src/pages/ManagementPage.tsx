@@ -693,20 +693,55 @@ export default function ManagementPage() {
                     {createdProvider === 'openai' && createdBillingMode === 'API_USAGE' && (
                       <>
                         <div className="install-step">
+                          <h4>Option A: Codex CLI</h4>
+                        </div>
+                        <div className="install-step">
                           <h4>1. Clear <code>~/.codex/config.toml</code> and paste the following config</h4>
                           <div className="cmd-box">
                             <pre>{`model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`}</pre>
                             <button className="btn btn-small btn-secondary"
                               onClick={() => copy(
                                 `model_provider = "tokengate"\n\n[model_providers.tokengate]\nname = "TokenGate Proxy"\nbase_url = "https://gateway.tokengate.to/v1"\nwire_api = "responses"\nhttp_headers = { \n  "X-Tokengate-Key" = "${newKeySecret}" \n}`,
-                                'env'
+                                'codex-config'
                               )}>
-                              {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                              {copiedID === 'codex-config' ? 'Copied!' : 'Copy'}
                             </button>
                           </div>
                         </div>
                         <div className="install-step">
                           <h4>2. Run <code>codex</code> in a code repo and select "3. Provide your own API key" if prompted, otherwise you are good to go</h4>
+                        </div>
+                        <div className="install-step" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                          <h4>Option B: Direct API Calls (curl / SDK)</h4>
+                        </div>
+                        <div className="install-step">
+                          <h4>1. Example curl request</h4>
+                          <div className="cmd-box">
+                            <pre>{`curl https://gateway.tokengate.to/v1/openai/chat/completions \\
+    -H "X-TokenGate-Key: ${newKeySecret}" \\
+    -H "Content-Type: application/json" \\
+    -d '{"model":"gpt-4.1","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
+                            <button className="btn btn-small btn-secondary"
+                              onClick={() => copy(
+                                `curl https://gateway.tokengate.to/v1/openai/chat/completions \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"gpt-4.1","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
+                                'curl-openai'
+                              )}>
+                              {copiedID === 'curl-openai' ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="install-step">
+                          <h4>2. Or set environment variables for OpenAI SDK-compatible tools</h4>
+                          <div className="cmd-box">
+                            <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`}</pre>
+                            <button className="btn btn-small btn-secondary"
+                              onClick={() => copy(
+                                `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`,
+                                'env'
+                              )}>
+                              {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
                         </div>
                       </>
                     )}
@@ -751,21 +786,39 @@ export default function ManagementPage() {
                     </div>
                   </div>
                 )}
-                {createdAuthMethod === 'BYOK' && (
+                {createdAuthMethod === 'BYOK' && !(createdProvider === 'openai' && createdBillingMode === 'API_USAGE') && (
                   <div className="install-step">
                     <h4>Test the gateway (example curl)</h4>
                     <div className="cmd-box">
-                      <pre>{`curl https://gateway.tokengate.to/v1/messages \\
+                      {createdProvider === 'openai' ? (
+                        <>
+                          <pre>{`curl https://gateway.tokengate.to/v1/openai/chat/completions \\
+    -H "X-TokenGate-Key: ${newKeySecret}" \\
+    -H "Content-Type: application/json" \\
+    -d '{"model":"gpt-4.1","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
+                          <button className="btn btn-small btn-secondary"
+                            onClick={() => copy(
+                              `curl https://gateway.tokengate.to/v1/openai/chat/completions \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"gpt-4.1","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
+                              'curl'
+                            )}>
+                            {copiedID === 'curl' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <pre>{`curl https://gateway.tokengate.to/v1/messages \\
     -H "X-TokenGate-Key: ${newKeySecret}" \\
     -H "Content-Type: application/json" \\
     -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`}</pre>
-                      <button className="btn btn-small btn-secondary"
-                        onClick={() => copy(
-                          `curl https://gateway.tokengate.to/v1/messages \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
-                          'curl'
-                        )}>
-                        {copiedID === 'curl' ? 'Copied!' : 'Copy'}
-                      </button>
+                          <button className="btn btn-small btn-secondary"
+                            onClick={() => copy(
+                              `curl https://gateway.tokengate.to/v1/messages \\\n  -H "X-TokenGate-Key: ${newKeySecret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"claude-sonnet-4-6","max_tokens":20,"messages":[{"role":"user","content":"Hello!"}]}'`,
+                              'curl'
+                            )}>
+                            {copiedID === 'curl' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
