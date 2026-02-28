@@ -21,6 +21,7 @@ const SECTIONS: Section[] = [
   { id: 'budget',         title: 'Budget Headers',                              icon: 'budget' },
   { id: 'notifications',  title: 'Notification Setup',                          icon: 'notification' },
   { id: 'troubleshoot',   title: 'Troubleshooting',                             icon: 'help' },
+  { id: 'faq',            title: 'FAQ',                                          icon: 'faq' },
 ]
 
 /* ── icon map ─────────────────────────────────────────────────────────────── */
@@ -39,6 +40,8 @@ function SectionIcon({ type }: { type: string }) {
       return <span className="ig-icon ig-icon--notification">&#x1f514;</span>
     case 'help':
       return <span className="ig-icon ig-icon--help">?</span>
+    case 'faq':
+      return <span className="ig-icon ig-icon--faq">Q</span>
     default:
       return <span className="ig-icon ig-icon--info">i</span>
   }
@@ -73,6 +76,19 @@ function KeyValue({ field, value }: { field: string; value: string }) {
 
 function StepNumber({ n }: { n: number }) {
   return <span className="ig-step-num">{n}</span>
+}
+
+function FaqItem({ question, children }: { question: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`ig-faq-item ${open ? 'ig-faq-item--open' : ''}`}>
+      <button className="ig-faq-q" onClick={() => setOpen(!open)}>
+        <span>{question}</span>
+        <span className="ig-faq-arrow">{open ? '\u25B2' : '\u25BC'}</span>
+      </button>
+      {open && <div className="ig-faq-a">{children}</div>}
+    </div>
+  )
 }
 
 function Callout({ type, children }: { type: 'info' | 'warn'; children: React.ReactNode }) {
@@ -217,7 +233,7 @@ export default function IntegrationPage() {
             </h2>
             <p className="ig-desc">
               Your developers use <strong>Claude Code</strong> with their own Anthropic subscriptions
-              (Pro, Max, Team, or Enterprise). The gateway tracks usage for visibility but does not
+              (Pro, Max). The gateway tracks usage for visibility but does not
               bill per token &mdash; costs are covered by each user's existing Anthropic plan.
             </p>
 
@@ -254,7 +270,7 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
                 <h3><StepNumber n={3} /> Run Claude Code</h3>
                 <p>Run <code>claude</code> in your terminal. When prompted to choose an authentication method, select:</p>
                 <div className="ig-select-option">
-                  1. Claude account with subscription &middot; Pro, Max, Team, or Enterprise
+                  1. Claude account with subscription &middot; Pro, Max
                 </div>
                 <p>A browser window will automatically open to complete the Anthropic login. Once authenticated, all requests are routed through the gateway and usage is recorded in your TokenGate dashboard.</p>
               </div>
@@ -657,6 +673,66 @@ export OPENAI_API_KEY="<tokengate-api-key>"
                 <div className="ig-trouble-cause">Provider key not activated</div>
                 <div className="ig-trouble-fix">Go to Provider Keys on the Management page and click Activate</div>
               </div>
+            </div>
+          </section>
+
+          {/* ── FAQ ────────────────────────────────────────────────────── */}
+          <section id="faq" ref={ref('faq')} className="ig-section">
+            <h2 className="ig-h2">
+              <SectionIcon type="faq" />
+              Frequently Asked Questions
+            </h2>
+
+            <div className="ig-faq-list">
+              <FaqItem question="How do I set environment variables?">
+                <p>TokenGate integration requires setting environment variables like <code>ANTHROPIC_BASE_URL</code> or <code>OPENAI_BASE_URL</code>. Here's how to set them on each operating system:</p>
+
+                <h4 className="ig-h4">macOS</h4>
+                <p><strong>Temporary</strong> (current terminal session only):</p>
+                <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-key>"`}</CodeBlock>
+                <p><strong>Permanent</strong> — add the export lines to your shell profile:</p>
+                <CodeBlock lang="bash">{`# For zsh (default on macOS):
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash:
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.bash_profile
+source ~/.bash_profile`}</CodeBlock>
+
+                <h4 className="ig-h4">Linux</h4>
+                <p><strong>Temporary</strong> (current terminal session only):</p>
+                <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-key>"`}</CodeBlock>
+                <p><strong>Permanent</strong> — add the export lines to your shell profile:</p>
+                <CodeBlock lang="bash">{`# For bash (most common):
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.bashrc
+source ~/.bashrc
+
+# For zsh:
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.zshrc
+source ~/.zshrc`}</CodeBlock>
+
+                <h4 className="ig-h4">Windows</h4>
+                <p><strong>Temporary</strong> (current terminal session only):</p>
+                <CodeBlock lang="powershell">{`# PowerShell:
+$env:ANTHROPIC_BASE_URL = "https://gateway.tokengate.to"
+$env:ANTHROPIC_CUSTOM_HEADERS = "X-TokenGate-Key:<your-key>"
+
+# Command Prompt (cmd):
+set ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
+                <p><strong>Permanent</strong> — use the System Properties GUI or PowerShell:</p>
+                <CodeBlock lang="powershell">{`# PowerShell (permanent for current user):
+[System.Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "https://gateway.tokengate.to", "User")
+
+# Or: Settings > System > About > Advanced system settings
+#   > Environment Variables > New (User variable)`}</CodeBlock>
+
+                <Callout type="info">
+                  After setting permanent environment variables, restart your terminal (or open a new one) for the changes to take effect.
+                </Callout>
+              </FaqItem>
             </div>
           </section>
         </main>
