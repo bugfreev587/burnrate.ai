@@ -136,6 +136,20 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		return
 	}
 
+	// Extract provider key hint (masked) for audit display.
+	var providerKeyHint string
+	if apiUsageBilled {
+		var rawKey string
+		if byokKey != nil {
+			rawKey = string(byokKey)
+		} else if v := c.Request.Header.Get("x-api-key"); v != "" {
+			rawKey = v
+		} else if v := c.Request.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
+			rawKey = strings.TrimPrefix(v, "Bearer ")
+		}
+		providerKeyHint = models.MaskKey(rawKey)
+	}
+
 	// Measure only TokenGate's own overhead, excluding upstream provider time.
 	preUpstreamMs := time.Since(start).Milliseconds()
 
@@ -170,7 +184,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
 	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,

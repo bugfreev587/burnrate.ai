@@ -212,7 +212,7 @@ func (h *ProxyHandler) reconcilePostResponse(ctx context.Context, tenantID uint,
 }
 
 // publishUsageEvent publishes a usage event to Redis Streams (fire-and-forget).
-func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, latencyMs int64, ts time.Time) {
+func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, providerKeyHint string, latencyMs int64, ts time.Time) {
 	if tenantID == 0 {
 		return
 	}
@@ -229,6 +229,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 		CacheCreationTokens: counts.CacheCreationTokens,
 		CacheReadTokens:     counts.CacheReadTokens,
 		MessageID:           counts.MessageID,
+		ProviderKeyHint:     providerKeyHint,
 		LatencyMs:           latencyMs,
 		Timestamp:           ts,
 		APIUsageBilled:      billed,
@@ -305,6 +306,21 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	// Extract provider key hint (masked) for audit display.
+	var providerKeyHint string
+	if apiUsageBilled {
+		var rawKey string
+		if byokKey != nil {
+			rawKey = string(byokKey)
+		} else if v := c.Request.Header.Get("x-api-key"); v != "" {
+			rawKey = v
+		} else if v := c.Request.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
+			rawKey = strings.TrimPrefix(v, "Bearer ")
+		}
+		providerKeyHint = models.MaskKey(rawKey)
+	}
+
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
 	if c.Request.URL.RawQuery != "" {
@@ -407,7 +423,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	go func() {
 		bgCtx := context.Background()
 		h.reconcilePostResponse(bgCtx, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
-		h.publishUsageEvent(bgCtx, tenantID, keyIDStr, provider, counts, apiUsageBilled, gatewayMs, now)
+		h.publishUsageEvent(bgCtx, tenantID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 	}()
 
 	slog.Info("proxy_request_completed",

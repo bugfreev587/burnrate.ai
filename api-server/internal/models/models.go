@@ -172,10 +172,24 @@ type TenantProviderSettings struct {
 	UpdatedAt     time.Time
 }
 
+// MaskKey returns a masked version of an API key for display purposes.
+// For keys >= 22 chars: first 15 + "..." + last 4. Otherwise: first 4 + "..." + last 4.
+// Returns empty string for empty input.
+func MaskKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) >= 22 {
+		return key[:15] + "..." + key[len(key)-4:]
+	}
+	if len(key) <= 8 {
+		return key[:1] + "..." + key[len(key)-1:]
+	}
+	return key[:4] + "..." + key[len(key)-4:]
+}
+
 // UsageLog records one LLM request reported by the claude-code agent.
 // request_id is an idempotency key; duplicate submissions are ignored.
-// api_key_fingerprint is derived from the client's X-Api-Key header ("ak:<sha256-hex>")
-// and used for stable cross-session audit attribution; raw key values are never stored.
 type UsageLog struct {
 	ID                  uint            `gorm:"primaryKey"                              json:"id"`
 	TenantID            uint            `gorm:"index"                                   json:"tenant_id"`
@@ -190,7 +204,7 @@ type UsageLog struct {
 	Cost                decimal.Decimal `gorm:"type:numeric(20,8)"                      json:"cost"`
 	RequestID           string          `gorm:"column:request_id;uniqueIndex"           json:"request_id"`
 	KeyID               string          `gorm:"column:key_id;size:64;index"              json:"key_id"`
-	APIKeyFingerprint   string          `gorm:"column:api_key_fingerprint;size:75;index" json:"api_key_fingerprint"`
+	ProviderKeyHint     string          `gorm:"column:provider_key_hint;size:30"         json:"provider_key_hint"`
 	CreatedAt           time.Time       `gorm:"index"                                   json:"created_at"`
 	LatencyMs           int64           `gorm:"column:latency_ms;default:0"                         json:"latency_ms"`
 	APIUsageBilled      bool            `gorm:"column:api_usage_billed;not null;default:false;index" json:"api_usage_billed"`

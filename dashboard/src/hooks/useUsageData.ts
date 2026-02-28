@@ -52,7 +52,7 @@ export interface UsageLog {
   reasoning_tokens: number
   cost: string   // decimal.Decimal serialises as a JSON string, e.g. "0.00123400"
   request_id: string | null
-  api_key_fingerprint: string
+  provider_key_hint: string
   created_at: string
   api_usage_billed: boolean
   key_label: string

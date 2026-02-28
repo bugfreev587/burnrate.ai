@@ -105,9 +105,9 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	provider := fmt.Sprintf("%v", v["provider"])
 	model := fmt.Sprintf("%v", v["model"])
 	messageID := fmt.Sprintf("%v", v["message_id"])
-	apiKeyFingerprint := fmt.Sprintf("%v", v["api_key_fingerprint"])
-	if apiKeyFingerprint == "<nil>" {
-		apiKeyFingerprint = ""
+	providerKeyHint := fmt.Sprintf("%v", v["provider_key_hint"])
+	if providerKeyHint == "<nil>" {
+		providerKeyHint = ""
 	}
 	apiUsageBilled := fmt.Sprintf("%v", v["api_usage_billed"]) == "true"
 	latencyMs, _ := strconv.ParseInt(fmt.Sprintf("%v", v["latency_ms"]), 10, 64)
@@ -152,7 +152,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 		Cost:                result.FinalCost,
 		RequestID:           messageID,
 		KeyID:               keyID,
-		APIKeyFingerprint:   apiKeyFingerprint,
+		ProviderKeyHint:     providerKeyHint,
 		CreatedAt:           ts,
 		APIUsageBilled:      apiUsageBilled,
 	}

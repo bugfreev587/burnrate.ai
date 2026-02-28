@@ -68,6 +68,11 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	db.Exec("DROP INDEX IF EXISTS idx_tenants_slug")
 	db.Exec("ALTER TABLE tenants DROP COLUMN IF EXISTS slug")
 
+	// One-time: replace api_key_fingerprint with provider_key_hint on usage_logs.
+	// GORM AutoMigrate adds provider_key_hint; we just need to drop the old column and its index.
+	db.Exec("DROP INDEX IF EXISTS idx_usage_logs_api_key_fingerprint")
+	db.Exec("ALTER TABLE usage_logs DROP COLUMN IF EXISTS api_key_fingerprint")
+
 	// Auto-migrate schema (in dependency order)
 	if err := db.AutoMigrate(
 		&models.Tenant{},
