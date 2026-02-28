@@ -261,6 +261,7 @@ export default function IntegrationPage() {
                 <p>Set the following environment variables:</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
 export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlock>
+                <span className="form-hint"><a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Don't know how to set environment variables?</a></span>
                 <Callout type="warn">
                   Do <strong>NOT</strong> include <code>/v1</code> in <code>ANTHROPIC_BASE_URL</code>. The Anthropic SDK appends <code>/v1/messages</code> automatically.
                 </Callout>
@@ -312,6 +313,7 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
                 <p>Set the following environment variables:</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
 export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlock>
+                <span className="form-hint"><a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Don't know how to set environment variables?</a></span>
                 <Callout type="warn">
                   Do <strong>NOT</strong> include <code>/v1</code> in <code>ANTHROPIC_BASE_URL</code>. The Anthropic SDK appends <code>/v1/messages</code> automatically.
                 </Callout>
@@ -527,6 +529,7 @@ http_headers = {
                 <CodeBlock lang="bash">{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai
 export OPENAI_API_KEY="<tokengate-api-key>"
 # No separate OpenAI key needed — the gateway uses your stored provider key`}</CodeBlock>
+                <span className="form-hint"><a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Don't know how to set environment variables?</a></span>
               </div>
             </div>
           </section>
