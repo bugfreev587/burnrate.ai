@@ -355,7 +355,7 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
                 <h3><StepNumber n={1} /> Add a Provider Key (admin, once)</h3>
                 <ol className="ig-ol">
                   <li>Go to the <strong>Management</strong> page, find the <strong>Provider Keys</strong> section.</li>
-                  <li>Click <strong>Add Provider Key</strong>, select <strong>Anthropic</strong>, and paste your <code>sk-ant-...</code> key.</li>
+                  <li>Click <strong>Add Provider Key</strong>, select <strong>Anthropic</strong>, and paste your <code>sk-ant-...</code> key. <a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Where do I find my Anthropic API key?</a></li>
                   <li>Click <strong>Activate</strong> on the newly created key.</li>
                 </ol>
               </div>
@@ -420,6 +420,7 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
 
               <div className="ig-step">
                 <h3><StepNumber n={2} /> Developer Setup (each machine)</h3>
+                <p>On MacOS:</p>
                 <p>Edit (or create) <code>~/.codex/config.toml</code> and paste the following at the top:</p>
                 <CodeBlock lang="toml">{`model_provider = "tokengate"
 
@@ -481,7 +482,7 @@ http_headers = {
                 <h3><StepNumber n={1} /> Add a Provider Key (admin, once)</h3>
                 <ol className="ig-ol">
                   <li>Go to the <strong>Management</strong> page, find the <strong>Provider Keys</strong> section.</li>
-                  <li>Click <strong>Add Provider Key</strong>, select <strong>OpenAI</strong>, and paste your <code>sk-...</code> key.</li>
+                  <li>Click <strong>Add Provider Key</strong>, select <strong>OpenAI</strong>, and paste your <code>sk-...</code> key. <a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Where do I find my OpenAI API key?</a></li>
                   <li>Click <strong>Activate</strong> on the newly created key.</li>
                 </ol>
               </div>
@@ -738,6 +739,32 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
 
                 <Callout type="info">
                   After setting permanent environment variables, restart your terminal (or open a new one) for the changes to take effect.
+                </Callout>
+              </FaqItem>
+
+              <FaqItem question="Where do I find my Anthropic API key?">
+                <p>You can create and manage Anthropic API keys from the <strong>Anthropic Console</strong>:</p>
+                <ol className="ig-ol">
+                  <li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com/settings/keys</a>.</li>
+                  <li>Click <strong>Create Key</strong>.</li>
+                  <li>Give it a name (e.g. "TokenGate") and click <strong>Create Key</strong>.</li>
+                  <li>Copy the key (starts with <code>sk-ant-...</code>) — you won't be able to see it again.</li>
+                </ol>
+                <Callout type="warn">
+                  Store the key securely. If you lose it, you'll need to create a new one. In TokenGate, paste it into the <strong>Provider Keys</strong> section on the Management page.
+                </Callout>
+              </FaqItem>
+
+              <FaqItem question="Where do I find my OpenAI API key?">
+                <p>You can create and manage OpenAI API keys from the <strong>OpenAI Platform</strong>:</p>
+                <ol className="ig-ol">
+                  <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a>.</li>
+                  <li>Click <strong>Create new secret key</strong>.</li>
+                  <li>Give it a name (e.g. "TokenGate") and click <strong>Create secret key</strong>.</li>
+                  <li>Copy the key (starts with <code>sk-...</code>) — you won't be able to see it again.</li>
+                </ol>
+                <Callout type="warn">
+                  Store the key securely. If you lose it, you'll need to create a new one. In TokenGate, paste it into the <strong>Provider Keys</strong> section on the Management page.
                 </Callout>
               </FaqItem>
             </div>
