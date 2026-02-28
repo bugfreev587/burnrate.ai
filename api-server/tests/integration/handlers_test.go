@@ -25,9 +25,10 @@ import (
 )
 
 var (
-	testDB     *gorm.DB
-	testRouter http.Handler
-	testPepper = []byte("integration-test-pepper-32bytes!")
+	testDB             *gorm.DB
+	testRouter         http.Handler
+	testPepper         = []byte("integration-test-pepper-32bytes!")
+	testProviderKeySvc *services.ProviderKeyService
 )
 
 func TestMain(m *testing.M) {
@@ -77,11 +78,19 @@ func TestMain(m *testing.M) {
 	rateLimiter := ratelimit.NewLimiter(testDB, nil)
 	pdb := db.NewFromDB(testDB)
 
+	// 32-byte hex key for provider key encryption in tests.
+	providerKeySvc, err := services.NewProviderKeyService(testDB, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "provider key svc: %v\n", err)
+		os.Exit(1)
+	}
+	testProviderKeySvc = providerKeySvc
+
 	srv := api.NewServer(
 		cfg, pdb,
 		nil, // rdb
 		apiKeySvc, usageSvc, pricingEngine,
-		nil, // providerKeySvc
+		providerKeySvc,
 		nil, // proxyHandler
 		rateLimiter,
 		stripeSvc,
@@ -499,6 +508,63 @@ func TestCreateAPIKey_PlanLimitReached(t *testing.T) {
 	resp := testutil.ParseJSON(t, w2)
 	if resp["error"] != "plan_limit_reached" {
 		t.Errorf("error = %v, want plan_limit_reached", resp["error"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BYOK provider key enforcement
+// ---------------------------------------------------------------------------
+
+func TestCreateAPIKey_BYOK_NoProviderKey(t *testing.T) {
+	cleanup(t)
+	testutil.SeedTenant(t, testDB, "BYOK Co", "user_byok1", "byok1@example.com")
+
+	body := `{
+		"label":"byok-no-key",
+		"provider":"anthropic",
+		"auth_method":"BYOK",
+		"billing_mode":"API_USAGE"
+	}`
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", body, map[string]string{
+		"X-User-ID": "user_byok1",
+	})
+	if w.Code != 422 {
+		t.Fatalf("POST BYOK without provider key = %d, want 422; body: %s", w.Code, w.Body.String())
+	}
+	resp := testutil.ParseJSON(t, w)
+	if resp["error"] != "no_active_provider_key" {
+		t.Errorf("error = %v, want no_active_provider_key", resp["error"])
+	}
+}
+
+func TestCreateAPIKey_BYOK_WithProviderKey(t *testing.T) {
+	cleanup(t)
+	tenant, _ := testutil.SeedTenant(t, testDB, "BYOK Co", "user_byok2", "byok2@example.com")
+
+	// Store a provider key so the BYOK check passes.
+	_, err := testProviderKeySvc.Store(
+		t.Context(), tenant.ID, "anthropic", "test-key",
+		"sk-ant-api03-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+	)
+	if err != nil {
+		t.Fatalf("store provider key: %v", err)
+	}
+
+	body := `{
+		"label":"byok-with-key",
+		"provider":"anthropic",
+		"auth_method":"BYOK",
+		"billing_mode":"API_USAGE"
+	}`
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", body, map[string]string{
+		"X-User-ID": "user_byok2",
+	})
+	if w.Code != 201 {
+		t.Fatalf("POST BYOK with provider key = %d, want 201; body: %s", w.Code, w.Body.String())
+	}
+	resp := testutil.ParseJSON(t, w)
+	if resp["key_id"] == nil || resp["key_id"] == "" {
+		t.Error("expected key_id in response")
 	}
 }
 

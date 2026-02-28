@@ -58,6 +58,26 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		}
 	}
 
+	// BYOK keys require an active provider key for the same provider.
+	if req.AuthMethod == models.AuthMethodBYOK {
+		if s.providerKeySvc == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "provider key service not configured"})
+			return
+		}
+		settings, err := s.providerKeySvc.GetActiveSettings(c.Request.Context(), user.TenantID, req.Provider)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check provider key status"})
+			return
+		}
+		if settings == nil || settings.ActiveKeyID == 0 {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "no_active_provider_key",
+				"message": fmt.Sprintf("Cannot create a BYOK API key for provider %q because no active provider key exists. Please add a %s provider key first.", req.Provider, req.Provider),
+			})
+			return
+		}
+	}
+
 	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached

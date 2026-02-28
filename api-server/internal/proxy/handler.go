@@ -129,19 +129,28 @@ func (h *ProxyHandler) resolveAuth(c *gin.Context, tenantID uint, provider Provi
 	}
 	plaintextKey, err := h.providerKeySvc.GetActiveKey(c.Request.Context(), tenantID, string(provider))
 	if err != nil {
-		if !errors.Is(err, services.ErrNoActiveKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
-				"type":    "tg_internal_error",
-				"message": "Failed to retrieve provider key.",
+		if errors.Is(err, services.ErrNoActiveKey) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{
+				"type":    "tg_no_provider_key",
+				"message": "No active provider key configured for this tenant. Add a provider key or switch to pass-through auth.",
 			}})
 			return nil, false
 		}
-		return nil, true
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"type":    "tg_internal_error",
+			"message": "Failed to retrieve provider key.",
+		}})
+		return nil, false
 	}
 	if len(plaintextKey) > 0 {
 		return plaintextKey, true
 	}
-	return nil, true
+	// Key resolved but empty — treat as missing.
+	c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{
+		"type":    "tg_no_provider_key",
+		"message": "No active provider key configured for this tenant. Add a provider key or switch to pass-through auth.",
+	}})
+	return nil, false
 }
 
 // buildUpstreamRequest creates an HTTP request for the upstream provider with
