@@ -78,10 +78,10 @@ function StepNumber({ n }: { n: number }) {
   return <span className="ig-step-num">{n}</span>
 }
 
-function FaqItem({ question, children }: { question: string; children: React.ReactNode }) {
+function FaqItem({ question, children, id }: { question: string; children: React.ReactNode; id?: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className={`ig-faq-item ${open ? 'ig-faq-item--open' : ''}`}>
+    <div id={id} className={`ig-faq-item ${open ? 'ig-faq-item--open' : ''}`}>
       <button className="ig-faq-q" onClick={() => setOpen(!open)}>
         <span>{question}</span>
         <span className="ig-faq-arrow">{open ? '\u25B2' : '\u25BC'}</span>
@@ -354,8 +354,8 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
               <div className="ig-step">
                 <h3><StepNumber n={1} /> Add a Provider Key (admin, once)</h3>
                 <ol className="ig-ol">
-                  <li>Go to the <strong>Management</strong> page, find the <strong>Provider Keys</strong> section.</li>
-                  <li>Click <strong>Add Provider Key</strong>, select <strong>Anthropic</strong>, and paste your <code>sk-ant-...</code> key. <a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Where do I find my Anthropic API key?</a></li>
+                  <li>Go to the <a href="/management"><strong>Management</strong></a> page, then open the <strong>Provider Keys</strong> section.</li>
+                  <li>Click <strong>Add Provider Key</strong>, select <strong>Anthropic</strong>, and paste your <code>sk-ant-...</code> key. <a className="form-hint-link" href="/integration#faq-provider-api-keys">Where do I find my Anthropic/OpenAI API keys?</a></li>
                   <li>Click <strong>Activate</strong> on the newly created key.</li>
                 </ol>
               </div>
@@ -481,8 +481,8 @@ http_headers = {
               <div className="ig-step">
                 <h3><StepNumber n={1} /> Add a Provider Key (admin, once)</h3>
                 <ol className="ig-ol">
-                  <li>Go to the <strong>Management</strong> page, find the <strong>Provider Keys</strong> section.</li>
-                  <li>Click <strong>Add Provider Key</strong>, select <strong>OpenAI</strong>, and paste your <code>sk-...</code> key. <a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Where do I find my OpenAI API key?</a></li>
+                  <li>Go to the <a href="/management"><strong>Management</strong></a> page, then open the <strong>Provider Keys</strong> section.</li>
+                  <li>Click <strong>Add Provider Key</strong>, select <strong>OpenAI</strong>, and paste your <code>sk-...</code> key. <a className="form-hint-link" href="/integration#faq-provider-api-keys">Where do I find my Anthropic/OpenAI API keys?</a></li>
                   <li>Click <strong>Activate</strong> on the newly created key.</li>
                 </ol>
               </div>
@@ -742,21 +742,16 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
                 </Callout>
               </FaqItem>
 
-              <FaqItem question="Where do I find my Anthropic API key?">
-                <p>You can create and manage Anthropic API keys from the <strong>Anthropic Console</strong>:</p>
+              <FaqItem id="faq-provider-api-keys" question="Where do I find my Anthropic/OpenAI API keys?">
+                <p>You can create and manage provider API keys from the official provider consoles:</p>
+                <h4 className="ig-h4">Anthropic</h4>
                 <ol className="ig-ol">
                   <li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com/settings/keys</a>.</li>
                   <li>Click <strong>Create Key</strong>.</li>
                   <li>Give it a name (e.g. "TokenGate") and click <strong>Create Key</strong>.</li>
                   <li>Copy the key (starts with <code>sk-ant-...</code>) — you won't be able to see it again.</li>
                 </ol>
-                <Callout type="warn">
-                  Store the key securely. If you lose it, you'll need to create a new one. In TokenGate, paste it into the <strong>Provider Keys</strong> section on the Management page.
-                </Callout>
-              </FaqItem>
-
-              <FaqItem question="Where do I find my OpenAI API key?">
-                <p>You can create and manage OpenAI API keys from the <strong>OpenAI Platform</strong>:</p>
+                <h4 className="ig-h4">OpenAI</h4>
                 <ol className="ig-ol">
                   <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a>.</li>
                   <li>Click <strong>Create new secret key</strong>.</li>
@@ -764,7 +759,7 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
                   <li>Copy the key (starts with <code>sk-...</code>) — you won't be able to see it again.</li>
                 </ol>
                 <Callout type="warn">
-                  Store the key securely. If you lose it, you'll need to create a new one. In TokenGate, paste it into the <strong>Provider Keys</strong> section on the Management page.
+                  Store provider keys securely. If you lose a key, create a new one. In TokenGate, add it from <a href="/management"><strong>Management → Provider Keys</strong></a> using <strong>Add Provider Key</strong>.
                 </Callout>
               </FaqItem>
             </div>
