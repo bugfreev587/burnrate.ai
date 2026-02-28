@@ -693,27 +693,31 @@ export OPENAI_API_KEY="<tokengate-api-key>"
                 <h4 className="ig-h4">macOS</h4>
                 <p><strong>Temporary</strong> (current terminal session only):</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
-export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-key>"`}</CodeBlock>
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>"`}</CodeBlock>
                 <p><strong>Permanent</strong> — add the export lines to your shell profile:</p>
                 <CodeBlock lang="bash">{`# For zsh (default on macOS):
-echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.zshrc
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>"' >> ~/.zshrc
 source ~/.zshrc
 
 # For bash:
-echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.bash_profile
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>"' >> ~/.bash_profile
 source ~/.bash_profile`}</CodeBlock>
 
                 <h4 className="ig-h4">Linux</h4>
                 <p><strong>Temporary</strong> (current terminal session only):</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
-export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-key>"`}</CodeBlock>
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>""`}</CodeBlock>
                 <p><strong>Permanent</strong> — add the export lines to your shell profile:</p>
                 <CodeBlock lang="bash">{`# For bash (most common):
-echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.bashrc
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>"' >> ~/.bashrc
 source ~/.bashrc
 
 # For zsh:
-echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to' >> ~/.zshrc
+echo 'export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
+export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<your-api-key>"' >> ~/.zshrc
 source ~/.zshrc`}</CodeBlock>
 
                 <h4 className="ig-h4">Windows</h4>
