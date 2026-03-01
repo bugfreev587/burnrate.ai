@@ -35,9 +35,10 @@ export function useRateLimits(pollInterval?: number) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchLimits = useCallback(async (silent = false) => {
+    if (!localStorage.getItem('user_id')) return
     if (!silent) { setLoading(true); setError(null) }
     try {
-      const res = await apiFetch('/v1/admin/rate-limits')
+      const res = await apiFetch('/v1/rate-limits')
       if (!res.ok) throw new Error('Failed to fetch rate limits')
       const data = await res.json()
       setLimits(data.rate_limits || [])

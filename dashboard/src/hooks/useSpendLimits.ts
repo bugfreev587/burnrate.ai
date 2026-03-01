@@ -35,10 +35,11 @@ export function useSpendLimits() {
   const [error, setError] = useState<string | null>(null)
 
   const fetchLimits = useCallback(async () => {
+    if (!localStorage.getItem('user_id')) return
     setLoading(true)
     setError(null)
     try {
-      const res = await apiFetch('/v1/admin/budget')
+      const res = await apiFetch('/v1/budget')
       if (!res.ok) throw new Error('Failed to fetch spend limits')
       const data = await res.json()
       setLimits(data.budget_limits || [])
