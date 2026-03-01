@@ -67,6 +67,7 @@ export default function ManagementPage() {
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
   const [keyLimit, setKeyLimit] = useState<number | null>(null)
   const [providerKeyLimit, setProviderKeyLimit] = useState<number | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<ProviderKey | null>(null)
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -304,10 +305,10 @@ export default function ManagementPage() {
     }
   }
 
-  const handleRevokeProviderKey = async (id: number) => {
-    if (!confirm('Revoke this provider key? Any proxied requests using it will fail.')) return
+  const confirmRevokeProviderKey = async () => {
+    if (!revokeTarget) return
     try {
-      const res = await apiFetch(`/v1/admin/provider_keys/${id}`, {
+      const res = await apiFetch(`/v1/admin/provider_keys/${revokeTarget.id}`, {
         method: 'DELETE',
       })
       if (!res.ok) {
@@ -315,9 +316,11 @@ export default function ManagementPage() {
         throw new Error(d.error ?? 'Failed to revoke key')
       }
       showSuccess('Provider key revoked')
+      setRevokeTarget(null)
       fetchProviderKeys()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to revoke provider key')
+      setRevokeTarget(null)
     }
   }
 
@@ -593,7 +596,7 @@ export default function ManagementPage() {
                           </button>
                         )}
                         <button className="btn btn-small btn-danger"
-                          onClick={() => handleRevokeProviderKey(k.id)}>
+                          onClick={() => setRevokeTarget(k)}>
                           Revoke
                         </button>
                       </td>
@@ -1280,6 +1283,38 @@ export default function ManagementPage() {
           </div>
         </div>
       )}
+
+      {/* ── Revoke Provider Key Confirm Modal ──────────────────────────────── */}
+      {revokeTarget && (() => {
+        const affectedCount = apiKeys.filter(k => k.auth_method === 'BYOK' && k.provider === revokeTarget.provider).length
+        const providerLabel = revokeTarget.provider === 'openai' ? 'OpenAI' : 'Anthropic'
+        return (
+          <div className="modal-overlay" onClick={() => setRevokeTarget(null)}>
+            <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+              <div className="modal-hdr"><h2>Revoke Provider Key</h2></div>
+              <div className="modal-body">
+                {revokeTarget.is_active && affectedCount > 0 ? (
+                  <div className="warn-box">
+                    <span className="warn-icon">!</span>
+                    <p>This is the active key for <strong>{providerLabel}</strong>. Revoking it will break <strong>{affectedCount}</strong> BYOK API key{affectedCount !== 1 ? 's' : ''} — proxied requests will fail until a new key is activated.</p>
+                  </div>
+                ) : revokeTarget.is_active ? (
+                  <div className="warn-box">
+                    <span className="warn-icon">!</span>
+                    <p>This is the active key for <strong>{providerLabel}</strong>. Revoking it will deactivate {providerLabel} proxying.</p>
+                  </div>
+                ) : (
+                  <p>Revoke provider key &ldquo;{revokeTarget.label}&rdquo;? This cannot be undone.</p>
+                )}
+              </div>
+              <div className="modal-ftr">
+                <button className="btn btn-secondary" onClick={() => setRevokeTarget(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={confirmRevokeProviderKey}>Revoke</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
