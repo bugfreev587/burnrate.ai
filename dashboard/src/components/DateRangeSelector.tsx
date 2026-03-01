@@ -67,23 +67,24 @@ export default function DateRangeSelector({ config, value, onChange }: Props) {
 
   return (
     <div className="drs-root">
-      <div className="drs-dropdown">
-        {presets.map(p => {
-          const isSelected = selectedPreset === p.key
-          return (
-            <button
-              key={p.key}
-              className={`drs-option${isSelected ? ' drs-option--selected' : ''}${!p.enabled ? ' drs-option--disabled' : ''}`}
-              onClick={() => handleSelectPreset(p.key)}
-              disabled={!p.enabled}
-              title={!p.enabled ? 'Upgrade your plan to access longer history' : undefined}
-            >
-              {!p.enabled && <span className="drs-lock">🔒</span>}
-              {PRESET_LABELS[p.key] ?? p.key}
-            </button>
-          )
-        })}
-      </div>
+      <select
+        value={selectedPreset}
+        onChange={e => handleSelectPreset(e.target.value)}
+        style={{
+          fontSize: '0.75rem',
+          background: 'var(--color-bg)',
+          color: 'var(--color-text-muted)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '4px',
+          padding: '0.25rem 0.5rem',
+        }}
+      >
+        {presets.map(p => (
+          <option key={p.key} value={p.key} disabled={!p.enabled}>
+            {!p.enabled ? '🔒 ' : ''}{PRESET_LABELS[p.key] ?? p.key}
+          </option>
+        ))}
+      </select>
 
       {config && (
         <p className="drs-hint">{retentionHint(config)}</p>

@@ -7,51 +7,6 @@
   min-width: 160px;
 }
 
-/* Preset button strip */
-.drs-dropdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.drs-option {
-  background: var(--color-card, #1a1a2e);
-  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
-  color: var(--color-text, #e2e8f0);
-  border-radius: 6px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.78rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  white-space: nowrap;
-}
-
-.drs-option:hover:not(:disabled) {
-  background: rgba(255,255,255,0.06);
-  border-color: var(--color-primary, #7c3aed);
-}
-
-.drs-option--selected {
-  background: rgba(124, 58, 237, 0.18);
-  border-color: var(--color-primary, #7c3aed);
-  color: var(--color-primary, #7c3aed);
-}
-
-.drs-option--disabled,
-.drs-option:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.drs-lock {
-  font-size: 0.7rem;
-  line-height: 1;
-}
-
 /* Retention hint */
 .drs-hint {
   font-size: 0.72rem;

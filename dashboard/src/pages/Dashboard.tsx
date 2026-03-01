@@ -804,7 +804,7 @@ function ProviderBreakdown({ models }: { models: ModelBreakdown[] }) {
 
 // ─── Quick Health Hero ───────────────────────────────────────────────────────
 
-function QuickHealth({ summary, forecast, budgets }: { summary: ReturnType<typeof useUsageData>['summary']; forecast: ForecastData | null; budgets: BudgetStatus[] }) {
+function QuickHealth({ summary, forecast, budgets, billingMode = 'all' }: { summary: ReturnType<typeof useUsageData>['summary']; forecast: ForecastData | null; budgets: BudgetStatus[]; billingMode?: 'all' | 'subscription' }) {
   const s = summary
   // Worst-case budget usage
   let budgetPct: number | null = null
@@ -815,21 +815,27 @@ function QuickHealth({ summary, forecast, budgets }: { summary: ReturnType<typeo
     else if (budgetPct >= parseFloat(budgets[0]?.alert_threshold ?? '80')) budgetColor = 'budget-status-warn'
   }
 
+  const hideApiBilling = billingMode === 'subscription'
+
   return (
     <div className="quick-health">
       <div className="quick-health-inner">
-        <div className="summary-grid summary-grid-3">
-          <div className="card summary-card">
-            <p className="summary-label">Today's Spend <BillingBadge /></p>
-            <p className="summary-value">{s ? fmt$(s.cost.today) : '—'}</p>
-            {s && <GrowthPill pct={growthPct(s.cost.today, s.cost.yesterday)} />}
-            <p className="summary-sub">vs yesterday {s ? fmt$(s.cost.yesterday) : ''}</p>
-          </div>
-          <div className="card summary-card">
-            <p className="summary-label">Projected This Month <BillingBadge /></p>
-            <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
-            <p className="summary-sub">{forecast ? `${forecast.days_elapsed}d elapsed · ${forecast.days_remaining}d left` : ''}</p>
-          </div>
+        <div className={`summary-grid ${hideApiBilling ? 'summary-grid-1' : 'summary-grid-3'}`}>
+          {!hideApiBilling && (
+            <div className="card summary-card">
+              <p className="summary-label">Today's Spend <BillingBadge /></p>
+              <p className="summary-value">{s ? fmt$(s.cost.today) : '—'}</p>
+              {s && <GrowthPill pct={growthPct(s.cost.today, s.cost.yesterday)} />}
+              <p className="summary-sub">vs yesterday {s ? fmt$(s.cost.yesterday) : ''}</p>
+            </div>
+          )}
+          {!hideApiBilling && (
+            <div className="card summary-card">
+              <p className="summary-label">Projected This Month <BillingBadge /></p>
+              <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
+              <p className="summary-sub">{forecast ? `${forecast.days_elapsed}d elapsed · ${forecast.days_remaining}d left` : ''}</p>
+            </div>
+          )}
           <div className="card summary-card">
             <p className="summary-label">Budget Status</p>
             <p className={`summary-value ${budgetColor}`}>
@@ -921,6 +927,7 @@ export default function Dashboard() {
   const { limits: rateLimits } = useRateLimits(5000)
   const [dateRange, setDateRange] = useState<DateRange>({ preset: '7d' })
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
+  const [billingMode, setBillingMode] = useState<'all' | 'subscription'>('all')
   const [recentOpen, setRecentOpen] = useState(false)
   const pollInterval = recentOpen ? 5_000 : 300_000 // 5s when watching requests, 5min when collapsed
   const { logs, summary, budgets, forecast, metrics, appliedRange, loading, error, refresh } = useUsageData(dateRange, pollInterval)
@@ -973,6 +980,21 @@ export default function Dashboard() {
               value={dateRange}
               onChange={setDateRange}
             />
+            <select
+              value={billingMode}
+              onChange={e => setBillingMode(e.target.value as 'all' | 'subscription')}
+              style={{
+                fontSize: '0.75rem',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '4px',
+                padding: '0.25rem 0.5rem',
+              }}
+            >
+              <option value="all">All Billing Mode</option>
+              <option value="subscription">Subscription Billed</option>
+            </select>
             <button className="btn btn-secondary refresh-btn" onClick={refresh}>
               Refresh
             </button>
@@ -1003,40 +1025,44 @@ export default function Dashboard() {
         {!loading && (
           <>
             {/* ── Quick Health Hero ── */}
-            <QuickHealth summary={s} forecast={forecast} budgets={budgets} />
+            <QuickHealth summary={s} forecast={forecast} budgets={budgets} billingMode={billingMode} />
 
             {/* ── Cost Overview ── */}
-            <div className="dash-section-title">Cost Overview <BillingBadge /></div>
-            <p className="section-note">
-              Cost is calculated from token usage for API Usage Billing keys only. Monthly Subscription traffic is not billed here. Pricing varies by model.{' '}
-              <a href="/pricing-config" className="section-note-link">Refer to the Pricing Config page</a>{' '}
-              for detailed rates. These figures reflect token usage costs only and do not represent
-              TokenGate subscription fees, invoices, or Stripe billing totals.
-            </p>
-            <div className="summary-grid summary-grid-4">
-              <div className="card summary-card">
-                <p className="summary-label">Today</p>
-                <p className="summary-value">{s ? fmt$(s.cost.today) : '—'}</p>
-                {s && <GrowthPill pct={growthPct(s.cost.today, s.cost.yesterday)} />}
-                <p className="summary-sub">vs yesterday {s ? fmt$(s.cost.yesterday) : ''}</p>
-              </div>
-              <div className="card summary-card">
-                <p className="summary-label">This Month</p>
-                <p className="summary-value">{s ? fmt$(s.cost.this_month) : '—'}</p>
-                {s && <GrowthPill pct={growthPct(s.cost.this_month, s.cost.last_month)} />}
-                <p className="summary-sub">last month {s ? fmt$(s.cost.last_month) : ''}</p>
-              </div>
-              <div className="card summary-card">
-                <p className="summary-label">Projected Spend</p>
-                <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
-                <p className="summary-sub">{forecast ? `${fmt$(forecast.daily_average)}/day avg` : ''}</p>
-              </div>
-              <div className="card summary-card">
-                <p className="summary-label">Avg Daily Cost</p>
-                <p className="summary-value">{forecast ? fmt$(forecast.daily_average) : '—'}</p>
-                <p className="summary-sub">{forecast ? `over ${forecast.days_elapsed} days this month` : ''}</p>
-              </div>
-            </div>
+            {billingMode !== 'subscription' && (
+              <>
+                <div className="dash-section-title">Cost Overview <BillingBadge /></div>
+                <p className="section-note">
+                  Cost is calculated from token usage for API Usage Billing keys only. Monthly Subscription traffic is not billed here. Pricing varies by model.{' '}
+                  <a href="/pricing-config" className="section-note-link">Refer to the Pricing Config page</a>{' '}
+                  for detailed rates. These figures reflect token usage costs only and do not represent
+                  TokenGate subscription fees, invoices, or Stripe billing totals.
+                </p>
+                <div className="summary-grid summary-grid-4">
+                  <div className="card summary-card">
+                    <p className="summary-label">Today</p>
+                    <p className="summary-value">{s ? fmt$(s.cost.today) : '—'}</p>
+                    {s && <GrowthPill pct={growthPct(s.cost.today, s.cost.yesterday)} />}
+                    <p className="summary-sub">vs yesterday {s ? fmt$(s.cost.yesterday) : ''}</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">This Month</p>
+                    <p className="summary-value">{s ? fmt$(s.cost.this_month) : '—'}</p>
+                    {s && <GrowthPill pct={growthPct(s.cost.this_month, s.cost.last_month)} />}
+                    <p className="summary-sub">last month {s ? fmt$(s.cost.last_month) : ''}</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Projected Spend</p>
+                    <p className="summary-value">{forecast ? fmt$(forecast.forecast) : '—'}</p>
+                    <p className="summary-sub">{forecast ? `${fmt$(forecast.daily_average)}/day avg` : ''}</p>
+                  </div>
+                  <div className="card summary-card">
+                    <p className="summary-label">Avg Daily Cost</p>
+                    <p className="summary-value">{forecast ? fmt$(forecast.daily_average) : '—'}</p>
+                    <p className="summary-sub">{forecast ? `over ${forecast.days_elapsed} days this month` : ''}</p>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* ── Budget bars (moved after cost overview) ── */}
             {budgets.length > 0 && (
@@ -1111,33 +1137,41 @@ export default function Dashboard() {
             </div>
 
             {/* ── Breakdowns: Model + API Key side-by-side ── */}
-            <div className="dash-section-title">{periodLabel} <BillingBadge /></div>
-            <div className="dash-split">
-              <div className="card dash-split-left">
-                <p className="card-subtitle">Breakdown by Model</p>
-                <ModelTable models={s?.by_model ?? []} />
-              </div>
-              <div className="card dash-split-right">
-                <p className="card-subtitle">Breakdown by API Key</p>
-                <ApiKeyTable keys={s?.by_api_key ?? []} />
-              </div>
-            </div>
+            {billingMode !== 'subscription' && (
+              <>
+                <div className="dash-section-title">{periodLabel} <BillingBadge /></div>
+                <div className="dash-split">
+                  <div className="card dash-split-left">
+                    <p className="card-subtitle">Breakdown by Model</p>
+                    <ModelTable models={s?.by_model ?? []} />
+                  </div>
+                  <div className="card dash-split-right">
+                    <p className="card-subtitle">Breakdown by API Key</p>
+                    <ApiKeyTable keys={s?.by_api_key ?? []} />
+                  </div>
+                </div>
 
-            {/* ── Daily Cost Chart + Provider Breakdown side-by-side ── */}
-            <div className="dash-split">
-              <div className="card dash-split-left">
-                <p className="card-subtitle">Daily Cost</p>
-                <TrendChart data={s?.daily_trend ?? []} mode="cost" />
-              </div>
-              <div className="card dash-split-right">
-                <p className="card-subtitle">Provider Breakdown</p>
-                <ProviderBreakdown models={s?.by_model ?? []} />
-              </div>
-            </div>
+                {/* ── Daily Cost Chart + Provider Breakdown side-by-side ── */}
+                <div className="dash-split">
+                  <div className="card dash-split-left">
+                    <p className="card-subtitle">Daily Cost</p>
+                    <TrendChart data={s?.daily_trend ?? []} mode="cost" />
+                  </div>
+                  <div className="card dash-split-right">
+                    <p className="card-subtitle">Provider Breakdown</p>
+                    <ProviderBreakdown models={s?.by_model ?? []} />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* ── Insights Strip ── */}
-            <div className="dash-section-title">Insights <BillingBadge /></div>
-            <InsightsStrip summary={s} apiKeys={s?.by_api_key ?? []} />
+            {billingMode !== 'subscription' && (
+              <>
+                <div className="dash-section-title">Insights <BillingBadge /></div>
+                <InsightsStrip summary={s} apiKeys={s?.by_api_key ?? []} />
+              </>
+            )}
 
             {/* ── Gateway Performance ── */}
             {metrics && metrics.latency.sample_count > 0 && (
