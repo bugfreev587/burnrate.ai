@@ -58,6 +58,12 @@
   font-size: 0.875rem;
 }
 
+.hint-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 /* ── Tenant switcher (matches drs-option date-range pills) ──── */
 .tenant-switcher {
   background: var(--color-card, #1a1a2e);
@@ -162,4 +168,116 @@
 
 .dropdown-signout {
   color: var(--color-danger);
+}
+
+/* ── Onboarding hints ───────────────────────────────────────────────────── */
+.onboarding-hint {
+  position: absolute;
+  width: 260px;
+  background: #151927;
+  border: 1px solid rgba(99, 102, 241, 0.55);
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+  padding: 0.7rem 0.8rem;
+  z-index: 260;
+}
+
+.onboarding-hint::before {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #151927;
+  border-left: 1px solid rgba(99, 102, 241, 0.55);
+  border-top: 1px solid rgba(99, 102, 241, 0.55);
+  transform: rotate(45deg);
+}
+
+.onboarding-hint-integration {
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-45%);
+}
+.onboarding-hint-integration::before {
+  top: -6px;
+  left: 28px;
+}
+
+.onboarding-hint-avatar {
+  top: calc(100% + 10px);
+  right: 0;
+}
+.onboarding-hint-avatar::before {
+  top: -6px;
+  right: 18px;
+}
+
+.onboarding-hint-title {
+  margin: 0 0 0.2rem 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e8ebff;
+}
+
+.onboarding-hint-body {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #b7c0dc;
+}
+
+.onboarding-hint-dismiss {
+  margin-top: 0.45rem;
+  border: none;
+  background: none;
+  color: #a5b4fc;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 0;
+}
+
+.hint-pulse-target {
+  position: relative;
+  isolation: isolate;
+}
+
+.hint-pulse-target::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.72);
+  box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+  pointer-events: none;
+  animation: hintPulse 1.8s ease-out infinite;
+}
+
+@keyframes hintPulse {
+  0% {
+    transform: scale(0.96);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 12px rgba(99, 102, 241, 0);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1000px) {
+  .onboarding-hint {
+    width: min(260px, calc(100vw - 1.5rem));
+  }
+  .onboarding-hint-integration {
+    left: 0;
+    transform: none;
+  }
 }

@@ -10,29 +10,31 @@ import (
 // Tenant is the top-level multi-tenant boundary.
 // Every API key, provider key, and usage log belongs to exactly one tenant.
 type Tenant struct {
-	ID                   uint       `gorm:"primaryKey"`
+	ID                   uint `gorm:"primaryKey"`
 	Name                 string
-	Status               string     `gorm:"default:active"`        // active | suspended
-	Plan                 string     `gorm:"default:free"` // free | pro | team | business
+	Status               string     `gorm:"default:active"`            // active | suspended
+	Plan                 string     `gorm:"default:free"`              // free | pro | team | business
 	DefaultProjectID     *uint      `gorm:"column:default_project_id"` // FK to projects.id; nullable until first project is created
 	StripeCustomerID     string     `gorm:"column:stripe_customer_id;index"`
 	StripeSubscriptionID string     `gorm:"column:stripe_subscription_id"`
 	PlanStatus           string     `gorm:"column:plan_status;default:active"`
 	CurrentPeriodEnd     *time.Time `gorm:"column:current_period_end"`
 	BillingEmail         string     `gorm:"column:billing_email"`
-	PendingPlan          string     `gorm:"column:pending_plan"`           // scheduled downgrade target (empty = no pending change)
-	PlanEffectiveAt      *time.Time `gorm:"column:plan_effective_at"`      // when the pending plan change takes effect
+	PendingPlan          string     `gorm:"column:pending_plan"`      // scheduled downgrade target (empty = no pending change)
+	PlanEffectiveAt      *time.Time `gorm:"column:plan_effective_at"` // when the pending plan change takes effect
 	CreatedAt            time.Time
 }
 
 // User represents a dashboard user synced from Clerk on first sign-in.
 // Users can belong to multiple tenants via TenantMembership.
 type User struct {
-	ID        string    `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
-	Email     string    `gorm:"uniqueIndex"`
-	Name      string
-	Status    string    `gorm:"default:active"` // active | suspended | pending
-	CreatedAt time.Time
+	ID                       string `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
+	Email                    string `gorm:"uniqueIndex"`
+	Name                     string
+	Status                   string `gorm:"default:active"` // active | suspended | pending
+	DismissedIntegrationHint bool   `gorm:"column:dismissed_integration_hint;default:false"`
+	DismissedAvatarHint      bool   `gorm:"column:dismissed_avatar_hint;default:false"`
+	CreatedAt                time.Time
 }
 
 // TenantMembership associates a user with a tenant and defines their org-level role.
@@ -40,18 +42,18 @@ type TenantMembership struct {
 	TenantID  uint   `gorm:"primaryKey;autoIncrement:false"`
 	UserID    string `gorm:"primaryKey;type:text;autoIncrement:false"`
 	OrgRole   string `gorm:"not null;default:viewer"` // owner | admin | editor | viewer
-	Status    string `gorm:"not null;default:active"`  // active | suspended | pending
+	Status    string `gorm:"not null;default:active"` // active | suspended | pending
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 // Project represents a logical grouping within a tenant. API keys are bound to projects.
 type Project struct {
-	ID          uint      `gorm:"primaryKey"`
-	TenantID    uint      `gorm:"index;uniqueIndex:idx_project_tenant_name"`
-	Name        string    `gorm:"size:128;uniqueIndex:idx_project_tenant_name"`
+	ID          uint   `gorm:"primaryKey"`
+	TenantID    uint   `gorm:"index;uniqueIndex:idx_project_tenant_name"`
+	Name        string `gorm:"size:128;uniqueIndex:idx_project_tenant_name"`
 	Description string
-	Status      string    `gorm:"not null;default:active"` // active | archived
+	Status      string `gorm:"not null;default:active"` // active | archived
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -67,8 +69,8 @@ type ProjectMembership struct {
 
 // APIKeyProviderKeyBinding allows a per-API-key override of the tenant's default provider key.
 type APIKeyProviderKeyBinding struct {
-	APIKeyID      uint      `gorm:"primaryKey;autoIncrement:false"`
-	ProviderKeyID uint      `gorm:"not null"`
+	APIKeyID      uint `gorm:"primaryKey;autoIncrement:false"`
+	ProviderKeyID uint `gorm:"not null"`
 	CreatedAt     time.Time
 }
 
@@ -78,8 +80,8 @@ type AuditLog struct {
 	TenantID      uint      `gorm:"index"`
 	ActorUserID   string    `gorm:"size:255"`
 	ActorAPIKeyID string    `gorm:"size:64"`
-	Action        string    `gorm:"size:64;index"`   // e.g. "api_key:create", "member:invite"
-	ResourceType  string    `gorm:"size:64;index"`   // e.g. "api_key", "project", "membership"
+	Action        string    `gorm:"size:64;index"` // e.g. "api_key:create", "member:invite"
+	ResourceType  string    `gorm:"size:64;index"` // e.g. "api_key", "project", "membership"
 	ResourceID    string    `gorm:"size:255"`
 	Success       bool      `gorm:"not null;default:true"`
 	IPAddress     string    `gorm:"size:45"`
@@ -203,10 +205,10 @@ func IsBillableMode(billingMode string) bool {
 // APIKey is the machine-to-machine key used by the claude-code agent
 // to authenticate with the TokenGate gateway. Scoped to a tenant and bound to a project.
 type APIKey struct {
-	ID              uint           `gorm:"primaryKey"`
-	TenantID        uint           `gorm:"index"`
-	ProjectID       uint           `gorm:"not null;index"` // FK to projects.id; every key belongs to exactly one project
-	KeyID           string         `gorm:"uniqueIndex;size:64"`
+	ID              uint   `gorm:"primaryKey"`
+	TenantID        uint   `gorm:"index"`
+	ProjectID       uint   `gorm:"not null;index"` // FK to projects.id; every key belongs to exactly one project
+	KeyID           string `gorm:"uniqueIndex;size:64"`
 	Label           string
 	Salt            []byte
 	SecretHash      []byte
@@ -214,8 +216,8 @@ type APIKey struct {
 	Provider        string         `gorm:"not null;default:anthropic"`
 	AuthMethod      string         `gorm:"not null;default:BROWSER_OAUTH"`
 	BillingMode     string         `gorm:"not null;default:MONTHLY_SUBSCRIPTION"`
-	ModelAllowlist  *string        `gorm:"type:jsonb"`     // JSON array of allowed model strings, nil = all
-	CreatedByUserID string         `gorm:"size:255"`       // Clerk user ID of the creator
+	ModelAllowlist  *string        `gorm:"type:jsonb"` // JSON array of allowed model strings, nil = all
+	CreatedByUserID string         `gorm:"size:255"`   // Clerk user ID of the creator
 	Revoked         bool
 	ExpiresAt       *time.Time
 	LastSeenAt      *time.Time
@@ -225,14 +227,14 @@ type APIKey struct {
 // ProviderKey stores an upstream LLM provider API key using envelope encryption.
 // The key is encrypted with a per-record DEK; the DEK is encrypted with the master key.
 type ProviderKey struct {
-	ID           uint      `gorm:"primaryKey"`
-	TenantID     uint      `gorm:"index"`
-	Provider     string    // "anthropic" | "openai"
+	ID           uint   `gorm:"primaryKey"`
+	TenantID     uint   `gorm:"index"`
+	Provider     string // "anthropic" | "openai"
 	Label        string
-	EncryptedKey []byte    `gorm:"column:encrypted_key"`
-	KeyNonce     []byte    `gorm:"column:key_nonce"`
-	EncryptedDEK []byte    `gorm:"column:encrypted_dek"`
-	DEKNonce     []byte    `gorm:"column:dek_nonce"`
+	EncryptedKey []byte `gorm:"column:encrypted_key"`
+	KeyNonce     []byte `gorm:"column:key_nonce"`
+	EncryptedDEK []byte `gorm:"column:encrypted_dek"`
+	DEKNonce     []byte `gorm:"column:dek_nonce"`
 	Revoked      bool
 	CreatedAt    time.Time
 }
@@ -242,11 +244,11 @@ type ProviderKey struct {
 // It is stored in the Redis TPS cache entry so that after a rotation any pod can detect a
 // stale cached active_key_id without a DB round trip.
 type TenantProviderSettings struct {
-	ID            uint      `gorm:"primaryKey"`
-	TenantID      uint      `gorm:"uniqueIndex:idx_tenant_provider"`
-	Provider      string    `gorm:"uniqueIndex:idx_tenant_provider"`
+	ID            uint   `gorm:"primaryKey"`
+	TenantID      uint   `gorm:"uniqueIndex:idx_tenant_provider"`
+	Provider      string `gorm:"uniqueIndex:idx_tenant_provider"`
 	ActiveKeyID   uint
-	PolicyVersion int       `gorm:"default:1"`
+	PolicyVersion int `gorm:"default:1"`
 	UpdatedAt     time.Time
 }
 

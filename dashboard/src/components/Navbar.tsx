@@ -3,14 +3,21 @@ import { Link } from 'react-router-dom'
 import { useUser, useAuth, SignOutButton } from '@clerk/clerk-react'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
+import { apiFetch } from '../lib/api'
 import logoDark from '../assets/logo-dark.svg'
 import './Navbar.css'
+
+interface OnboardingHints {
+  dismissed_integration_hint: boolean
+  dismissed_avatar_hint: boolean
+}
 
 export default function Navbar() {
   const { user, isLoaded: userLoaded } = useUser()
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
   const { memberships, activeTenantId, switchTenant, orgRole } = useTenant()
   const [showMenu, setShowMenu] = useState(false)
+  const [hints, setHints] = useState<OnboardingHints | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Derive sync status from TenantContext: if memberships are loaded, sync is done.
@@ -19,6 +26,7 @@ export default function Navbar() {
   const role = (orgRole as UserRole) ?? null
   const canAccessEditor = isSynced && hasPermission(role, 'editor')
   const canAccessAdmin = isSynced && hasPermission(role, 'admin')
+  const isLoaded = userLoaded && authLoaded
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -30,7 +38,56 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [showMenu])
 
-  const isLoaded = userLoaded && authLoaded
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      setHints(null)
+      return
+    }
+    if (!isSynced) return
+    let cancelled = false
+    const loadHints = async () => {
+      try {
+        const res = await apiFetch('/v1/user/onboarding-hints')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) {
+          setHints({
+            dismissed_integration_hint: !!data.dismissed_integration_hint,
+            dismissed_avatar_hint: !!data.dismissed_avatar_hint,
+          })
+        }
+      } catch {
+        // Non-critical onboarding UI; fail silently.
+      }
+    }
+    loadHints()
+    return () => { cancelled = true }
+  }, [isLoaded, isSignedIn, isSynced])
+
+  const dismissHint = async (key: 'dismissed_integration_hint' | 'dismissed_avatar_hint') => {
+    if (!hints || hints[key]) return
+    const optimistic = { ...hints, [key]: true }
+    setHints(optimistic)
+    try {
+      const res = await apiFetch('/v1/user/onboarding-hints', {
+        method: 'PATCH',
+        body: JSON.stringify({ [key]: true }),
+      })
+      if (!res.ok) throw new Error('failed to persist hint preference')
+      const data = await res.json().catch(() => null)
+      if (data) {
+        setHints({
+          dismissed_integration_hint: !!data.dismissed_integration_hint,
+          dismissed_avatar_hint: !!data.dismissed_avatar_hint,
+        })
+      }
+    } catch {
+      setHints(prev => prev ? { ...prev, [key]: false } : prev)
+    }
+  }
+
+  const showIntegrationHint = isLoaded && isSignedIn && isSynced && !!hints && !hints.dismissed_integration_hint
+  const showAvatarHint = isLoaded && isSignedIn && isSynced && !!hints && !hints.dismissed_avatar_hint
 
   return (
     <nav className="navbar">
@@ -67,7 +124,20 @@ export default function Navbar() {
             {canAccessEditor && <Link to="/limits" className="navbar-link">Limits</Link>}
             {canAccessEditor && <Link to="/notifications" className="navbar-link">Notifications</Link>}
             {canAccessEditor && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
-            <Link to="/integration" className="navbar-link">Integration</Link>
+            <div className="hint-anchor">
+              <Link to="/integration" className={`navbar-link${showIntegrationHint ? ' hint-pulse-target' : ''}`}>Integration</Link>
+              {showIntegrationHint && (
+                <div className="onboarding-hint onboarding-hint-integration" role="status" aria-live="polite">
+                  <p className="onboarding-hint-title">Get started here</p>
+                  <p className="onboarding-hint-body">
+                    Integrate your AI coding tool with TokenGate to enable auditing and governance.
+                  </p>
+                  <button className="onboarding-hint-dismiss" onClick={() => dismissHint('dismissed_integration_hint')}>
+                    Don&apos;t show again
+                  </button>
+                </div>
+              )}
+            </div>
             <Link to="/audit" className="navbar-link">Audit</Link>
           </div>
         )}
@@ -78,7 +148,7 @@ export default function Navbar() {
           ) : isSignedIn ? (
             <div className="user-menu" ref={menuRef}>
               <button
-                className="user-avatar-btn"
+                className={`user-avatar-btn${showAvatarHint ? ' hint-pulse-target' : ''}`}
                 onClick={() => setShowMenu(v => !v)}
                 aria-label="User menu"
               >
@@ -90,6 +160,15 @@ export default function Navbar() {
                   </div>
                 )}
               </button>
+              {showAvatarHint && (
+                <div className="onboarding-hint onboarding-hint-avatar" role="status" aria-live="polite">
+                  <p className="onboarding-hint-title">More options here</p>
+                  <p className="onboarding-hint-body">Access billing, settings, and account management.</p>
+                  <button className="onboarding-hint-dismiss" onClick={() => dismissHint('dismissed_avatar_hint')}>
+                    Don&apos;t show again
+                  </button>
+                </div>
+              )}
               {showMenu && (
                 <div className="dropdown">
                   <div className="dropdown-header">

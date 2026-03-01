@@ -155,6 +155,8 @@ func (s *Server) setupRoutes() {
 	viewer := s.router.Group("/v1")
 	viewer.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleViewer))
 	{
+		viewer.GET("/user/onboarding-hints", s.handleGetOnboardingHints)
+		viewer.PATCH("/user/onboarding-hints", s.handleUpdateOnboardingHints)
 		viewer.GET("/usage", s.handleListUsage)
 		viewer.GET("/usage/summary", s.handleUsageSummary)
 		viewer.GET("/cost-ledger", s.handleListCostLedger)

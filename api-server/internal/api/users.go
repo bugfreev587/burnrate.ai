@@ -56,6 +56,76 @@ func toUserResponse(u models.User, orgRole string, membershipStatus string) user
 	}
 }
 
+type onboardingHintsResponse struct {
+	DismissedIntegrationHint bool `json:"dismissed_integration_hint"`
+	DismissedAvatarHint      bool `json:"dismissed_avatar_hint"`
+}
+
+type updateOnboardingHintsReq struct {
+	DismissedIntegrationHint *bool `json:"dismissed_integration_hint"`
+	DismissedAvatarHint      *bool `json:"dismissed_avatar_hint"`
+}
+
+// handleGetOnboardingHints returns per-user onboarding hint dismissal flags.
+// GET /v1/user/onboarding-hints
+func (s *Server) handleGetOnboardingHints(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	c.JSON(http.StatusOK, onboardingHintsResponse{
+		DismissedIntegrationHint: caller.DismissedIntegrationHint,
+		DismissedAvatarHint:      caller.DismissedAvatarHint,
+	})
+}
+
+// handleUpdateOnboardingHints updates per-user onboarding hint dismissal flags.
+// PATCH /v1/user/onboarding-hints
+func (s *Server) handleUpdateOnboardingHints(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req updateOnboardingHintsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.DismissedIntegrationHint != nil {
+		updates["dismissed_integration_hint"] = *req.DismissedIntegrationHint
+	}
+	if req.DismissedAvatarHint != nil {
+		updates["dismissed_avatar_hint"] = *req.DismissedAvatarHint
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+	if err := db.Model(&models.User{}).Where("id = ?", caller.ID).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update onboarding hints"})
+		return
+	}
+
+	var updated models.User
+	if err := db.Where("id = ?", caller.ID).First(&updated).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch updated user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, onboardingHintsResponse{
+		DismissedIntegrationHint: updated.DismissedIntegrationHint,
+		DismissedAvatarHint:      updated.DismissedAvatarHint,
+	})
+}
+
 // handleListUsers returns all users in the caller's tenant via tenant_memberships.
 // GET /v1/admin/users
 func (s *Server) handleListUsers(c *gin.Context) {
@@ -827,9 +897,9 @@ func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
 		if int(activeProviderKeys) > newLimits.MaxProviderKeys {
 			return http.StatusUnprocessableEntity, gin.H{
 				"error":              "downgrade_blocked",
-				"reason":            "provider_keys_exceed_limit",
-				"message":           fmt.Sprintf("The %s plan allows %d provider key(s), but this tenant has %d active key(s). Revoke %d key(s) before downgrading.", newPlan, newLimits.MaxProviderKeys, activeProviderKeys, int(activeProviderKeys)-newLimits.MaxProviderKeys),
-				"limit":             newLimits.MaxProviderKeys,
+				"reason":             "provider_keys_exceed_limit",
+				"message":            fmt.Sprintf("The %s plan allows %d provider key(s), but this tenant has %d active key(s). Revoke %d key(s) before downgrading.", newPlan, newLimits.MaxProviderKeys, activeProviderKeys, int(activeProviderKeys)-newLimits.MaxProviderKeys),
+				"limit":              newLimits.MaxProviderKeys,
 				"provider_key_count": activeProviderKeys,
 			}
 		}
@@ -886,10 +956,10 @@ func (s *Server) applyPlanChange(tenantID uint, newPlan string) (int, gin.H) {
 		db.Model(&models.RateLimit{}).Where("tenant_id = ?", tenantID).Count(&rlCount)
 		if int(rlCount) > newLimits.MaxRateLimits {
 			return http.StatusUnprocessableEntity, gin.H{
-				"error":          "downgrade_blocked",
-				"reason":         "rate_limits_exceed_limit",
-				"message":        fmt.Sprintf("The %s plan allows %d rate limit(s), but this tenant has %d. Remove %d rate limit(s) before downgrading.", newPlan, newLimits.MaxRateLimits, rlCount, int(rlCount)-newLimits.MaxRateLimits),
-				"limit":          newLimits.MaxRateLimits,
+				"error":            "downgrade_blocked",
+				"reason":           "rate_limits_exceed_limit",
+				"message":          fmt.Sprintf("The %s plan allows %d rate limit(s), but this tenant has %d. Remove %d rate limit(s) before downgrading.", newPlan, newLimits.MaxRateLimits, rlCount, int(rlCount)-newLimits.MaxRateLimits),
+				"limit":            newLimits.MaxRateLimits,
 				"rate_limit_count": rlCount,
 			}
 		}
