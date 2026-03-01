@@ -1302,6 +1302,7 @@ export default function ManagementPage() {
                     ? `This is the active key for ${providerLabel}. Revoking it will deactivate ${providerLabel} proxying.`
                     : `Revoke provider key "${revokeTarget.label}"? This cannot be undone.`}
                 </p>
+                <p style={{ marginTop: '1rem' }}>Confirm to revoke?</p>
               </div>
               <div className="modal-ftr">
                 <button className="btn btn-secondary" onClick={() => setRevokeTarget(null)}>Cancel</button>
