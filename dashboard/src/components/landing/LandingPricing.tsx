@@ -111,7 +111,7 @@ const plans: { key: string; name: string; tagline: string; monthlyPrice: number 
       { text: 'SSO (Google / GitHub)' },
       { text: 'SAML SSO', comingSoon: true },
       { text: 'Dedicated onboarding' },
-      { text: 'Advanced RBAC & fine-grained permissions', comingSoon: true },
+      { text: 'Advanced RBAC & fine-grained permissions' },
       { text: 'Model allowlists / blocklists', comingSoon: true },
       { text: 'Spend velocity alerts', comingSoon: true },
     ],
