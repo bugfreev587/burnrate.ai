@@ -520,6 +520,28 @@ func (s *Server) handleGetTenantSettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
+
+	// Self-heal: if Stripe's actual plan differs from DB (e.g. webhook was
+	// missed or a previous update failed), correct it on read.
+	if s.stripeSvc.IsConfigured() && tenant.StripeSubscriptionID != "" && tenant.PendingPlan == "" {
+		if subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), tenantID); err != nil {
+			slog.Error("settings_plan_sync_fetch_failed", "tenant_id", tenantID, "error", err)
+		} else if subInfo != nil && subInfo.DetectedPlan != "" && subInfo.DetectedPlan != tenant.Plan {
+			if err := s.postgresDB.GetDB().Model(&tenant).Updates(map[string]any{
+				"plan": subInfo.DetectedPlan,
+			}).Error; err != nil {
+				slog.Error("settings_plan_sync_failed", "tenant_id", tenantID, "error", err)
+			} else {
+				slog.Info("settings_plan_synced_from_stripe",
+					"tenant_id", tenantID,
+					"old_plan", tenant.Plan,
+					"new_plan", subInfo.DetectedPlan,
+				)
+				tenant.Plan = subInfo.DetectedPlan
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, tenantSettingsResponse{
 		TenantID:   tenant.ID,
 		Name:       tenant.Name,
