@@ -168,7 +168,7 @@ export default function LimitsPage() {
       const req: UpsertSpendLimitReq = {
         scope_type: slScope, scope_id: slScope === 'api_key' ? slKeyId : slScope === 'project' ? slProjectId : '',
         period_type: slPeriod, provider: slProvider,
-        limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
+        limit_amount: amount.toFixed(2), alert_threshold: String(threshold), action,
       }
       await upsertSpendLimit(req)
       showSuccess('Spend limit saved'); setShowSLModal(false); setEditingSL(null); resetSLForm()
@@ -341,7 +341,7 @@ export default function LimitsPage() {
                             {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)}
                           </span>
                         </td>
-                        <td>${l.limit_amount}</td>
+                        <td>${Number(l.limit_amount).toFixed(2)}</td>
                         <td>{l.alert_threshold}%</td>
                         <td>
                           {l.action === 'alert_block' ? (
@@ -600,9 +600,9 @@ export default function LimitsPage() {
               <div className="form-group">
                 <label>Limit Amount (USD) <span className="required">*</span></label>
                 <input
-                  type="number" value={slLimitAmount}
+                  type="text" inputMode="decimal" value={slLimitAmount}
                   onChange={e => setSlLimitAmount(e.target.value)}
-                  placeholder="e.g. 100.00" min="0.01" step="0.01" autoFocus
+                  placeholder="e.g. 100.00" autoFocus
                 />
               </div>
 
