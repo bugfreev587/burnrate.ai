@@ -118,7 +118,10 @@ export default function BillingPage() {
         method: 'POST',
         body: JSON.stringify({ session_id: sessionId }),
       })
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`Verify failed: ${res.status}`)
+          return res.json()
+        })
         .then(data => {
           if (data.plan && data.plan !== 'free') {
             setFlash({ type: 'success', msg: `Subscription activated! You are now on the ${data.plan.charAt(0).toUpperCase() + data.plan.slice(1)} plan.` })

@@ -426,11 +426,9 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 	}
 
 	// Update our DB — apply plan immediately and clear any pending downgrade
-	newLimits := models.GetPlanLimits(newPlan)
 	dbUpdates := map[string]any{
 		"plan":              newPlan,
 		"plan_status":       s.mapStripeStatus(updatedSub.Status),
-		"max_api_keys":      newLimits.MaxAPIKeys,
 		"pending_plan":      "",
 		"plan_effective_at": nil,
 	}
@@ -640,7 +638,6 @@ func (s *StripeService) HandleCheckoutCompleted(ctx context.Context, sess *strip
 		"plan":                   plan,
 		"plan_status":            models.PlanStatusActive,
 		"stripe_subscription_id": "",
-		"max_api_keys":           models.GetPlanLimits(plan).MaxAPIKeys,
 		"pending_plan":           "",
 		"plan_effective_at":      nil,
 	}
@@ -738,7 +735,6 @@ func (s *StripeService) HandleSubscriptionUpdated(ctx context.Context, sub *stri
 	// the current plan — the user keeps their current plan until period end.
 	if tenant.PendingPlan == "" && plan != "" {
 		updates["plan"] = plan
-		updates["max_api_keys"] = models.GetPlanLimits(plan).MaxAPIKeys
 	}
 
 	if periodEnd := currentPeriodEndFromSub(sub); periodEnd > 0 {
@@ -784,14 +780,12 @@ func (s *StripeService) HandleSubscriptionDeleted(ctx context.Context, sub *stri
 
 	// Downgrade to free and clear any pending plan state
 	targetPlan := models.PlanFree
-	targetLimits := models.GetPlanLimits(targetPlan)
 
 	updates := map[string]any{
 		"plan":                   targetPlan,
 		"plan_status":            models.PlanStatusCanceled,
 		"stripe_subscription_id": "",
 		"current_period_end":     nil,
-		"max_api_keys":           targetLimits.MaxAPIKeys,
 		"pending_plan":           "",
 		"plan_effective_at":      nil,
 	}
