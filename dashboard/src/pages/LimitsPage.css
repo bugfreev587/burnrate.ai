@@ -163,7 +163,8 @@
   min-width: 900px;
 }
 
-.limits-container .mgmt-table td:last-child {
+.limits-container .mgmt-table td:last-child,
+.limits-container .mgmt-table td:has(.action-badge) {
   white-space: nowrap;
 }
 
