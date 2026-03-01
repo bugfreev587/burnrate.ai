@@ -157,6 +157,16 @@
   text-decoration: underline;
 }
 
+/* ── Table scroll: prevent column collapse on narrow viewports ────────── */
+
+.limits-container .mgmt-table {
+  min-width: 900px;
+}
+
+.limits-container .mgmt-table td:last-child {
+  white-space: nowrap;
+}
+
 /* ── Action buttons in table rows ─────────────────────────────────────── */
 
 .mgmt-table td .btn + .btn {

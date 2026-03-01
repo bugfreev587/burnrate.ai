@@ -341,7 +341,7 @@ export default function LimitsPage() {
                             {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)}
                           </span>
                         </td>
-                        <td>${parseFloat(l.limit_amount).toFixed(2)}</td>
+                        <td>${l.limit_amount}</td>
                         <td>{l.alert_threshold}%</td>
                         <td>
                           {l.action === 'alert_block' ? (
@@ -360,7 +360,7 @@ export default function LimitsPage() {
                           <span className={`enabled-dot ${l.enabled ? 'on' : 'off'}`} />
                           {l.enabled ? 'Active' : 'Disabled'}
                         </td>
-                        <td>${parseFloat(l.current_spend).toFixed(2)}</td>
+                        <td>${Number(l.current_spend).toFixed(2)}</td>
                         <td>
                           <div className="usage-bar-container">
                             <div className="usage-bar">
