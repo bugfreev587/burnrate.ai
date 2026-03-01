@@ -104,6 +104,8 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.ProcessedStripeEvent{},
 		&models.AuditReport{},
 		&models.NotificationChannel{},
+		&models.UserNotification{},
+		&models.UserNotificationChannel{},
 		&models.GatewayEvent{},
 		&models.AuditLog{},
 	); err != nil {

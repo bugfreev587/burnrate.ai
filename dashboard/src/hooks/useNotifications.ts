@@ -29,7 +29,7 @@ export interface UpdateNotificationChannelReq {
   enabled?: boolean
 }
 
-export function useNotifications() {
+export function useNotifications(enabled = true) {
   const [channels, setChannels] = useState<NotificationChannel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,9 +49,18 @@ export function useNotifications() {
     }
   }, [])
 
-  useEffect(() => { fetchChannels() }, [fetchChannels])
+  useEffect(() => {
+    if (!enabled) {
+      setChannels([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+    fetchChannels()
+  }, [enabled, fetchChannels])
 
   async function createChannel(req: CreateNotificationChannelReq): Promise<NotificationChannel> {
+    if (!enabled) throw new Error('Notification channel management is not enabled')
     const res = await apiFetch('/v1/admin/notifications', {
       method: 'POST',
       body: JSON.stringify(req),
@@ -66,6 +75,7 @@ export function useNotifications() {
   }
 
   async function updateChannel(id: number, req: UpdateNotificationChannelReq): Promise<NotificationChannel> {
+    if (!enabled) throw new Error('Notification channel management is not enabled')
     const res = await apiFetch(`/v1/admin/notifications/${id}`, {
       method: 'PUT',
       body: JSON.stringify(req),
@@ -80,6 +90,7 @@ export function useNotifications() {
   }
 
   async function deleteChannel(id: number): Promise<void> {
+    if (!enabled) throw new Error('Notification channel management is not enabled')
     const res = await apiFetch(`/v1/admin/notifications/${id}`, {
       method: 'DELETE',
     })
@@ -91,6 +102,7 @@ export function useNotifications() {
   }
 
   async function testChannel(id: number): Promise<{ success: boolean; error?: string }> {
+    if (!enabled) throw new Error('Notification channel management is not enabled')
     const res = await apiFetch(`/v1/admin/notifications/${id}/test`, {
       method: 'POST',
     })

@@ -168,12 +168,80 @@ func (w *NotificationWorker) processMessage(ctx context.Context, msg redis.XMess
 
 type notificationPayload struct {
 	TenantID  uint   `json:"tenant_id"`
+	UserID    string `json:"user_id,omitempty"`
 	EventType string `json:"event_type"`
+	Title     string `json:"title,omitempty"`
+	Body      string `json:"body,omitempty"`
 	KeyID     string `json:"key_id"`
 	Provider  string `json:"provider"`
 	Model     string `json:"model"`
 	Details   string `json:"details"`
 	Timestamp string `json:"timestamp"`
+}
+
+// SendUserNotification dispatches a personal notification through user-scoped channels.
+// It is best-effort and returns an error only when channel lookup fails.
+func (w *NotificationWorker) SendUserNotification(ctx context.Context, userID, eventType, title, body, details string) error {
+	var channels []models.UserNotificationChannel
+	if err := w.db.WithContext(ctx).
+		Where("user_id = ? AND enabled = ? AND ? = ANY(event_types)", userID, true, eventType).
+		Find(&channels).Error; err != nil {
+		return fmt.Errorf("load user channels: %w", err)
+	}
+	if len(channels) == 0 {
+		return nil
+	}
+
+	payload := notificationPayload{
+		UserID:    userID,
+		EventType: eventType,
+		Title:     title,
+		Body:      body,
+		Details:   details,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	for _, ch := range channels {
+		if err := w.dispatchUserChannel(ch, payload); err != nil {
+			slog.Error("user_notification_dispatch_failed",
+				"user_id", userID, "channel_id", ch.ID,
+				"channel_type", ch.ChannelType, "event_type", eventType,
+				"error", err,
+			)
+		}
+	}
+	return nil
+}
+
+// SendTestUserNotificationChannel sends a test message for a user-scoped channel.
+func (w *NotificationWorker) SendTestUserNotificationChannel(ch models.UserNotificationChannel) error {
+	payload := notificationPayload{
+		UserID:    ch.UserID,
+		EventType: "test",
+		Title:     "TokenGate Test Notification",
+		Body:      "This is a test notification from your personal channel settings.",
+		Details:   `{"message":"test_user_notification_channel"}`,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	return w.dispatchUserChannel(ch, payload)
+}
+
+func (w *NotificationWorker) dispatchUserChannel(ch models.UserNotificationChannel, p notificationPayload) error {
+	tenantChannel := models.NotificationChannel{
+		ChannelType: ch.ChannelType,
+		Name:        ch.Name,
+		Config:      ch.Config,
+	}
+	switch ch.ChannelType {
+	case "email":
+		return w.sendEmail(tenantChannel, p)
+	case "slack":
+		return w.sendSlack(tenantChannel, p)
+	case "webhook":
+		return w.sendWebhook(tenantChannel, p)
+	default:
+		return fmt.Errorf("unknown channel type: %s", ch.ChannelType)
+	}
 }
 
 // sendEmail dispatches a notification via SMTP.
@@ -204,6 +272,15 @@ func (w *NotificationWorker) sendEmail(ch models.NotificationChannel, p notifica
 	subject := fmt.Sprintf("TokenGate Alert: %s", eventTypeLabel(p.EventType))
 	body := fmt.Sprintf("Event: %s\nProvider: %s\nModel: %s\nAPI Key: %s\nDetails: %s\nTime: %s",
 		eventTypeLabel(p.EventType), p.Provider, p.Model, p.KeyID, p.Details, p.Timestamp)
+	if p.Title != "" || p.Body != "" {
+		if p.Title != "" {
+			subject = p.Title
+		}
+		body = fmt.Sprintf("%s\n\n%s\n\nTime: %s", p.Title, p.Body, p.Timestamp)
+		if p.Details != "" {
+			body += "\n\nDetails: " + p.Details
+		}
+	}
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s",
 		smtpFrom, cfg.Email, subject, body)
@@ -231,6 +308,12 @@ func (w *NotificationWorker) sendSlack(ch models.NotificationChannel, p notifica
 
 	text := fmt.Sprintf("*TokenGate Alert: %s*\n>Provider: %s\n>Model: %s\n>API Key: `%s`\n>Details: %s\n>Time: %s",
 		eventTypeLabel(p.EventType), p.Provider, p.Model, p.KeyID, p.Details, p.Timestamp)
+	if p.Title != "" || p.Body != "" {
+		text = fmt.Sprintf("*%s*\n%s\nTime: %s", p.Title, p.Body, p.Timestamp)
+		if p.Details != "" {
+			text += "\nDetails: " + p.Details
+		}
+	}
 
 	payload, _ := json.Marshal(map[string]string{"text": text})
 
@@ -318,6 +401,8 @@ func eventTypeLabel(et string) string {
 		return "Budget Warning"
 	case models.EventRateLimitExceeded:
 		return "Rate Limit Exceeded"
+	case models.EventTeamInvitation:
+		return "Team Invitation"
 	case "test":
 		return "Test Notification"
 	default:

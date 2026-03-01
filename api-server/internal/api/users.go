@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -196,6 +197,19 @@ type inviteUserReq struct {
 	Role  string `json:"role"` // viewer | editor; defaults to viewer
 }
 
+func roleLabel(role string) string {
+	switch role {
+	case models.RoleOwner:
+		return "Owner"
+	case models.RoleAdmin:
+		return "Admin"
+	case models.RoleEditor:
+		return "Editor"
+	default:
+		return "Viewer"
+	}
+}
+
 // handleInviteUser creates a pending user + TenantMembership in the tenant.
 // If the user already exists (e.g. in another tenant), a new membership is created.
 // POST /v1/admin/users/invite
@@ -277,6 +291,29 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 			return
 		}
 
+		payload, _ := json.Marshal(gin.H{
+			"tenant_id":    tenantID,
+			"tenant_name":  tenant.Name,
+			"invited_role": role,
+			"invited_by":   caller.Email,
+		})
+		title := fmt.Sprintf("%s invited you to %s", caller.Email, tenant.Name)
+		body := fmt.Sprintf("Role: %s. Choose Accept, Deny, or Decide later.", roleLabel(role))
+		_ = db.Create(&models.UserNotification{
+			UserID:   existing.ID,
+			TenantID: &tenantID,
+			Type:     models.EventTeamInvitation,
+			Title:    title,
+			Body:     body,
+			Payload:  string(payload),
+			Status:   models.UserNotificationStatusUnread,
+		}).Error
+		if s.notifWorker != nil {
+			if err := s.notifWorker.SendUserNotification(c.Request.Context(), existing.ID, models.EventTeamInvitation, title, body, string(payload)); err != nil {
+				slog.Warn("invite_personal_channel_dispatch_failed", "user_id", existing.ID, "tenant_id", tenantID, "error", err)
+			}
+		}
+
 		slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", tenantID)
 		c.JSON(http.StatusCreated, gin.H{
 			"message":    "User invited. They will join your tenant when they accept.",
@@ -318,6 +355,81 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 		"signup_url": "https://app.tokengate.to/sign-up",
 		"user":       toUserResponse(invited, role, models.StatusPending),
 	})
+}
+
+// POST /v1/user/invitations/:tenant_id/accept
+func (s *Server) handleAcceptInvitation(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var tenantID uint
+	if _, err := fmt.Sscanf(c.Param("tenant_id"), "%d", &tenantID); err != nil || tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+	var m models.TenantMembership
+	if err := db.Where("tenant_id = ? AND user_id = ?", tenantID, caller.ID).First(&m).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found"})
+		return
+	}
+	if m.Status != models.StatusPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invitation is not pending"})
+		return
+	}
+	if err := db.Model(&m).Updates(map[string]interface{}{
+		"status":     models.StatusActive,
+		"updated_at": time.Now(),
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to accept invitation"})
+		return
+	}
+
+	now := time.Now()
+	_ = db.Model(&models.UserNotification{}).
+		Where("user_id = ? AND tenant_id = ? AND type = ? AND status = ?", caller.ID, tenantID, models.EventTeamInvitation, models.UserNotificationStatusUnread).
+		Updates(map[string]interface{}{"status": models.UserNotificationStatusRead, "read_at": &now}).Error
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// POST /v1/user/invitations/:tenant_id/deny
+func (s *Server) handleDenyInvitation(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var tenantID uint
+	if _, err := fmt.Sscanf(c.Param("tenant_id"), "%d", &tenantID); err != nil || tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+	var m models.TenantMembership
+	if err := db.Where("tenant_id = ? AND user_id = ?", tenantID, caller.ID).First(&m).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found"})
+		return
+	}
+	if m.Status != models.StatusPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invitation is not pending"})
+		return
+	}
+	if err := db.Delete(&m).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to deny invitation"})
+		return
+	}
+
+	now := time.Now()
+	_ = db.Model(&models.UserNotification{}).
+		Where("user_id = ? AND tenant_id = ? AND type = ? AND status = ?", caller.ID, tenantID, models.EventTeamInvitation, models.UserNotificationStatusUnread).
+		Updates(map[string]interface{}{"status": models.UserNotificationStatusRead, "read_at": &now}).Error
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // ── Role management (admin+) ─────────────────────────────────────────────────

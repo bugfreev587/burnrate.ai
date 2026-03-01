@@ -3,8 +3,10 @@ import { useNavigate, Link } from 'react-router-dom'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
 import { useNotifications } from '../hooks/useNotifications'
+import { useUserNotificationChannels } from '../hooks/useUserNotifications'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import type { CreateNotificationChannelReq } from '../hooks/useNotifications'
+import type { UserNotificationChannelReq } from '../hooks/useUserNotifications'
 import Navbar from '../components/Navbar'
 import './LimitsPage.css'
 import './ManagementPage.css'
@@ -19,6 +21,10 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'budget_blocked', label: 'Budget Blocked', description: 'When a blocking budget limit is exceeded' },
   { value: 'budget_warning', label: 'Budget Warning', description: 'When spend reaches the alert threshold' },
   { value: 'rate_limit_exceeded', label: 'Rate Limit Exceeded', description: 'When a rate limit is hit' },
+]
+
+const PERSONAL_EVENT_TYPE_OPTIONS = [
+  { value: 'team_invitation', label: 'Team Invitation', description: 'When someone invites you to join a workspace' },
 ]
 
 function channelTypeLabel(t: string) {
@@ -43,30 +49,50 @@ export default function NotificationsPage() {
   const navigate = useNavigate()
   const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
-  const { channels, loading, error, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications()
+  const canAccess = isSynced && hasPermission(role, 'viewer')
+  const canManageTenantChannels = isSynced && hasPermission(role, 'editor')
+  const { channels, loading, error, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications(canManageTenantChannels)
+  const {
+    channels: personalChannels,
+    loading: loadingPersonal,
+    error: personalError,
+    createChannel: createPersonalChannel,
+    updateChannel: updatePersonalChannel,
+    deleteChannel: deletePersonalChannel,
+    testChannel: testPersonalChannel,
+  } = useUserNotificationChannels(canAccess)
   const { config } = useDashboardConfig()
   const planLimits = config?.plan_limits
   const channelCapped = planLimits != null && planLimits.max_notification_channels !== -1
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
+  const [showPersonalModal, setShowPersonalModal] = useState(false)
   const [channelType, setChannelType] = useState('slack')
+  const [personalChannelType, setPersonalChannelType] = useState('email')
   const [name, setName] = useState('')
+  const [personalName, setPersonalName] = useState('')
   const [configEmail, setConfigEmail] = useState('')
   const [configSlackUrl, setConfigSlackUrl] = useState('')
   const [configWebhookUrl, setConfigWebhookUrl] = useState('')
   const [configSigningSecret, setConfigSigningSecret] = useState('')
   const [eventTypes, setEventTypes] = useState<string[]>(['budget_blocked', 'budget_warning', 'rate_limit_exceeded'])
+  const [personalConfigEmail, setPersonalConfigEmail] = useState('')
+  const [personalConfigSlackUrl, setPersonalConfigSlackUrl] = useState('')
+  const [personalConfigWebhookUrl, setPersonalConfigWebhookUrl] = useState('')
+  const [personalConfigSigningSecret, setPersonalConfigSigningSecret] = useState('')
+  const [personalEventTypes, setPersonalEventTypes] = useState<string[]>(['team_invitation'])
   const [formError, setFormError] = useState<string | null>(null)
+  const [personalFormError, setPersonalFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [savingPersonal, setSavingPersonal] = useState(false)
 
   // Shared state
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<number | null>(null)
+  const [testingPersonalId, setTestingPersonalId] = useState<number | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
-
-  const canAccess = isSynced && hasPermission(role, 'editor')
 
   useEffect(() => {
     if (isSynced && !canAccess) navigate('/dashboard')
@@ -79,6 +105,13 @@ export default function NotificationsPage() {
     setChannelType('slack'); setName(''); setConfigEmail(''); setConfigSlackUrl('')
     setConfigWebhookUrl(''); setConfigSigningSecret('')
     setEventTypes(['budget_blocked', 'budget_warning', 'rate_limit_exceeded']); setFormError(null)
+  }
+
+  const resetPersonalForm = () => {
+    setPersonalChannelType('email'); setPersonalName('')
+    setPersonalConfigEmail(''); setPersonalConfigSlackUrl('')
+    setPersonalConfigWebhookUrl(''); setPersonalConfigSigningSecret('')
+    setPersonalEventTypes(['team_invitation']); setPersonalFormError(null)
   }
 
   const handleSave = async () => {
@@ -143,7 +176,66 @@ export default function NotificationsPage() {
     finally { setTestingId(null) }
   }
 
-  if (!isSynced || loading) {
+  const handlePersonalSave = async () => {
+    if (personalEventTypes.length === 0) { setPersonalFormError('Select at least one event type'); return }
+    if (!personalName.trim()) { setPersonalFormError('Name is required'); return }
+
+    let config: Record<string, string> = {}
+    switch (personalChannelType) {
+      case 'email':
+        if (!personalConfigEmail.trim()) { setPersonalFormError('Email address is required'); return }
+        config = { email: personalConfigEmail.trim() }
+        break
+      case 'slack':
+        if (!personalConfigSlackUrl.trim()) { setPersonalFormError('Slack webhook URL is required'); return }
+        config = { slack_webhook_url: personalConfigSlackUrl.trim() }
+        break
+      case 'webhook':
+        if (!personalConfigWebhookUrl.trim()) { setPersonalFormError('Webhook URL is required'); return }
+        config = { webhook_url: personalConfigWebhookUrl.trim() }
+        if (personalConfigSigningSecret.trim()) config.signing_secret = personalConfigSigningSecret.trim()
+        break
+    }
+
+    setSavingPersonal(true); setPersonalFormError(null)
+    try {
+      const req: UserNotificationChannelReq = {
+        channel_type: personalChannelType as 'email' | 'slack' | 'webhook',
+        name: personalName.trim(),
+        config,
+        event_types: personalEventTypes,
+        enabled: true,
+      }
+      await createPersonalChannel(req)
+      showSuccess('Personal notification channel created'); setShowPersonalModal(false); resetPersonalForm()
+    } catch (e) { setPersonalFormError(e instanceof Error ? e.message : 'Failed to save') }
+    finally { setSavingPersonal(false) }
+  }
+
+  const handleTogglePersonal = async (id: number, currentEnabled: boolean) => {
+    try {
+      await updatePersonalChannel(id, { enabled: !currentEnabled })
+      showSuccess(`Personal channel ${currentEnabled ? 'disabled' : 'enabled'}`)
+    } catch (e) { showError(e instanceof Error ? e.message : 'Failed to toggle personal channel') }
+  }
+
+  const handleDeletePersonal = async (id: number) => {
+    if (!confirm('Delete this personal notification channel?')) return
+    try { await deletePersonalChannel(id); showSuccess('Personal channel deleted') }
+    catch (e) { showError(e instanceof Error ? e.message : 'Failed to delete personal channel') }
+  }
+
+  const handleTestPersonal = async (id: number) => {
+    setTestingPersonalId(id)
+    try {
+      const result = await testPersonalChannel(id)
+      if (result.success) showSuccess('Personal test notification sent successfully')
+      else showError(`Personal test failed: ${result.error || 'Unknown error'}`)
+    } catch (e) { showError(e instanceof Error ? e.message : 'Personal test failed') }
+    finally { setTestingPersonalId(null) }
+  }
+
+  if (!isSynced || loading || loadingPersonal) {
     return (
       <div className="page-container">
         <Navbar />
@@ -167,7 +259,88 @@ export default function NotificationsPage() {
           {successMsg && <div className="flash flash-success">{successMsg}</div>}
           {errorMsg && <div className="flash flash-error">{errorMsg}</div>}
           {error && <div className="flash flash-error">{error}</div>}
+          {personalError && <div className="flash flash-error">{personalError}</div>}
 
+          <section className="mgmt-section">
+            <div className="section-hdr">
+              <div>
+                <h2>Personal Notification Channels <span className="section-count">{personalChannels.length}</span></h2>
+                <p className="section-desc">
+                  Channels tied to your account. Used for direct events like workspace invitations.
+                </p>
+              </div>
+              <button className="btn btn-primary" onClick={() => { resetPersonalForm(); setShowPersonalModal(true) }}>
+                Add Personal Channel
+              </button>
+            </div>
+            <div className="table-scroll">
+              <table className="mgmt-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Destination</th>
+                    <th>Events</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {personalChannels.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="empty-cell">
+                        <div className="empty-cta">
+                          <p>No personal channels configured yet.</p>
+                          <button className="btn btn-primary" onClick={() => { resetPersonalForm(); setShowPersonalModal(true) }}>
+                            Add Your First Personal Channel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : personalChannels.map(ch => (
+                    <tr key={ch.id}>
+                      <td>{ch.name}</td>
+                      <td><span className="provider-badge">{channelTypeLabel(ch.channel_type)}</span></td>
+                      <td><span className="text-muted">{configSummary(ch.channel_type, ch.config)}</span></td>
+                      <td>
+                        {(ch.event_types || []).map(et => (
+                          <span key={et} className="metric-badge" style={{ marginRight: '0.3rem', marginBottom: '0.2rem' }}>
+                            {et.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </td>
+                      <td>
+                        <button
+                          className={`btn btn-small ${ch.enabled ? 'btn-secondary' : 'btn-primary'}`}
+                          onClick={() => handleTogglePersonal(ch.id, ch.enabled)}
+                          style={{ minWidth: '5rem' }}
+                        >
+                          <span className={`enabled-dot ${ch.enabled ? 'on' : 'off'}`} />
+                          {ch.enabled ? 'Enabled' : 'Disabled'}
+                        </button>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            className="btn btn-small btn-secondary"
+                            onClick={() => handleTestPersonal(ch.id)}
+                            disabled={testingPersonalId === ch.id}
+                          >
+                            {testingPersonalId === ch.id ? 'Testing...' : 'Test'}
+                          </button>
+                          <button className="btn btn-small btn-danger" onClick={() => handleDeletePersonal(ch.id)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {canManageTenantChannels && (
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
@@ -257,6 +430,7 @@ export default function NotificationsPage() {
               </table>
             </div>
           </section>
+          )}
         </div>
       </div>
 
@@ -371,6 +545,117 @@ export default function NotificationsPage() {
               <button className="btn btn-primary" onClick={handleSave}
                 disabled={saving}>
                 {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPersonalModal && (
+        <div className="modal-overlay" onClick={() => { setShowPersonalModal(false); setPersonalFormError(null) }}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Add Personal Notification Channel</h2>
+            </div>
+            <div className="modal-body">
+              <p className="modal-hint">
+                Configure a personal channel to receive direct account notifications such as workspace invites.
+              </p>
+
+              <div className="form-group">
+                <label>Name <span className="required">*</span></label>
+                <input
+                  type="text" value={personalName}
+                  onChange={e => setPersonalName(e.target.value)}
+                  placeholder="e.g. My Email Alerts" autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Channel Type <span className="required">*</span></label>
+                <select value={personalChannelType} onChange={e => setPersonalChannelType(e.target.value)}>
+                  {CHANNEL_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {personalChannelType === 'email' && (
+                <div className="form-group">
+                  <label>Email Address <span className="required">*</span></label>
+                  <input
+                    type="email" value={personalConfigEmail}
+                    onChange={e => setPersonalConfigEmail(e.target.value)}
+                    placeholder="you@company.com"
+                  />
+                </div>
+              )}
+
+              {personalChannelType === 'slack' && (
+                <div className="form-group">
+                  <label>Slack Webhook URL <span className="required">*</span></label>
+                  <input
+                    type="url" value={personalConfigSlackUrl}
+                    onChange={e => setPersonalConfigSlackUrl(e.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                  />
+                </div>
+              )}
+
+              {personalChannelType === 'webhook' && (
+                <>
+                  <div className="form-group">
+                    <label>Webhook URL <span className="required">*</span></label>
+                    <input
+                      type="url" value={personalConfigWebhookUrl}
+                      onChange={e => setPersonalConfigWebhookUrl(e.target.value)}
+                      placeholder="https://your-server.com/webhook"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Signing Secret (optional)</label>
+                    <input
+                      type="text" value={personalConfigSigningSecret}
+                      onChange={e => setPersonalConfigSigningSecret(e.target.value)}
+                      placeholder="Optional HMAC signing secret"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="form-group">
+                <label>Event Types <span className="required">*</span></label>
+                <div className="role-select">
+                  {PERSONAL_EVENT_TYPE_OPTIONS.map(et => {
+                    const checked = personalEventTypes.includes(et.value)
+                    return (
+                      <label key={et.value} className={`role-option ${checked ? 'selected' : ''}`}>
+                        <input
+                          type="checkbox" value={et.value}
+                          checked={checked}
+                          onChange={() => setPersonalEventTypes(prev =>
+                            prev.includes(et.value) ? prev.filter(v => v !== et.value) : [...prev, et.value]
+                          )}
+                        />
+                        <div>
+                          <strong>{et.label}</strong>
+                          <span className="role-desc">{et.description}</span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {personalFormError && <div className="flash flash-error modal-flash">{personalFormError}</div>}
+
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => { setShowPersonalModal(false); setPersonalFormError(null) }}
+                disabled={savingPersonal}>Cancel</button>
+              <button className="btn btn-primary" onClick={handlePersonalSave}
+                disabled={savingPersonal}>
+                {savingPersonal ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
