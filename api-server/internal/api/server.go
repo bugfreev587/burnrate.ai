@@ -162,6 +162,7 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/metrics", s.handleUsageMetrics)
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
 		viewer.GET("/budget", s.handleGetBudget)
+		viewer.GET("/rate-limits", s.handleListRateLimits)
 		viewer.GET("/audit/reports", s.handleListAuditReports)
 		viewer.GET("/audit/reports/:id", s.handleGetAuditReport)
 		viewer.GET("/audit/reports/:id/download", s.handleDownloadAuditReport)
@@ -230,15 +231,11 @@ func (s *Server) setupRoutes() {
 		admin.PUT("/pricing-configs/:config_id/assign", s.handleAssignPricingConfig)
 		admin.DELETE("/pricing-configs/:config_id/assign", s.handleUnassignPricingConfig)
 
-		// Budget management
+		// Budget management (read — write routes moved to limitsAdmin below)
 		admin.GET("/budget", s.handleGetBudget)
-		admin.PUT("/budget", s.handleUpsertBudget)
-		admin.DELETE("/budget/:budget_id", s.handleDeleteBudget)
 
-		// Rate limit management
+		// Rate limit management (read — write routes moved to limitsAdmin below)
 		admin.GET("/rate-limits", s.handleListRateLimits)
-		admin.PUT("/rate-limits", s.handleUpsertRateLimit)
-		admin.DELETE("/rate-limits/:id", s.handleDeleteRateLimit)
 
 		// Notification channel management
 		admin.GET("/notifications", s.handleListNotificationChannels)
@@ -246,6 +243,16 @@ func (s *Server) setupRoutes() {
 		admin.PUT("/notifications/:id", s.handleUpdateNotificationChannel)
 		admin.DELETE("/notifications/:id", s.handleDeleteNotificationChannel)
 		admin.POST("/notifications/:id/test", s.handleTestNotificationChannel)
+	}
+
+	// ─── Limits Admin (budget + rate-limit mutations, admin+ only) ──────────
+	limitsAdmin := s.router.Group("/v1/admin")
+	limitsAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleAdmin))
+	{
+		limitsAdmin.PUT("/budget", s.handleUpsertBudget)
+		limitsAdmin.DELETE("/budget/:budget_id", s.handleDeleteBudget)
+		limitsAdmin.PUT("/rate-limits", s.handleUpsertRateLimit)
+		limitsAdmin.DELETE("/rate-limits/:id", s.handleDeleteRateLimit)
 	}
 
 	// ─── Billing (viewer+ for read, admin+ for mutations) ───────────────────

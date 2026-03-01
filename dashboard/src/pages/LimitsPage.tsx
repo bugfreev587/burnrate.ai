@@ -98,7 +98,8 @@ export default function LimitsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [limitModal, setLimitModal] = useState<{ type: 'spend' | 'rate' } | null>(null)
 
-  const canAccess = isSynced && hasPermission(role, 'editor')
+  const canAccess = isSynced && hasPermission(role, 'viewer')
+  const canManageLimits = hasPermission(role, 'admin')
 
   useEffect(() => {
     if (isSynced && !canAccess) navigate('/dashboard')
@@ -263,15 +264,17 @@ export default function LimitsPage() {
                   hard-block limits reject requests (HTTP 402) when exceeded.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => {
-                if (spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits) {
-                  setLimitModal({ type: 'spend' })
-                  return
-                }
-                setEditingSL(null); resetSLForm(); setShowSLModal(true)
-              }}>
-                Add Spend Limit
-              </button>
+              {canManageLimits && (
+                <button className="btn btn-primary" onClick={() => {
+                  if (spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits) {
+                    setLimitModal({ type: 'spend' })
+                    return
+                  }
+                  setEditingSL(null); resetSLForm(); setShowSLModal(true)
+                }}>
+                  Add Spend Limit
+                </button>
+              )}
             </div>
 
             <div className="table-scroll">
@@ -287,18 +290,20 @@ export default function LimitsPage() {
                     <th>Status</th>
                     <th>Current Spend</th>
                     <th>Usage</th>
-                    <th>Actions</th>
+                    {canManageLimits && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {spendLimits.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="empty-cell">
+                      <td colSpan={canManageLimits ? 10 : 9} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }}>
-                            Add Your First Spend Limit
-                          </button>
+                          {canManageLimits && (
+                            <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }}>
+                              Add Your First Spend Limit
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -372,20 +377,22 @@ export default function LimitsPage() {
                             <span className="usage-text">{pct.toFixed(1)}%</span>
                           </div>
                         </td>
-                        <td>
-                          <button
-                            className={`btn btn-small ${l.enabled ? 'btn-warn' : 'btn-success'}`}
-                            onClick={() => handleToggleSL(l)}
-                          >
-                            {l.enabled ? 'Disable' : 'Enable'}
-                          </button>
-                          <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)}>
-                            Edit
-                          </button>
-                          <button className="btn btn-small btn-danger" onClick={() => handleDeleteSL(l.id)}>
-                            Delete
-                          </button>
-                        </td>
+                        {canManageLimits && (
+                          <td>
+                            <button
+                              className={`btn btn-small ${l.enabled ? 'btn-warn' : 'btn-success'}`}
+                              onClick={() => handleToggleSL(l)}
+                            >
+                              {l.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)}>
+                              Edit
+                            </button>
+                            <button className="btn btn-small btn-danger" onClick={() => handleDeleteSL(l.id)}>
+                              Delete
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
@@ -405,15 +412,17 @@ export default function LimitsPage() {
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => {
-                if (rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits) {
-                  setLimitModal({ type: 'rate' })
-                  return
-                }
-                setEditingRL(null); resetRLForm(); setShowRLModal(true)
-              }}>
-                Add Rate Limit
-              </button>
+              {canManageLimits && (
+                <button className="btn btn-primary" onClick={() => {
+                  if (rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits) {
+                    setLimitModal({ type: 'rate' })
+                    return
+                  }
+                  setEditingRL(null); resetRLForm(); setShowRLModal(true)
+                }}>
+                  Add Rate Limit
+                </button>
+              )}
             </div>
 
             <div className="table-scroll">
@@ -427,18 +436,20 @@ export default function LimitsPage() {
                     <th>Window</th>
                     <th>Status</th>
                     <th>Current Usage</th>
-                    <th>Actions</th>
+                    {canManageLimits && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {rateLimits.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="empty-cell">
+                      <td colSpan={canManageLimits ? 8 : 7} className="empty-cell">
                         <div className="empty-cta">
                           <p>No rate limits configured yet.</p>
-                          <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }}>
-                            Add Your First Rate Limit
-                          </button>
+                          {canManageLimits && (
+                            <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }}>
+                              Add Your First Rate Limit
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -469,20 +480,22 @@ export default function LimitsPage() {
                             </span>
                           </div>
                         </td>
-                        <td>
-                          <button
-                            className={`btn btn-small ${l.Enabled ? 'btn-warn' : 'btn-success'}`}
-                            onClick={() => handleToggleRL(l)}
-                          >
-                            {l.Enabled ? 'Disable' : 'Enable'}
-                          </button>
-                          <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)}>
-                            Edit
-                          </button>
-                          <button className="btn btn-small btn-danger" onClick={() => handleDeleteRL(l.ID)}>
-                            Delete
-                          </button>
-                        </td>
+                        {canManageLimits && (
+                          <td>
+                            <button
+                              className={`btn btn-small ${l.Enabled ? 'btn-warn' : 'btn-success'}`}
+                              onClick={() => handleToggleRL(l)}
+                            >
+                              {l.Enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)}>
+                              Edit
+                            </button>
+                            <button className="btn btn-small btn-danger" onClick={() => handleDeleteRL(l.ID)}>
+                              Delete
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
