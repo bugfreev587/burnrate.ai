@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
@@ -119,6 +119,22 @@ export default function ManagementPage() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
   const [showProjectMembers, setShowProjectMembers] = useState<number | null>(null)
   const [loadingMembers, setLoadingMembers] = useState(false)
+
+  // Rich dropdown open state
+  const [authMethodOpen, setAuthMethodOpen] = useState(false)
+  const [billingModeOpen, setBillingModeOpen] = useState(false)
+  const authMethodRef = useRef<HTMLDivElement>(null)
+  const billingModeRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (authMethodRef.current && !authMethodRef.current.contains(e.target as Node)) setAuthMethodOpen(false)
+      if (billingModeRef.current && !billingModeRef.current.contains(e.target as Node)) setBillingModeOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   const canAccess = hasPermission(role, 'editor')
   const canManageProviderKeys = hasPermission(role, 'admin')
@@ -438,7 +454,7 @@ export default function ManagementPage() {
                   setLimitModal({ type: 'keys' })
                   return
                 }
-                setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setShowCreateKeyModal(true)
+                setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setAuthMethodOpen(false); setBillingModeOpen(false); setShowCreateKeyModal(true)
               }}>
                 Create Key
               </button>
@@ -469,7 +485,7 @@ export default function ManagementPage() {
                           <p>{filterProjectId ? 'No API keys in this project.' : 'No API keys yet. Create one to start reporting usage.'}</p>
                           {!filterProjectId && (
                           <button className="btn btn-primary"
-                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setShowCreateKeyModal(true) }}>
+                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setAuthMethodOpen(false); setBillingModeOpen(false); setShowCreateKeyModal(true) }}>
                             Create Your First Key
                           </button>
                           )}
@@ -713,7 +729,6 @@ export default function ManagementPage() {
                 <select
                   value={newKeyProjectId}
                   onChange={e => setNewKeyProjectId(e.target.value ? parseInt(e.target.value, 10) : '')}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
                 >
                   <option value="">Select a project...</option>
                   {projects.map(p => (
@@ -737,7 +752,6 @@ export default function ManagementPage() {
                 <select
                   value={newKeyProvider}
                   onChange={e => setNewKeyProvider(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
                 >
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
@@ -745,36 +759,109 @@ export default function ManagementPage() {
               </div>
               <div className="form-group">
                 <label>Auth Method</label>
-                <select
-                  value={newAuthMethod}
-                  onChange={e => {
-                    const v = e.target.value
-                    setNewAuthMethod(v)
-                    if (v === 'BYOK') setNewBillingMode('API_USAGE')
-                  }}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
-                >
-                  {AUTH_METHODS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label} — {m.description}</option>
-                  ))}
-                </select>
+                <div className={`rich-dropdown${authMethodOpen ? ' open' : ''}`} ref={authMethodRef}>
+                  <button
+                    type="button"
+                    className="rich-dropdown-trigger"
+                    onClick={() => { setAuthMethodOpen(v => !v); setBillingModeOpen(false) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { setAuthMethodOpen(false); return }
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const idx = AUTH_METHODS.findIndex(m => m.value === newAuthMethod)
+                        const next = e.key === 'ArrowDown'
+                          ? (idx + 1) % AUTH_METHODS.length
+                          : (idx - 1 + AUTH_METHODS.length) % AUTH_METHODS.length
+                        const v = AUTH_METHODS[next].value
+                        setNewAuthMethod(v)
+                        if (v === 'BYOK') setNewBillingMode('API_USAGE')
+                      }
+                    }}
+                    aria-haspopup="listbox"
+                    aria-expanded={authMethodOpen}
+                  >
+                    <span className="trigger-label">
+                      {AUTH_METHODS.find(m => m.value === newAuthMethod)?.label ?? 'Select...'}
+                    </span>
+                    <span className="trigger-chevron">&#9660;</span>
+                  </button>
+                  {authMethodOpen && (
+                    <div className="rich-dropdown-panel" role="listbox">
+                      {AUTH_METHODS.map(m => (
+                        <div
+                          key={m.value}
+                          className={`rich-dropdown-option${newAuthMethod === m.value ? ' selected' : ''}`}
+                          role="option"
+                          aria-selected={newAuthMethod === m.value}
+                          onClick={() => {
+                            setNewAuthMethod(m.value)
+                            if (m.value === 'BYOK') setNewBillingMode('API_USAGE')
+                            setAuthMethodOpen(false)
+                          }}
+                        >
+                          <span className="option-title">{m.label}</span>
+                          <span className="option-desc">{m.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="form-group">
                 <label>Billing Mode</label>
-                <select
-                  value={newBillingMode}
-                  onChange={e => setNewBillingMode(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
-                >
-                  {BILLING_MODES.map(m => {
-                    const disabled = newAuthMethod === 'BYOK' && m.value === 'MONTHLY_SUBSCRIPTION'
-                    return (
-                      <option key={m.value} value={m.value} disabled={disabled}>
-                        {m.label} — {m.description}{disabled ? ' (not available with BYOK)' : ''}
-                      </option>
-                    )
-                  })}
-                </select>
+                <div className={`rich-dropdown${billingModeOpen ? ' open' : ''}`} ref={billingModeRef}>
+                  <button
+                    type="button"
+                    className="rich-dropdown-trigger"
+                    onClick={() => { setBillingModeOpen(v => !v); setAuthMethodOpen(false) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { setBillingModeOpen(false); return }
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const enabledModes = BILLING_MODES.filter(m => !(newAuthMethod === 'BYOK' && m.value === 'MONTHLY_SUBSCRIPTION'))
+                        const idx = enabledModes.findIndex(m => m.value === newBillingMode)
+                        const next = e.key === 'ArrowDown'
+                          ? (idx + 1) % enabledModes.length
+                          : (idx - 1 + enabledModes.length) % enabledModes.length
+                        setNewBillingMode(enabledModes[next].value)
+                      }
+                    }}
+                    aria-haspopup="listbox"
+                    aria-expanded={billingModeOpen}
+                  >
+                    <span className="trigger-label">
+                      {BILLING_MODES.find(m => m.value === newBillingMode)?.label ?? 'Select...'}
+                    </span>
+                    <span className="trigger-chevron">&#9660;</span>
+                  </button>
+                  {billingModeOpen && (
+                    <div className="rich-dropdown-panel" role="listbox">
+                      {BILLING_MODES.map(m => {
+                        const disabled = newAuthMethod === 'BYOK' && m.value === 'MONTHLY_SUBSCRIPTION'
+                        return (
+                          <div
+                            key={m.value}
+                            className={`rich-dropdown-option${newBillingMode === m.value ? ' selected' : ''}${disabled ? ' disabled' : ''}`}
+                            role="option"
+                            aria-selected={newBillingMode === m.value}
+                            aria-disabled={disabled}
+                            onClick={() => {
+                              if (disabled) return
+                              setNewBillingMode(m.value)
+                              setBillingModeOpen(false)
+                            }}
+                          >
+                            <span className="option-title">
+                              {m.label}
+                              {disabled && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}> (not available with BYOK)</span>}
+                            </span>
+                            <span className="option-desc">{m.description}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="form-group">
                 <label>Model Allowlist <span className="optional">(optional)</span></label>
@@ -785,13 +872,13 @@ export default function ManagementPage() {
                     const selected = Array.from(e.target.selectedOptions, o => o.value)
                     setNewKeyModelAllowlist(selected)
                   }}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem', minHeight: '120px' }}
+                  style={{ minHeight: '120px' }}
                 >
                   {availableModels.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
-                <p className="section-desc" style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
+                <p className="form-helper">
                   Hold Ctrl/Cmd to select multiple models. Leave empty to allow all models.
                 </p>
                 {newKeyModelAllowlist.length > 0 && (
@@ -802,7 +889,7 @@ export default function ManagementPage() {
                         <button
                           type="button"
                           onClick={() => setNewKeyModelAllowlist(prev => prev.filter(x => x !== m))}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', fontSize: '0.875rem' }}
+                          style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '0 2px', fontSize: '0.875rem' }}
                         >x</button>
                       </span>
                     ))}
