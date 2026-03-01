@@ -6,7 +6,7 @@ server:
   cors_origins:
     - "https://tokengate.to"
     - "https://app.tokengate.to"
-  rate_limit_per_minute: 120
+  rate_limit_per_minute: 600
 
 postgres:
   dsn: ""  # set via POSTGRES_DB_URL env var
