@@ -859,17 +859,17 @@ function InsightsStrip({ summary, apiKeys }: { summary: ReturnType<typeof useUsa
   return (
     <div className="insights-strip">
       <div className="card insight-card">
-        <p className="insight-label">Top Model <BillingBadge /></p>
+        <p className="insight-label">Top Model</p>
         <p className="insight-value">{topModel ? topModel.model : '—'}</p>
         <p className="insight-sub">{topModel ? `${fmt$(topModel.cost)} · ${fmtNum(topModel.requests)} reqs` : 'No usage data'}</p>
       </div>
       <div className="card insight-card">
-        <p className="insight-label">Active Keys <BillingBadge /></p>
+        <p className="insight-label">Active Keys</p>
         <p className="insight-value">{activeKeys}</p>
         <p className="insight-sub">keys with usage this period</p>
       </div>
       <div className="card insight-card">
-        <p className="insight-label">Avg Tokens / Request <BillingBadge /></p>
+        <p className="insight-label">Avg Tokens / Request</p>
         <p className="insight-value">{s ? fmtTokens(s.tokens.avg_per_request) : '—'}</p>
         <p className="insight-sub">across all models</p>
       </div>
@@ -1111,14 +1111,14 @@ export default function Dashboard() {
             </div>
 
             {/* ── Breakdowns: Model + API Key side-by-side ── */}
-            <div className="dash-section-title">{periodLabel}</div>
+            <div className="dash-section-title">{periodLabel} <BillingBadge /></div>
             <div className="dash-split">
               <div className="card dash-split-left">
-                <p className="card-subtitle">Breakdown by Model <BillingBadge /></p>
+                <p className="card-subtitle">Breakdown by Model</p>
                 <ModelTable models={s?.by_model ?? []} />
               </div>
               <div className="card dash-split-right">
-                <p className="card-subtitle">Breakdown by API Key <BillingBadge /></p>
+                <p className="card-subtitle">Breakdown by API Key</p>
                 <ApiKeyTable keys={s?.by_api_key ?? []} />
               </div>
             </div>
@@ -1126,11 +1126,11 @@ export default function Dashboard() {
             {/* ── Daily Cost Chart + Provider Breakdown side-by-side ── */}
             <div className="dash-split">
               <div className="card dash-split-left">
-                <p className="card-subtitle">Daily Cost <BillingBadge /></p>
+                <p className="card-subtitle">Daily Cost</p>
                 <TrendChart data={s?.daily_trend ?? []} mode="cost" />
               </div>
               <div className="card dash-split-right">
-                <p className="card-subtitle">Provider Breakdown <BillingBadge /></p>
+                <p className="card-subtitle">Provider Breakdown</p>
                 <ProviderBreakdown models={s?.by_model ?? []} />
               </div>
             </div>
