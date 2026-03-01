@@ -12,8 +12,8 @@ const links = {
     { label: 'Support', href: 'mailto:hello@tokengate.to', internal: false },
   ],
   Legal: [
-    { label: 'Privacy', href: '/privacy', internal: false },
-    { label: 'Terms', href: '/terms', internal: false },
+    { label: 'Privacy', href: '/privacy', internal: true },
+    { label: 'Terms', href: '/terms', internal: true },
   ],
 }
 

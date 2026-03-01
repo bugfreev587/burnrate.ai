@@ -20,6 +20,8 @@ import SettingsPage from './pages/SettingsPage'
 import AuditPage from './pages/AuditPage'
 import NotificationsPage from './pages/NotificationsPage'
 import PublicPricingPage from './pages/PublicPricingPage'
+import TermsPage from './pages/TermsPage'
+import PrivacyPage from './pages/PrivacyPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
 
@@ -94,6 +96,8 @@ export default function App() {
           <Route path="/plan" element={<ProtectedRoute><PlanPage /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
           <Route path="/plans" element={<PublicPricingPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
