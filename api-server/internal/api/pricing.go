@@ -374,6 +374,25 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		}
 	}
 
+	// Build a project_id → name lookup for per-project budget display.
+	projectNames := map[string]string{}
+	for _, bl := range limits {
+		if bl.ScopeType == models.BudgetScopeProject && bl.ScopeID != "" {
+			projectNames[bl.ScopeID] = ""
+		}
+	}
+	if len(projectNames) > 0 {
+		projectIDs := make([]string, 0, len(projectNames))
+		for pid := range projectNames {
+			projectIDs = append(projectIDs, pid)
+		}
+		var projects []models.Project
+		s.postgresDB.GetDB().Where("tenant_id = ? AND id IN ?", tenantID, projectIDs).Find(&projects)
+		for _, p := range projects {
+			projectNames[fmt.Sprintf("%d", p.ID)] = p.Name
+		}
+	}
+
 	// Compute current period spend for each limit.
 	loc := parseTimezone(c)
 	now := time.Now().In(loc)
@@ -397,6 +416,9 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			Where("tenant_id = ? AND created_at >= ? AND api_usage_billed = ?", tenantID, periodStart, true)
 		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
 			q = q.Where("key_id = ?", bl.ScopeID)
+		}
+		if bl.ScopeType == models.BudgetScopeProject && bl.ScopeID != "" {
+			q = q.Where("project_id = ?", bl.ScopeID)
 		}
 		if bl.Provider != "" {
 			q = q.Where("provider = ?", bl.Provider)
@@ -430,6 +452,9 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 		if bl.ScopeType == models.BudgetScopeAPIKey && bl.ScopeID != "" {
 			entry["key_label"] = keyLabels[bl.ScopeID]
 		}
+		if bl.ScopeType == models.BudgetScopeProject && bl.ScopeID != "" {
+			entry["project_name"] = projectNames[bl.ScopeID]
+		}
 		out[i] = entry
 	}
 
@@ -437,7 +462,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 }
 
 type upsertBudgetReq struct {
-	ScopeType      string `json:"scope_type"`                         // account|api_key (default: account)
+	ScopeType      string `json:"scope_type"`                         // account|api_key|project (default: account)
 	ScopeID        string `json:"scope_id"`                           // "" for account, key_id for api_key
 	PeriodType     string `json:"period_type"     binding:"required"` // monthly|weekly|daily
 	Provider       string `json:"provider"`                           // "" = all, "anthropic", "openai"
@@ -463,8 +488,8 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 	if scopeType == "" {
 		scopeType = models.BudgetScopeAccount
 	}
-	if scopeType != models.BudgetScopeAccount && scopeType != models.BudgetScopeAPIKey {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "scope_type must be 'account' or 'api_key'"})
+	if scopeType != models.BudgetScopeAccount && scopeType != models.BudgetScopeAPIKey && scopeType != models.BudgetScopeProject {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "scope_type must be 'account', 'api_key', or 'project'"})
 		return
 	}
 	provider := req.Provider
@@ -524,6 +549,14 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "plan_restriction",
 			"message": fmt.Sprintf("Your %s plan does not support per-API-key budget limits. Upgrade to Team or higher.", tenant.Plan),
+			"plan":    tenant.Plan,
+		})
+		return
+	}
+	if scopeType == models.BudgetScopeProject && !planLim.AllowPerKeyBudget {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "plan_restriction",
+			"message": fmt.Sprintf("Your %s plan does not support per-project budget limits. Upgrade to Team or higher.", tenant.Plan),
 			"plan":    tenant.Plan,
 		})
 		return
