@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import { useTenant } from '../contexts/TenantContext'
 
 export interface PresetOption {
   key: string   // "1d" | "3d" | "7d" | "14d" | "30d" | "90d" | "custom"
@@ -33,12 +34,12 @@ export interface DashboardConfig {
 }
 
 export function useDashboardConfig(): { config: DashboardConfig | null; loading: boolean } {
+  const { isSynced } = useTenant()
   const [config, setConfig] = useState<DashboardConfig | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const userId = localStorage.getItem('user_id')
-    if (!userId) return
+    if (!isSynced) return
 
     setLoading(true)
     apiFetch('/v1/dashboard/config')
@@ -48,7 +49,7 @@ export function useDashboardConfig(): { config: DashboardConfig | null; loading:
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [])
+  }, [isSynced])
 
   return { config, loading }
 }

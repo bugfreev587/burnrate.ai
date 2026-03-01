@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
+import { useTenant } from '../contexts/TenantContext'
 
 export interface SpendLimit {
   id: number
@@ -30,12 +31,12 @@ export interface UpsertSpendLimitReq {
 }
 
 export function useSpendLimits() {
+  const { isSynced } = useTenant()
   const [limits, setLimits] = useState<SpendLimit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchLimits = useCallback(async () => {
-    if (!localStorage.getItem('user_id')) return
     setLoading(true)
     setError(null)
     try {
@@ -50,7 +51,7 @@ export function useSpendLimits() {
     }
   }, [])
 
-  useEffect(() => { fetchLimits() }, [fetchLimits])
+  useEffect(() => { if (isSynced) fetchLimits() }, [isSynced, fetchLimits])
 
   async function upsertLimit(req: UpsertSpendLimitReq): Promise<SpendLimit> {
     const res = await apiFetch('/v1/admin/budget', {

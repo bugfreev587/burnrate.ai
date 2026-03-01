@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
+import { useTenant } from '../contexts/TenantContext'
 
 export interface RateLimit {
   ID: number
@@ -29,13 +30,13 @@ export interface UpsertRateLimitReq {
 }
 
 export function useRateLimits(pollInterval?: number) {
+  const { isSynced } = useTenant()
   const [limits, setLimits] = useState<RateLimit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchLimits = useCallback(async (silent = false) => {
-    if (!localStorage.getItem('user_id')) return
     if (!silent) { setLoading(true); setError(null) }
     try {
       const res = await apiFetch('/v1/rate-limits')
@@ -50,7 +51,7 @@ export function useRateLimits(pollInterval?: number) {
     }
   }, [])
 
-  useEffect(() => { fetchLimits() }, [fetchLimits])
+  useEffect(() => { if (isSynced) fetchLimits() }, [isSynced, fetchLimits])
 
   useEffect(() => {
     if (pollInterval && pollInterval > 0) {
