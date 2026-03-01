@@ -108,7 +108,7 @@ export default function ManagementPage() {
   const [createKeyError, setCreateKeyError] = useState<string | null>(null)
 
   // Limit-reached modal
-  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'provider_keys' } | null>(null)
+  const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'provider_keys' | 'projects' } | null>(null)
 
   // Project management
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
@@ -617,7 +617,7 @@ export default function ManagementPage() {
                 </div>
                 <button className="btn btn-primary" onClick={() => {
                   if (projectSlotsLeft !== null && projectSlotsLeft <= 0) {
-                    showError('Project limit reached. Upgrade your plan to create more projects.')
+                    setLimitModal({ type: 'projects' })
                     return
                   }
                   setNewProjectName(''); setNewProjectDesc(''); setCreateProjectError(null)
@@ -995,14 +995,17 @@ export default function ManagementPage() {
             <div className="modal-hdr">
               <h2>
                 {limitModal.type === 'keys' ? 'API Key Limit Reached'
-                  : 'Provider Key Limit Reached'}
+                  : limitModal.type === 'provider_keys' ? 'Provider Key Limit Reached'
+                  : 'Project Limit Reached'}
               </h2>
             </div>
             <div className="modal-body">
               <p>
                 {limitModal.type === 'keys'
                   ? `You've reached the maximum of ${keyLimit} API key${keyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to create more API keys.`
-                  : `You've reached the maximum of ${providerKeyLimit} provider key${providerKeyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more provider keys.`}
+                  : limitModal.type === 'provider_keys'
+                  ? `You've reached the maximum of ${providerKeyLimit} provider key${providerKeyLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more provider keys.`
+                  : `You've reached the maximum of ${projectLimit} project${projectLimit !== 1 ? 's' : ''} on your current plan. Upgrade your plan to create more projects.`}
               </p>
             </div>
             <div className="modal-ftr">

@@ -64,6 +64,7 @@ export default function NotificationsPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<number | null>(null)
+  const [showLimitModal, setShowLimitModal] = useState(false)
 
   const canAccess = isSynced && hasPermission(role, 'editor')
 
@@ -179,7 +180,13 @@ export default function NotificationsPage() {
                   {' '}<Link to="/integration#notifications" className="form-hint-link">Need help setting up a Slack webhook?</Link>
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true) }} disabled={channelCapped && channels.length >= planLimits!.max_notification_channels} title={channelCapped && channels.length >= planLimits!.max_notification_channels ? 'Limit reached — upgrade to add more' : undefined}>
+              <button className="btn btn-primary" onClick={() => {
+                if (channelCapped && channels.length >= planLimits!.max_notification_channels) {
+                  setShowLimitModal(true)
+                  return
+                }
+                resetForm(); setShowModal(true)
+              }}>
                 Add Channel
               </button>
             </div>
@@ -365,6 +372,26 @@ export default function NotificationsPage() {
                 disabled={saving}>
                 {saving ? 'Saving...' : 'Save'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Channel Limit Reached Modal ──────────────────────────────────── */}
+      {showLimitModal && (
+        <div className="modal-overlay" onClick={() => setShowLimitModal(false)}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Channel Limit Reached</h2>
+            </div>
+            <div className="modal-body">
+              <p>
+                {`You've reached the maximum of ${planLimits!.max_notification_channels} notification channel${planLimits!.max_notification_channels !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more channels.`}
+              </p>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setShowLimitModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => navigate('/plan')}>Go to Plan</button>
             </div>
           </div>
         </div>

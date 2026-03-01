@@ -96,6 +96,7 @@ export default function LimitsPage() {
   // ── Shared state ──────────────────────────────────────────────────────────
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [limitModal, setLimitModal] = useState<{ type: 'spend' | 'rate' } | null>(null)
 
   const canAccess = isSynced && hasPermission(role, 'editor')
 
@@ -239,7 +240,13 @@ export default function LimitsPage() {
                   hard-block limits reject requests (HTTP 402) when exceeded.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }} disabled={spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits} title={spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits ? 'Limit reached — upgrade to add more' : undefined}>
+              <button className="btn btn-primary" onClick={() => {
+                if (spendLimitCapped && spendLimits.length >= planLimits!.max_budget_limits) {
+                  setLimitModal({ type: 'spend' })
+                  return
+                }
+                setEditingSL(null); resetSLForm(); setShowSLModal(true)
+              }}>
                 Add Spend Limit
               </button>
             </div>
@@ -364,7 +371,13 @@ export default function LimitsPage() {
                   Set per-model rate limits (requests per minute, input/output tokens per minute) to control usage.
                 </p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingRL(null); resetRLForm(); setShowRLModal(true) }} disabled={rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits} title={rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits ? 'Limit reached — upgrade to add more' : undefined}>
+              <button className="btn btn-primary" onClick={() => {
+                if (rateLimitCapped && rateLimits.length >= planLimits!.max_rate_limits) {
+                  setLimitModal({ type: 'rate' })
+                  return
+                }
+                setEditingRL(null); resetRLForm(); setShowRLModal(true)
+              }}>
                 Add Rate Limit
               </button>
             </div>
@@ -670,6 +683,28 @@ export default function LimitsPage() {
                 disabled={!rlLimitValue || rlSaving}>
                 {rlSaving ? 'Saving...' : 'Save'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Limit Reached Modal ──────────────────────────────────────────── */}
+      {limitModal && (
+        <div className="modal-overlay" onClick={() => setLimitModal(null)}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>{limitModal.type === 'spend' ? 'Spend Limit Reached' : 'Rate Limit Reached'}</h2>
+            </div>
+            <div className="modal-body">
+              <p>
+                {limitModal.type === 'spend'
+                  ? `You've reached the maximum of ${planLimits!.max_budget_limits} spend limit${planLimits!.max_budget_limits !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more spend limits.`
+                  : `You've reached the maximum of ${planLimits!.max_rate_limits} rate limit${planLimits!.max_rate_limits !== 1 ? 's' : ''} on your current plan. Upgrade your plan to add more rate limits.`}
+              </p>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setLimitModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => navigate('/plan')}>Go to Plan</button>
             </div>
           </div>
         </div>
