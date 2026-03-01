@@ -81,9 +81,19 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 			return
 		}
 		if settings == nil || settings.ActiveKeyID == 0 {
+			// Check if there's an inactive (non-revoked) provider key
+			var inactiveCount int64
+			s.postgresDB.GetDB().Model(&models.ProviderKey{}).
+				Where("tenant_id = ? AND provider = ? AND revoked = false", tenantID, req.Provider).
+				Count(&inactiveCount)
+
+			msg := fmt.Sprintf("Cannot create a BYOK API key for provider %q because no active provider key exists. Please add a %s provider key first.", req.Provider, req.Provider)
+			if inactiveCount > 0 {
+				msg = fmt.Sprintf("Cannot create a BYOK API key for provider %q because no active provider key exists. You have an inactive %s provider key — please activate it first.", req.Provider, req.Provider)
+			}
 			c.JSON(http.StatusUnprocessableEntity, gin.H{
 				"error":   "no_active_provider_key",
-				"message": fmt.Sprintf("Cannot create a BYOK API key for provider %q because no active provider key exists. Please add a %s provider key first.", req.Provider, req.Provider),
+				"message": msg,
 			})
 			return
 		}
