@@ -448,7 +448,7 @@ export default function ManagementPage() {
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 {projects.length > 1 && (
                   <select
-                    className="tenant-switcher"
+                    className="gateway-project-filter"
                     value={filterProjectId}
                     onChange={e => setFilterProjectId(e.target.value ? parseInt(e.target.value, 10) : '')}
                   >

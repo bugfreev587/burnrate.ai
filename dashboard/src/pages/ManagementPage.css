@@ -184,6 +184,23 @@
 }
 .btn-warning:hover { background: #b45309; }
 
+/* Match Gateway project filter to primary action button */
+.gateway-project-filter {
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.6;
+  appearance: none;
+}
+
+.gateway-project-filter:hover {
+  background: var(--color-primary-hover);
+}
+
 /* ── Coming soon ─────────────────────────────────────────────────────────── */
 
 .coming-soon-box {
