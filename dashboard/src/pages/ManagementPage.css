@@ -186,13 +186,13 @@
 
 /* Match Gateway project filter to primary action button */
 .gateway-project-filter {
-  padding: 0.5rem 1.25rem;
-  height: 2.4rem;
+  padding: 0.35rem 0.9rem;
+  height: 2rem;
   border-radius: var(--radius);
   border: none;
   background: var(--color-primary);
   color: #fff;
-  font-size: 0.875rem;
+  font-size: 0.775rem;
   font-weight: 500;
   line-height: 1.6;
   appearance: none;
