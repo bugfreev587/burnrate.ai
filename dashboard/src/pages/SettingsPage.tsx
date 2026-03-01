@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const isOwner = role === 'owner'
   const canManageTeam = isAdmin
 
-  const { projects, loading: projectsLoading, limit: projectLimit, slotsLeft: projectSlotsLeft, refetch: refetchProjects, createProject, updateProject, deleteProject, listMembers, addMember, updateMemberRole, removeMember } = useProjects()
+  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, removeMember } = useProjects()
 
   // ── Workspace name ──────────────────────────────────────────────────────
   const [workspaceName, setWorkspaceName] = useState('')

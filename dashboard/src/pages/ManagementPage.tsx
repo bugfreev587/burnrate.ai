@@ -57,9 +57,9 @@ interface ProviderKey {
 
 export default function ManagementPage() {
   const navigate = useNavigate()
-  const { orgRole, userId, isSynced } = useTenant()
+  const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
-  const { projects, loading: projectsLoading } = useProjects()
+  const { projects } = useProjects()
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
