@@ -107,10 +107,10 @@ export default function Navbar() {
   const showAvatarHint = isLoaded && isSignedIn && isSynced && !!hints && !hints.dismissed_avatar_hint
   const visibleNotifications = notifications.slice(0, 8)
 
-  function parseInvitePayload(n: UserNotification): { tenant_id?: number; tenant_name?: string } {
+  function parseInvitePayload(n: UserNotification): { tenant_id?: number; tenant_name?: string; invitation_status?: string } {
     try {
       const p = JSON.parse(n.payload || '{}')
-      return { tenant_id: p.tenant_id, tenant_name: p.tenant_name }
+      return { tenant_id: p.tenant_id, tenant_name: p.tenant_name, invitation_status: p.invitation_status }
     } catch {
       return {}
     }
@@ -155,6 +155,8 @@ export default function Navbar() {
       setNotifError(err instanceof Error ? err.message : 'Failed to deny invitation')
     }
   }
+
+  const selectedInviteStatus = selectedNotif ? (parseInvitePayload(selectedNotif).invitation_status || 'pending') : 'pending'
 
   return (
     <nav className="navbar">
@@ -325,13 +327,25 @@ export default function Navbar() {
           <div className="invite-action-content">
             <div>
               <div className="invite-action-title">{selectedNotif.title}</div>
-              <div className="invite-action-body">{selectedNotif.body}</div>
+              <div className="invite-action-body">
+                {selectedInviteStatus === 'accepted'
+                  ? 'This invitation has been accepted.'
+                  : selectedInviteStatus === 'denied'
+                  ? 'This invitation has been denied.'
+                  : (selectedNotif.body || 'Choose Accept, Deny, or Decide later.')}
+              </div>
               {notifError && <div className="invite-action-error">{notifError}</div>}
             </div>
             <div className="invite-action-buttons">
-              <button className="btn btn-primary" onClick={handleAccept}>Accept</button>
-              <button className="btn btn-danger" onClick={handleDeny}>Deny</button>
-              <button className="btn btn-secondary" onClick={() => setSelectedNotif(null)}>Decide later</button>
+              {selectedInviteStatus === 'pending' ? (
+                <>
+                  <button className="btn btn-primary" onClick={handleAccept}>Accept</button>
+                  <button className="btn btn-danger" onClick={handleDeny}>Deny</button>
+                  <button className="btn btn-secondary" onClick={() => setSelectedNotif(null)}>Decide later</button>
+                </>
+              ) : (
+                <button className="btn btn-secondary" onClick={() => setSelectedNotif(null)}>Close</button>
+              )}
             </div>
           </div>
         </div>

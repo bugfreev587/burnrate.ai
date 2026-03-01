@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
@@ -210,6 +211,43 @@ func roleLabel(role string) string {
 	}
 }
 
+func markInvitationNotificationsResolved(db *gorm.DB, userID string, tenantID uint, result string) {
+	var rows []models.UserNotification
+	if err := db.Where("user_id = ? AND tenant_id = ? AND type = ?", userID, tenantID, models.EventTeamInvitation).
+		Find(&rows).Error; err != nil {
+		slog.Warn("invitation_notification_load_failed", "user_id", userID, "tenant_id", tenantID, "error", err)
+		return
+	}
+
+	now := time.Now()
+	for _, n := range rows {
+		payload := map[string]interface{}{}
+		if n.Payload != "" {
+			_ = json.Unmarshal([]byte(n.Payload), &payload)
+		}
+		payload["invitation_status"] = result
+		payloadJSON, _ := json.Marshal(payload)
+
+		resolvedBody := "This invitation has been processed."
+		if result == "accepted" {
+			resolvedBody = "This invitation has been accepted."
+		} else if result == "denied" {
+			resolvedBody = "This invitation has been denied."
+		}
+
+		if err := db.Model(&models.UserNotification{}).
+			Where("id = ?", n.ID).
+			Updates(map[string]interface{}{
+				"payload": string(payloadJSON),
+				"body":    resolvedBody,
+				"status":  models.UserNotificationStatusRead,
+				"read_at": &now,
+			}).Error; err != nil {
+			slog.Warn("invitation_notification_update_failed", "notification_id", n.ID, "error", err)
+		}
+	}
+}
+
 // handleInviteUser creates a pending user + TenantMembership in the tenant.
 // If the user already exists (e.g. in another tenant), a new membership is created.
 // POST /v1/admin/users/invite
@@ -292,10 +330,11 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 		}
 
 		payload, _ := json.Marshal(gin.H{
-			"tenant_id":    tenantID,
-			"tenant_name":  tenant.Name,
-			"invited_role": role,
-			"invited_by":   caller.Email,
+			"tenant_id":         tenantID,
+			"tenant_name":       tenant.Name,
+			"invited_role":      role,
+			"invited_by":        caller.Email,
+			"invitation_status": "pending",
 		})
 		title := fmt.Sprintf("%s invited you to %s", caller.Email, tenant.Name)
 		body := fmt.Sprintf("Role: %s. Choose Accept, Deny, or Decide later.", roleLabel(role))
@@ -388,10 +427,7 @@ func (s *Server) handleAcceptInvitation(c *gin.Context) {
 		return
 	}
 
-	now := time.Now()
-	_ = db.Model(&models.UserNotification{}).
-		Where("user_id = ? AND tenant_id = ? AND type = ? AND status = ?", caller.ID, tenantID, models.EventTeamInvitation, models.UserNotificationStatusUnread).
-		Updates(map[string]interface{}{"status": models.UserNotificationStatusRead, "read_at": &now}).Error
+	markInvitationNotificationsResolved(db, caller.ID, tenantID, "accepted")
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -424,10 +460,7 @@ func (s *Server) handleDenyInvitation(c *gin.Context) {
 		return
 	}
 
-	now := time.Now()
-	_ = db.Model(&models.UserNotification{}).
-		Where("user_id = ? AND tenant_id = ? AND type = ? AND status = ?", caller.ID, tenantID, models.EventTeamInvitation, models.UserNotificationStatusUnread).
-		Updates(map[string]interface{}{"status": models.UserNotificationStatusRead, "read_at": &now}).Error
+	markInvitationNotificationsResolved(db, caller.ID, tenantID, "denied")
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
