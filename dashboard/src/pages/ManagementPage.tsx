@@ -69,7 +69,7 @@ export default function ManagementPage() {
   const navigate = useNavigate()
   const { orgRole, userId, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
-  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, removeMember } = useProjects()
+  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, addMember, removeMember } = useProjects()
   const { catalog } = usePricingConfig()
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
@@ -142,6 +142,13 @@ export default function ManagementPage() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
   const [showProjectMembers, setShowProjectMembers] = useState<number | null>(null)
   const [loadingMembers, setLoadingMembers] = useState(false)
+
+  // Add member to project
+  const [showAddMemberModal, setShowAddMemberModal] = useState<number | null>(null)  // projectId
+  const [addMemberUserId, setAddMemberUserId] = useState('')
+  const [addMemberRole, setAddMemberRole] = useState('project_viewer')
+  const [addingMember, setAddingMember] = useState(false)
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
 
   // Rich dropdown open state
   const [authMethodOpen, setAuthMethodOpen] = useState(false)
@@ -432,6 +439,25 @@ export default function ManagementPage() {
       showSuccess('Member removed from project')
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to remove member')
+    }
+  }
+
+  const handleAddProjectMember = async () => {
+    if (!showAddMemberModal || !addMemberUserId) return
+    setAddingMember(true)
+    setAddMemberError(null)
+    try {
+      await addMember(showAddMemberModal, addMemberUserId, addMemberRole)
+      const members = await listMembers(showAddMemberModal)
+      setProjectMembers(members)
+      setShowAddMemberModal(null)
+      setAddMemberUserId('')
+      setAddMemberRole('project_viewer')
+      showSuccess('Member added to project')
+    } catch (err) {
+      setAddMemberError(err instanceof Error ? err.message : 'Failed to add member')
+    } finally {
+      setAddingMember(false)
     }
   }
 
@@ -849,33 +875,52 @@ export default function ManagementPage() {
                             <td colSpan={5} style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary, #1a1a2e)' }}>
                               {loadingMembers ? (
                                 <div className="spinner" style={{ margin: '0.5rem auto' }} />
-                              ) : projectMembers.length === 0 ? (
-                                <p className="text-muted" style={{ margin: '0.5rem 0' }}>No members assigned to this project.</p>
                               ) : (
-                                <table className="mgmt-table" style={{ marginBottom: 0 }}>
-                                  <thead>
-                                    <tr>
-                                      <th>Name</th>
-                                      <th>Email</th>
-                                      <th>Project Role</th>
-                                      <th>Actions</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {projectMembers.map(m => (
-                                      <tr key={m.user_id}>
-                                        <td>{m.name || '\u2014'}</td>
-                                        <td className="text-muted">{m.email}</td>
-                                        <td><span className={`role-badge`}>{m.project_role}</span></td>
-                                        <td>
-                                          <button className="btn btn-small btn-danger" onClick={() => handleRemoveProjectMember(p.id, m.user_id)}>
-                                            Remove
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                <>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                    <span className="text-muted" style={{ fontSize: '0.85rem' }}>{projectMembers.length} member{projectMembers.length !== 1 ? 's' : ''}</span>
+                                    <button
+                                      className="btn btn-small btn-primary"
+                                      disabled={users.filter(u => u.status === 'active' && !projectMembers.some(m => m.user_id === u.id)).length === 0}
+                                      onClick={() => {
+                                        setShowAddMemberModal(p.id)
+                                        setAddMemberUserId('')
+                                        setAddMemberRole('project_viewer')
+                                        setAddMemberError(null)
+                                      }}
+                                    >
+                                      Add Member
+                                    </button>
+                                  </div>
+                                  {projectMembers.length === 0 ? (
+                                    <p className="text-muted" style={{ margin: '0.5rem 0' }}>No members assigned to this project.</p>
+                                  ) : (
+                                    <table className="mgmt-table" style={{ marginBottom: 0 }}>
+                                      <thead>
+                                        <tr>
+                                          <th>Name</th>
+                                          <th>Email</th>
+                                          <th>Project Role</th>
+                                          <th>Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {projectMembers.map(m => (
+                                          <tr key={m.user_id}>
+                                            <td>{m.name || '\u2014'}</td>
+                                            <td className="text-muted">{m.email}</td>
+                                            <td><span className={`role-badge`}>{m.project_role}</span></td>
+                                            <td>
+                                              <button className="btn btn-small btn-danger" onClick={() => handleRemoveProjectMember(p.id, m.user_id)}>
+                                                Remove
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </>
                               )}
                             </td>
                           </tr>
@@ -1370,6 +1415,74 @@ export default function ManagementPage() {
               <button className="btn btn-primary" onClick={handleInviteUser}
                 disabled={!inviteEmail.trim() || inviting}>
                 {inviting ? 'Inviting\u2026' : 'Send Invite'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Member to Project Modal ────────────────────────────────── */}
+      {showAddMemberModal !== null && (
+        <div className="modal-overlay" onClick={() => { setShowAddMemberModal(null); setAddMemberError(null) }}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr">
+              <h2>Add Member to Project</h2>
+            </div>
+            <div className="modal-body">
+              <p className="modal-hint">
+                Select a team member and assign their project role.
+              </p>
+              <div className="form-group">
+                <label>Member <span className="required">*</span></label>
+                <select
+                  value={addMemberUserId}
+                  onChange={e => setAddMemberUserId(e.target.value)}
+                  autoFocus
+                >
+                  <option value="">Select a member...</option>
+                  {users
+                    .filter(u => u.status === 'active' && !projectMembers.some(m => m.user_id === u.id))
+                    .map(u => (
+                      <option key={u.id} value={u.id}>{u.name ? `${u.name} (${u.email})` : u.email}</option>
+                    ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Project Role</label>
+                <div className="role-select">
+                  {([
+                    { value: 'project_viewer', label: 'Viewer', desc: 'Can view project data and API keys' },
+                    { value: 'project_editor', label: 'Editor', desc: 'Can manage API keys' },
+                    { value: 'project_admin', label: 'Admin', desc: 'Full project control including members' },
+                  ] as const).map(r => (
+                    <label key={r.value} className={`role-option ${addMemberRole === r.value ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="add-member-role"
+                        value={r.value}
+                        checked={addMemberRole === r.value}
+                        onChange={() => setAddMemberRole(r.value)}
+                      />
+                      <div>
+                        <strong>{r.label}</strong>
+                        <span className="role-desc">{r.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {addMemberError && (
+              <div className="flash flash-error modal-flash">{addMemberError}</div>
+            )}
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => { setShowAddMemberModal(null); setAddMemberError(null) }}
+                disabled={addingMember}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleAddProjectMember}
+                disabled={!addMemberUserId || addingMember}>
+                {addingMember ? 'Adding\u2026' : 'Add Member'}
               </button>
             </div>
           </div>
