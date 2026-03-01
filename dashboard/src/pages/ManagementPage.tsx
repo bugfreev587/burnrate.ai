@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
 import { useProjects } from '../hooks/useProjects'
+import { usePricingConfig } from '../hooks/usePricingConfig'
 import { apiFetch } from '../lib/api'
 import Navbar from '../components/Navbar'
 import './ManagementPage.css'
@@ -60,6 +61,14 @@ export default function ManagementPage() {
   const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
   const { projects } = useProjects()
+  const { catalog } = usePricingConfig()
+
+  // Deduplicated model names from the pricing catalog, sorted alphabetically.
+  const availableModels = useMemo(() => {
+    const names = new Set<string>()
+    for (const entry of catalog) names.add(entry.model_name)
+    return Array.from(names).sort()
+  }, [catalog])
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
@@ -87,7 +96,7 @@ export default function ManagementPage() {
   const [newAuthMethod, setNewAuthMethod] = useState<string>('BROWSER_OAUTH')
   const [newBillingMode, setNewBillingMode] = useState<string>('MONTHLY_SUBSCRIPTION')
   const [newKeyProjectId, setNewKeyProjectId] = useState<number | ''>('')
-  const [newKeyModelAllowlist, setNewKeyModelAllowlist] = useState<string>('')
+  const [newKeyModelAllowlist, setNewKeyModelAllowlist] = useState<string[]>([])
   const [createdAuthMethod, setCreatedAuthMethod] = useState<string>('')
   const [createdBillingMode, setCreatedBillingMode] = useState<string>('')
   const [createdProvider, setCreatedProvider] = useState<string>('')
@@ -171,8 +180,8 @@ export default function ManagementPage() {
         scopes: ['*'],
         project_id: newKeyProjectId,
       }
-      if (newKeyModelAllowlist.trim()) {
-        body.model_allowlist = newKeyModelAllowlist.split(',').map(m => m.trim()).filter(Boolean)
+      if (newKeyModelAllowlist.length > 0) {
+        body.model_allowlist = newKeyModelAllowlist
       }
       const res = await apiFetch('/v1/admin/api_keys', {
         method: 'POST',
@@ -192,7 +201,7 @@ export default function ManagementPage() {
       setShowNewKeyModal(true)
       setNewKeyLabel('')
       setNewKeyProjectId('')
-      setNewKeyModelAllowlist('')
+      setNewKeyModelAllowlist([])
       fetchAPIKeys()
     } catch (err) {
       setCreateKeyError(err instanceof Error ? err.message : 'Failed to create API key')
@@ -350,7 +359,7 @@ export default function ManagementPage() {
                   setLimitModal({ type: 'keys' })
                   return
                 }
-                setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist(''); setShowCreateKeyModal(true)
+                setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setShowCreateKeyModal(true)
               }}>
                 Create Key
               </button>
@@ -381,7 +390,7 @@ export default function ManagementPage() {
                           <p>{filterProjectId ? 'No API keys in this project.' : 'No API keys yet. Create one to start reporting usage.'}</p>
                           {!filterProjectId && (
                           <button className="btn btn-primary"
-                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist(''); setShowCreateKeyModal(true) }}>
+                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist([]); setShowCreateKeyModal(true) }}>
                             Create Your First Key
                           </button>
                           )}
@@ -536,84 +545,86 @@ export default function ManagementPage() {
               </div>
               <div className="form-group">
                 <label>Provider</label>
-                <div className="role-select">
-                  {['anthropic', 'openai'].map(p => (
-                    <label key={p} className={`role-option ${newKeyProvider === p ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="new-key-provider"
-                        value={p}
-                        checked={newKeyProvider === p}
-                        onChange={() => setNewKeyProvider(p)}
-                      />
-                      <div>
-                        <strong>{p.charAt(0).toUpperCase() + p.slice(1)}</strong>
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                <select
+                  value={newKeyProvider}
+                  onChange={e => setNewKeyProvider(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
+                >
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Auth Method</label>
-                <div className="role-select">
+                <select
+                  value={newAuthMethod}
+                  onChange={e => {
+                    const v = e.target.value
+                    setNewAuthMethod(v)
+                    if (v === 'BYOK') setNewBillingMode('API_USAGE')
+                  }}
+                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
+                >
                   {AUTH_METHODS.map(m => (
-                    <label key={m.value} className={`role-option ${newAuthMethod === m.value ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="new-key-auth-method"
-                        value={m.value}
-                        checked={newAuthMethod === m.value}
-                        onChange={() => {
-                          setNewAuthMethod(m.value)
-                          // BYOK implies API_USAGE billing — auto-select and lock it
-                          if (m.value === 'BYOK') {
-                            setNewBillingMode('API_USAGE')
-                          }
-                        }}
-                      />
-                      <div>
-                        <strong>{m.label}</strong>
-                        <span className="role-desc">{m.description}</span>
-                      </div>
-                    </label>
+                    <option key={m.value} value={m.value}>{m.label} — {m.description}</option>
                   ))}
-                </div>
+                </select>
               </div>
               <div className="form-group">
                 <label>Billing Mode</label>
-                <div className="role-select">
+                <select
+                  value={newBillingMode}
+                  onChange={e => setNewBillingMode(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
+                >
                   {BILLING_MODES.map(m => {
                     const disabled = newAuthMethod === 'BYOK' && m.value === 'MONTHLY_SUBSCRIPTION'
                     return (
-                      <label key={m.value} className={`role-option ${newBillingMode === m.value ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}>
-                        <input
-                          type="radio"
-                          name="new-key-billing-mode"
-                          value={m.value}
-                          checked={newBillingMode === m.value}
-                          onChange={() => setNewBillingMode(m.value)}
-                          disabled={disabled}
-                        />
-                        <div>
-                          <strong>{m.label}</strong>
-                          <span className="role-desc">{m.description}{disabled ? ' (not available with BYOK)' : ''}</span>
-                        </div>
-                      </label>
+                      <option key={m.value} value={m.value} disabled={disabled}>
+                        {m.label} — {m.description}{disabled ? ' (not available with BYOK)' : ''}
+                      </option>
                     )
                   })}
-                </div>
+                </select>
               </div>
               <div className="form-group">
                 <label>Model Allowlist <span className="optional">(optional)</span></label>
-                <input
-                  type="text"
+                <select
+                  multiple
                   value={newKeyModelAllowlist}
-                  onChange={e => setNewKeyModelAllowlist(e.target.value)}
-                  placeholder="e.g. claude-sonnet-4-6, gpt-4.1"
-                />
+                  onChange={e => {
+                    const selected = Array.from(e.target.selectedOptions, o => o.value)
+                    setNewKeyModelAllowlist(selected)
+                  }}
+                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem', minHeight: '120px' }}
+                >
+                  {availableModels.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
                 <p className="section-desc" style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
-                  Comma-separated list of allowed models. Leave empty to allow all models.
+                  Hold Ctrl/Cmd to select multiple models. Leave empty to allow all models.
                 </p>
+                {newKeyModelAllowlist.length > 0 && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                    {newKeyModelAllowlist.map(m => (
+                      <span key={m} className="mode-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        {m}
+                        <button
+                          type="button"
+                          onClick={() => setNewKeyModelAllowlist(prev => prev.filter(x => x !== m))}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', fontSize: '0.875rem' }}
+                        >x</button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn btn-small btn-secondary"
+                      onClick={() => setNewKeyModelAllowlist([])}
+                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem' }}
+                    >Clear all</button>
+                  </div>
+                )}
               </div>
             </div>
             {createKeyError && (
