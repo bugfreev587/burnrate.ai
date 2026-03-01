@@ -1291,21 +1291,17 @@ export default function ManagementPage() {
         return (
           <div className="modal-overlay" onClick={() => setRevokeTarget(null)}>
             <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
-              <div className="modal-hdr"><h2>Revoke Provider Key</h2></div>
+              <div className="modal-hdr">
+                <h2>Revoke Provider Key</h2>
+              </div>
               <div className="modal-body">
-                {revokeTarget.is_active && affectedCount > 0 ? (
-                  <div className="warn-box">
-                    <span className="warn-icon">!</span>
-                    <p>This is the active key for <strong>{providerLabel}</strong>. Revoking it will break <strong>{affectedCount}</strong> BYOK API key{affectedCount !== 1 ? 's' : ''} — proxied requests will fail until a new key is activated.</p>
-                  </div>
-                ) : revokeTarget.is_active ? (
-                  <div className="warn-box">
-                    <span className="warn-icon">!</span>
-                    <p>This is the active key for <strong>{providerLabel}</strong>. Revoking it will deactivate {providerLabel} proxying.</p>
-                  </div>
-                ) : (
-                  <p>Revoke provider key &ldquo;{revokeTarget.label}&rdquo;? This cannot be undone.</p>
-                )}
+                <p>
+                  {revokeTarget.is_active && affectedCount > 0
+                    ? `This is the active key for ${providerLabel}. Revoking it will break ${affectedCount} BYOK API key${affectedCount !== 1 ? 's' : ''} — proxied requests will fail until a new key is activated.`
+                    : revokeTarget.is_active
+                    ? `This is the active key for ${providerLabel}. Revoking it will deactivate ${providerLabel} proxying.`
+                    : `Revoke provider key "${revokeTarget.label}"? This cannot be undone.`}
+                </p>
               </div>
               <div className="modal-ftr">
                 <button className="btn btn-secondary" onClick={() => setRevokeTarget(null)}>Cancel</button>
