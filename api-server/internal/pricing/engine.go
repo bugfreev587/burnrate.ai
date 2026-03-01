@@ -212,6 +212,10 @@ func (e *PricingEngine) PreCheckBudget(ctx context.Context, tenantID uint, keyID
 	var nearestStatus *BudgetStatus
 
 	for _, limit := range limits {
+		// Skip disabled limits.
+		if !limit.Enabled {
+			continue
+		}
 		// Skip provider-scoped limits that don't match the current request's provider.
 		if limit.Provider != "" && limit.Provider != provider {
 			continue

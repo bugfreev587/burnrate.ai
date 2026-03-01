@@ -421,6 +421,7 @@ func (s *Server) handleGetBudget(c *gin.Context) {
 			"limit_amount":    bl.LimitAmount.StringFixed(2),
 			"alert_threshold": bl.AlertThreshold.StringFixed(0),
 			"action":          bl.Action,
+			"enabled":         bl.Enabled,
 			"current_spend":   currentSpend.StringFixed(4),
 			"pct_used":        math.Round(pct*10) / 10,
 			"period_start":    periodStart.Format("2006-01-02"),
@@ -443,6 +444,7 @@ type upsertBudgetReq struct {
 	LimitAmount    string `json:"limit_amount"    binding:"required"` // decimal string
 	AlertThreshold string `json:"alert_threshold"`                    // percentage, default 80
 	Action         string `json:"action"`                             // alert|block
+	Enabled        *bool  `json:"enabled"`                            // nil = default true
 }
 
 // PUT /v1/admin/budget
@@ -527,6 +529,11 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		return
 	}
 
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
 	budgetLimit := models.BudgetLimit{
 		TenantID:       tenantID,
 		ScopeType:      scopeType,
@@ -536,6 +543,7 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		LimitAmount:    limit,
 		AlertThreshold: alertThreshold,
 		Action:         action,
+		Enabled:        enabled,
 	}
 
 	// Check if this is an update to an existing record or a new one.
@@ -569,6 +577,7 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 			LimitAmount:    limit,
 			AlertThreshold: alertThreshold,
 			Action:         action,
+			Enabled:        enabled,
 		}).
 		FirstOrCreate(&budgetLimit)
 	if result.Error != nil {
@@ -580,6 +589,7 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 			"limit_amount":    limit,
 			"alert_threshold": alertThreshold,
 			"action":          action,
+			"enabled":         enabled,
 		})
 	}
 

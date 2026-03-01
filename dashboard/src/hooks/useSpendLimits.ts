@@ -11,6 +11,7 @@ export interface SpendLimit {
   limit_amount: string    // decimal string (USD)
   alert_threshold: string // percentage as string
   action: string          // "alert" | "block"
+  enabled: boolean
   current_spend: string   // decimal string
   pct_used: number        // 0-100
   period_start: string    // ISO date
@@ -25,6 +26,7 @@ export interface UpsertSpendLimitReq {
   limit_amount: string
   alert_threshold: string
   action: string
+  enabled?: boolean
 }
 
 export function useSpendLimits() {

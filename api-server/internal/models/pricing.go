@@ -95,6 +95,7 @@ type BudgetLimit struct {
 	LimitAmount    decimal.Decimal `gorm:"type:numeric(20,8)"`
 	AlertThreshold decimal.Decimal `gorm:"type:numeric(5,2);default:80"` // percentage, e.g. 80 = warn at 80%
 	Action         string          `gorm:"default:alert"`                // alert|block
+	Enabled        bool            `gorm:"not null;default:true"`
 	CreatedAt      time.Time
 }
 

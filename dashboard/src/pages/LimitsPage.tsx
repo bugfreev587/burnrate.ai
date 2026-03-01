@@ -129,6 +129,17 @@ export default function LimitsPage() {
     finally { setRlSaving(false) }
   }
 
+  const handleToggleRL = async (l: RateLimit) => {
+    try {
+      await upsertRateLimit({
+        provider: l.Provider, model: l.Model, scope_type: l.ScopeType, scope_id: l.ScopeID,
+        metric: l.Metric, limit_value: l.LimitValue, window_seconds: l.WindowSeconds,
+        enabled: !l.Enabled,
+      })
+      showSuccess(`Rate limit ${l.Enabled ? 'disabled' : 'enabled'}`)
+    } catch (e) { showError(e instanceof Error ? e.message : 'Failed to update') }
+  }
+
   const handleDeleteRL = async (id: number) => {
     if (!confirm('Delete this rate limit?')) return
     try { await deleteRateLimit(id); showSuccess('Rate limit deleted') }
@@ -163,6 +174,18 @@ export default function LimitsPage() {
       showSuccess('Spend limit saved'); setShowSLModal(false); setEditingSL(null); resetSLForm()
     } catch (e) { setSlFormError(e instanceof Error ? e.message : 'Failed to save') }
     finally { setSlSaving(false) }
+  }
+
+  const handleToggleSL = async (l: SpendLimit) => {
+    try {
+      await upsertSpendLimit({
+        scope_type: l.scope_type, scope_id: l.scope_id || '',
+        period_type: l.period_type, provider: l.provider || '',
+        limit_amount: l.limit_amount, alert_threshold: l.alert_threshold || '80',
+        action: l.action, enabled: !l.enabled,
+      })
+      showSuccess(`Spend limit ${l.enabled ? 'disabled' : 'enabled'}`)
+    } catch (e) { showError(e instanceof Error ? e.message : 'Failed to update') }
   }
 
   const handleDeleteSL = async (id: number) => {
@@ -261,6 +284,7 @@ export default function LimitsPage() {
                     <th>Limit (USD)</th>
                     <th>Alert At</th>
                     <th>Action</th>
+                    <th>Status</th>
                     <th>Current Spend</th>
                     <th>Usage</th>
                     <th>Actions</th>
@@ -269,7 +293,7 @@ export default function LimitsPage() {
                 <tbody>
                   {spendLimits.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="empty-cell">
+                      <td colSpan={10} className="empty-cell">
                         <div className="empty-cta">
                           <p>No spend limits configured yet.</p>
                           <button className="btn btn-primary" onClick={() => { setEditingSL(null); resetSLForm(); setShowSLModal(true) }}>
@@ -332,6 +356,10 @@ export default function LimitsPage() {
                             </span>
                           )}
                         </td>
+                        <td>
+                          <span className={`enabled-dot ${l.enabled ? 'on' : 'off'}`} />
+                          {l.enabled ? 'Active' : 'Disabled'}
+                        </td>
                         <td>${parseFloat(l.current_spend).toFixed(2)}</td>
                         <td>
                           <div className="usage-bar-container">
@@ -345,6 +373,12 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
+                          <button
+                            className={`btn btn-small ${l.enabled ? 'btn-warn' : 'btn-success'}`}
+                            onClick={() => handleToggleSL(l)}
+                          >
+                            {l.enabled ? 'Disable' : 'Enable'}
+                          </button>
                           <button className="btn btn-small btn-edit" onClick={() => handleEditSL(l)}>
                             Edit
                           </button>
@@ -436,6 +470,12 @@ export default function LimitsPage() {
                           </div>
                         </td>
                         <td>
+                          <button
+                            className={`btn btn-small ${l.Enabled ? 'btn-warn' : 'btn-success'}`}
+                            onClick={() => handleToggleRL(l)}
+                          >
+                            {l.Enabled ? 'Disable' : 'Enable'}
+                          </button>
                           <button className="btn btn-small btn-edit" onClick={() => handleEditRL(l)}>
                             Edit
                           </button>

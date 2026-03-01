@@ -23,7 +23,7 @@ import (
 
 const notifConsumerGroup = "tokengate:notification:workers"
 const notifConsumerName = "notif-worker-1"
-const debounceTTL = 5 * time.Minute
+const debounceTTL = 1 * time.Minute
 
 // NotificationWorker consumes notification events from Redis Streams and dispatches alerts.
 type NotificationWorker struct {
@@ -100,8 +100,8 @@ func (w *NotificationWorker) processMessage(ctx context.Context, msg redis.XMess
 	model := fmt.Sprintf("%v", v["model"])
 	details := fmt.Sprintf("%v", v["details"])
 
-	// Debounce: skip if already sent within 5 minutes for this tenant+event_type
-	dedupKey := fmt.Sprintf("notif:dedup:%d:%s", tenantID, eventType)
+	// Debounce: skip if already sent recently for this tenant+event+key+provider+model
+	dedupKey := fmt.Sprintf("notif:dedup:%d:%s:%s:%s:%s", tenantID, eventType, keyID, provider, model)
 	set, err := w.rdb.SetNX(ctx, dedupKey, "1", debounceTTL).Result()
 	if err != nil {
 		slog.Error("notifworker_dedup_check_failed", "error", err)
