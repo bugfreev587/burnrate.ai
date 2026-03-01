@@ -213,6 +213,21 @@ func (s *APIKeyService) ListKeys(ctx context.Context, tenantID uint) ([]models.A
 	return keys, nil
 }
 
+// ListKeysFiltered returns non-revoked API keys scoped by the caller's role.
+// Owners and admins see all keys for the tenant; editors and viewers see only
+// keys they created.
+func (s *APIKeyService) ListKeysFiltered(ctx context.Context, tenantID uint, orgRole string, userID string) ([]models.APIKey, error) {
+	var keys []models.APIKey
+	q := s.db.Where("tenant_id = ? AND revoked = ?", tenantID, false)
+	if orgRole != models.RoleOwner && orgRole != models.RoleAdmin {
+		q = q.Where("created_by_user_id = ?", userID)
+	}
+	if err := q.Find(&keys).Error; err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
 // TouchLastSeen records that the key was seen at most once per minute.
 // It is safe to call concurrently and is a no-op when Redis is unavailable.
 func (s *APIKeyService) TouchLastSeen(ctx context.Context, keyID string) {

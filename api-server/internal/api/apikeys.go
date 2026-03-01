@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/xiaoboyu/tokengate/api-server/internal/authz"
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
@@ -45,6 +46,15 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	var project models.Project
 	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", req.ProjectID, tenantID).First(&project).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "project not found in this tenant"})
+		return
+	}
+
+	// Authorize: editors/viewers must be a member of the target project.
+	user, _ := middleware.GetUserFromContext(c)
+	orgRole := middleware.GetOrgRoleFromContext(c)
+	decision := authz.Authorize(s.postgresDB.GetDB(), user.ID, tenantID, orgRole, authz.ActionAPIKeyCreate, authz.Resource{ProjectID: req.ProjectID})
+	if !decision.Allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": decision.Reason})
 		return
 	}
 
@@ -99,7 +109,6 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		}
 	}
 
-	user, _ := middleware.GetUserFromContext(c)
 	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), tenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode, req.ProjectID, user.ID, req.ModelAllowlist)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
@@ -127,19 +136,21 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	})
 }
 
-// handleListAPIKeys lists all active API keys for the caller's tenant,
-// including the tenant's key limit for display in the dashboard.
+// handleListAPIKeys lists active API keys for the caller's tenant,
+// filtered by ownership: admins/owners see all keys, editors/viewers
+// see only keys they created.
 // GET /v1/admin/api_keys
 func (s *Server) handleListAPIKeys(c *gin.Context) {
-	_, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
+	orgRole := middleware.GetOrgRoleFromContext(c)
 
-	keys, err := s.apiKeySvc.ListKeys(c.Request.Context(), tenantID)
+	keys, err := s.apiKeySvc.ListKeysFiltered(c.Request.Context(), tenantID, orgRole, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -151,30 +162,32 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 	planLim := models.GetPlanLimits(tenant.Plan)
 
 	type keyView struct {
-		KeyID       string     `json:"key_id"`
-		Label       string     `json:"label"`
-		ProjectID   uint       `json:"project_id"`
-		Provider    string     `json:"provider"`
-		AuthMethod  string     `json:"auth_method"`
-		BillingMode string     `json:"billing_mode"`
-		Scopes      []string   `json:"scopes"`
-		ExpiresAt   *time.Time `json:"expires_at"`
-		CreatedAt   time.Time  `json:"created_at"`
-		LastSeenAt  *time.Time `json:"last_seen_at"`
+		KeyID           string     `json:"key_id"`
+		Label           string     `json:"label"`
+		ProjectID       uint       `json:"project_id"`
+		Provider        string     `json:"provider"`
+		AuthMethod      string     `json:"auth_method"`
+		BillingMode     string     `json:"billing_mode"`
+		Scopes          []string   `json:"scopes"`
+		ExpiresAt       *time.Time `json:"expires_at"`
+		CreatedAt       time.Time  `json:"created_at"`
+		LastSeenAt      *time.Time `json:"last_seen_at"`
+		CreatedByUserID string     `json:"created_by_user_id"`
 	}
 	out := make([]keyView, len(keys))
 	for i, k := range keys {
 		out[i] = keyView{
-			KeyID:       k.KeyID,
-			Label:       k.Label,
-			ProjectID:   k.ProjectID,
-			Provider:    k.Provider,
-			AuthMethod:  k.AuthMethod,
-			BillingMode: k.BillingMode,
-			Scopes:      k.Scopes,
-			ExpiresAt:   k.ExpiresAt,
-			CreatedAt:   k.CreatedAt,
-			LastSeenAt:  k.LastSeenAt,
+			KeyID:           k.KeyID,
+			Label:           k.Label,
+			ProjectID:       k.ProjectID,
+			Provider:        k.Provider,
+			AuthMethod:      k.AuthMethod,
+			BillingMode:     k.BillingMode,
+			Scopes:          k.Scopes,
+			ExpiresAt:       k.ExpiresAt,
+			CreatedAt:       k.CreatedAt,
+			LastSeenAt:      k.LastSeenAt,
+			CreatedByUserID: k.CreatedByUserID,
 		}
 	}
 
@@ -195,17 +208,32 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 }
 
 // handleRevokeAPIKey revokes a tenant API key by key_id.
+// Owners/admins can revoke any key; editors can only revoke keys they created.
 // DELETE /v1/admin/api_keys/:key_id
 func (s *Server) handleRevokeAPIKey(c *gin.Context) {
-	_, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
-
+	orgRole := middleware.GetOrgRoleFromContext(c)
 	keyID := c.Param("key_id")
+
+	// For non-admin roles, verify the caller owns the key before revoking.
+	if orgRole != models.RoleOwner && orgRole != models.RoleAdmin {
+		var ak models.APIKey
+		if err := s.postgresDB.GetDB().Where("key_id = ? AND tenant_id = ?", keyID, tenantID).First(&ak).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "key not found"})
+			return
+		}
+		if ak.CreatedByUserID != user.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you can only revoke keys you created"})
+			return
+		}
+	}
+
 	if err := s.apiKeySvc.RevokeKey(c.Request.Context(), tenantID, keyID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

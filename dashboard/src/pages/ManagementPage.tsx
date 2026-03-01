@@ -20,6 +20,7 @@ interface APIKey {
   last_seen_at: string | null
   project_id: number | null
   model_allowlist: string | null
+  created_by_user_id: string | null
 }
 
 const AUTH_METHODS: { value: string; label: string; description: string }[] = [
@@ -675,6 +676,7 @@ export default function ManagementPage() {
                     <th>Provider</th>
                     <th>Auth</th>
                     <th>Billing</th>
+                    {canManageTeam && <th>Created By</th>}
                     <th>Created</th>
                     <th>Last Seen</th>
                     <th>Actions</th>
@@ -685,7 +687,7 @@ export default function ManagementPage() {
                     const filtered = filterProjectId ? apiKeys.filter(k => k.project_id === filterProjectId) : apiKeys
                     return filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="empty-cell">
+                      <td colSpan={canManageTeam ? 10 : 9} className="empty-cell">
                         <div className="empty-cta">
                           <p>{filterProjectId ? 'No API keys in this project.' : 'No API keys yet. Create one to start reporting usage.'}</p>
                           {!filterProjectId && (
@@ -705,6 +707,7 @@ export default function ManagementPage() {
                       <td><span className="provider-badge">{k.provider}</span></td>
                       <td><span className="mode-badge">{k.auth_method}</span></td>
                       <td><span className="mode-badge">{k.billing_mode}</span></td>
+                      {canManageTeam && <td className="text-muted">{users.find(u => u.id === k.created_by_user_id)?.email ?? '\u2014'}</td>}
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td>
