@@ -126,14 +126,17 @@ export default function ManagementPage() {
   // Rich dropdown open state
   const [authMethodOpen, setAuthMethodOpen] = useState(false)
   const [billingModeOpen, setBillingModeOpen] = useState(false)
+  const [projectOpen, setProjectOpen] = useState(false)
   const authMethodRef = useRef<HTMLDivElement>(null)
   const billingModeRef = useRef<HTMLDivElement>(null)
+  const projectRef = useRef<HTMLDivElement>(null)
 
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (authMethodRef.current && !authMethodRef.current.contains(e.target as Node)) setAuthMethodOpen(false)
       if (billingModeRef.current && !billingModeRef.current.contains(e.target as Node)) setBillingModeOpen(false)
+      if (projectRef.current && !projectRef.current.contains(e.target as Node)) setProjectOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -729,15 +732,53 @@ export default function ManagementPage() {
               </p>
               <div className="form-group">
                 <label>Project <span className="required">*</span></label>
-                <select
-                  value={newKeyProjectId}
-                  onChange={e => setNewKeyProjectId(e.target.value ? parseInt(e.target.value, 10) : '')}
-                >
-                  <option value="">Select a project...</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Default)' : ''}</option>
-                  ))}
-                </select>
+                <div className={`rich-dropdown${projectOpen ? ' open' : ''}`} ref={projectRef}>
+                  <button
+                    type="button"
+                    className="rich-dropdown-trigger"
+                    onClick={() => { setProjectOpen(v => !v); setAuthMethodOpen(false); setBillingModeOpen(false) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { setProjectOpen(false); return }
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const idx = projects.findIndex(p => p.id === newKeyProjectId)
+                        const next = e.key === 'ArrowDown'
+                          ? (idx + 1) % projects.length
+                          : (idx - 1 + projects.length) % projects.length
+                        setNewKeyProjectId(projects[next].id)
+                      }
+                    }}
+                    aria-haspopup="listbox"
+                    aria-expanded={projectOpen}
+                  >
+                    <span className="trigger-label">
+                      {(() => {
+                        const sel = projects.find(p => p.id === newKeyProjectId)
+                        if (!sel) return 'Select a project...'
+                        return sel.name + (sel.is_default ? ' (Default)' : '')
+                      })()}
+                    </span>
+                    <span className="trigger-chevron">&#9660;</span>
+                  </button>
+                  {projectOpen && (
+                    <div className="rich-dropdown-panel" role="listbox">
+                      {projects.map(p => (
+                        <div
+                          key={p.id}
+                          className={`rich-dropdown-option${newKeyProjectId === p.id ? ' selected' : ''}`}
+                          role="option"
+                          aria-selected={newKeyProjectId === p.id}
+                          onClick={() => {
+                            setNewKeyProjectId(p.id)
+                            setProjectOpen(false)
+                          }}
+                        >
+                          <span className="option-title">{p.name}{p.is_default ? ' (Default)' : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="form-group">
                 <label>Label</label>
@@ -766,7 +807,7 @@ export default function ManagementPage() {
                   <button
                     type="button"
                     className="rich-dropdown-trigger"
-                    onClick={() => { setAuthMethodOpen(v => !v); setBillingModeOpen(false) }}
+                    onClick={() => { setAuthMethodOpen(v => !v); setBillingModeOpen(false); setProjectOpen(false) }}
                     onKeyDown={e => {
                       if (e.key === 'Escape') { setAuthMethodOpen(false); return }
                       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -816,7 +857,7 @@ export default function ManagementPage() {
                   <button
                     type="button"
                     className="rich-dropdown-trigger"
-                    onClick={() => { setBillingModeOpen(v => !v); setAuthMethodOpen(false) }}
+                    onClick={() => { setBillingModeOpen(v => !v); setAuthMethodOpen(false); setProjectOpen(false) }}
                     onKeyDown={e => {
                       if (e.key === 'Escape') { setBillingModeOpen(false); return }
                       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
