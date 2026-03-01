@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { useRateLimits } from '../hooks/useRateLimits'
 import { useSpendLimits } from '../hooks/useSpendLimits'
 import { usePricingConfig } from '../hooks/usePricingConfig'
@@ -31,7 +32,8 @@ const ACTION_OPTIONS = [
 
 export default function LimitsPage() {
   const navigate = useNavigate()
-  const { role, isSynced } = useUserSync()
+  const { orgRole, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const { limits: rateLimits, loading: rlLoading, error: rlError, upsertLimit: upsertRateLimit, deleteLimit: deleteRateLimit } = useRateLimits(5000)
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
   const { catalog, activeKeys } = usePricingConfig()

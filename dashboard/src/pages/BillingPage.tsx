@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { apiFetch } from '../lib/api'
 import './BillingPage.css'
 
@@ -87,7 +88,8 @@ function InvoiceStatusBadge({ status }: { status: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
-  const { role, userId, isSynced } = useUserSync()
+  const { orgRole, userId, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const [searchParams, setSearchParams] = useSearchParams()
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { usePricingConfig, CatalogEntry, PricingConfigView } from '../hooks/usePricingConfig'
 import './PricingConfigPage.css'
 
@@ -57,7 +58,8 @@ function groupByProvider(catalog: CatalogEntry[]) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function PricingConfigPage() {
   const navigate = useNavigate()
-  const { role, isSynced } = useUserSync()
+  const { orgRole, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const {
     catalog, configs, activeKeys,
     loading, error,

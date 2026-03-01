@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { apiFetch } from '../lib/api'
 import './PlanPage.css'
 
@@ -197,7 +198,8 @@ function PendingDowngradeCard({ currentPlan, pendingPlan, planEffectiveAt, switc
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function PlanPage() {
-  const { role, userId, isSynced } = useUserSync()
+  const { orgRole, userId, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const [data, setData] = useState<PlanData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

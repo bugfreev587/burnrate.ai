@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import { useAuditReports } from '../hooks/useAuditReports'
 import { apiFetch } from '../lib/api'
@@ -20,7 +21,8 @@ interface AuditLogEntry {
 }
 
 export default function AuditPage() {
-  const { role, isSynced } = useUserSync()
+  const { orgRole, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const { config } = useDashboardConfig()
   const { reports, loading, error, refresh, generate, deleteReport, downloadReport } = useAuditReports()
 

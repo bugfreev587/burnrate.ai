@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useUser, useAuth, SignOutButton } from '@clerk/clerk-react'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
 import logoDark from '../assets/logo-dark.svg'
 import './Navbar.css'
@@ -9,11 +9,14 @@ import './Navbar.css'
 export default function Navbar() {
   const { user, isLoaded: userLoaded } = useUser()
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
-  const { role, isSynced } = useUserSync()
-  const { memberships, activeTenantId, switchTenant } = useTenant()
+  const { memberships, activeTenantId, switchTenant, orgRole } = useTenant()
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // Derive sync status from TenantContext: if memberships are loaded, sync is done.
+  // This avoids running a duplicate useUserSync() instance with its own isSynced state.
+  const isSynced = memberships.length > 0
+  const role = (orgRole as UserRole) ?? null
   const canAccessEditor = isSynced && hasPermission(role, 'editor')
   const canAccessAdmin = isSynced && hasPermission(role, 'admin')
 

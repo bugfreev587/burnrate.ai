@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { useNotifications } from '../hooks/useNotifications'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import type { CreateNotificationChannelReq } from '../hooks/useNotifications'
@@ -40,7 +41,8 @@ function configSummary(channelType: string, configStr: string): string {
 
 export default function NotificationsPage() {
   const navigate = useNavigate()
-  const { role, isSynced } = useUserSync()
+  const { orgRole, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const { channels, loading, error, createChannel, updateChannel, deleteChannel, testChannel } = useNotifications()
   const { config } = useDashboardConfig()
   const planLimits = config?.plan_limits

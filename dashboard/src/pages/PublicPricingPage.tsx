@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
-import { useUserSync } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
+import type { UserRole } from '../hooks/useUserSync'
 import { apiFetch } from '../lib/api'
 import './PublicPricingPage.css'
 
@@ -151,7 +152,8 @@ const PLAN_CARDS: PlanCard[] = [
 export default function PublicPricingPage() {
   const navigate = useNavigate()
   const { isSignedIn } = useAuth()
-  const { userId, role, isSynced } = useUserSync()
+  const { userId, orgRole, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const [currentPlan, setCurrentPlan] = useState<PlanKey | null>(null)
   const [switching, setSwitching]     = useState<PlanKey | null>(null)
   const [flash, setFlash]             = useState<{ type: 'success' | 'error'; msg: string } | null>(null)

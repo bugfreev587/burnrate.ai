@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { useProjects } from '../hooks/useProjects'
 import { apiFetch } from '../lib/api'
 import Navbar from '../components/Navbar'
@@ -56,7 +57,8 @@ interface ProviderKey {
 
 export default function ManagementPage() {
   const navigate = useNavigate()
-  const { role, userId, isSynced } = useUserSync()
+  const { orgRole, userId, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
   const { projects, loading: projectsLoading } = useProjects()
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])

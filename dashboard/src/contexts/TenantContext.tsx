@@ -10,16 +10,22 @@ interface TenantContextValue {
   activeTenantId: number | null
   memberships: TenantMembership[]
   orgRole: string | null
+  userId: string | null
+  isSynced: boolean
   switchTenant: (tenantId: number) => void
   setMemberships: (memberships: TenantMembership[]) => void
+  setUserId: (id: string) => void
 }
 
 const TenantContext = createContext<TenantContextValue>({
   activeTenantId: null,
   memberships: [],
   orgRole: null,
+  userId: null,
+  isSynced: false,
   switchTenant: () => {},
   setMemberships: () => {},
+  setUserId: () => {},
 })
 
 export function useTenant() {
@@ -28,6 +34,9 @@ export function useTenant() {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [memberships, setMembershipsState] = useState<TenantMembership[]>([])
+  const [userId, setUserIdState] = useState<string | null>(() => {
+    return localStorage.getItem('user_id')
+  })
   const [activeTenantId, setActiveTenantId] = useState<number | null>(() => {
     const stored = localStorage.getItem('active_tenant_id')
     return stored ? parseInt(stored, 10) : null
@@ -35,6 +44,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const activeMembership = memberships.find(m => m.tenant_id === activeTenantId)
   const orgRole = activeMembership?.org_role ?? null
+  // Sync is complete once we have memberships loaded from the backend.
+  const isSynced = memberships.length > 0
 
   const switchTenant = useCallback((tenantId: number) => {
     setActiveTenantId(tenantId)
@@ -68,6 +79,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const setUserId = useCallback((id: string) => {
+    setUserIdState(id)
+    localStorage.setItem('user_id', id)
+  }, [])
+
   // Keep localStorage in sync when activeTenantId changes.
   useEffect(() => {
     if (activeTenantId != null) {
@@ -77,7 +93,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, [activeTenantId])
 
   return (
-    <TenantContext.Provider value={{ activeTenantId, memberships, orgRole, switchTenant, setMemberships }}>
+    <TenantContext.Provider value={{
+      activeTenantId, memberships, orgRole, userId, isSynced,
+      switchTenant, setMemberships, setUserId,
+    }}>
       {children}
     </TenantContext.Provider>
   )

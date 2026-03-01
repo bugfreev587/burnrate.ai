@@ -8,16 +8,10 @@ export type UserRole = 'owner' | 'admin' | 'editor' | 'viewer'
 export type UserStatus = 'active' | 'suspended' | 'pending'
 
 interface UserSyncState {
-  isSynced: boolean
   isSyncing: boolean
   error: string | null
-  userId: string | null   // Clerk user ID
-  tenantId: number | null
-  role: UserRole | null
-  status: UserStatus | null
   isNewUser: boolean
   apiKey: string | null   // Only set for new users on first sync
-  memberships: TenantMembership[]
 }
 
 export function hasPermission(userRole: UserRole | null, requiredRole: UserRole): boolean {
@@ -26,39 +20,32 @@ export function hasPermission(userRole: UserRole | null, requiredRole: UserRole)
   return levels[userRole] >= levels[requiredRole]
 }
 
-export function useUserSync(): UserSyncState {
+/**
+ * useUserSync handles the one-time auth sync with the backend.
+ * It should only be called ONCE (in UserSyncProvider). All other components
+ * should read isSynced, userId, orgRole from useTenant() directly.
+ */
+export function useUserSync() {
   const { isSignedIn, isLoaded, user } = useUser()
   const { signOut } = useClerk()
-  const { activeTenantId, orgRole, setMemberships } = useTenant()
+  const { setMemberships, setUserId, isSynced, orgRole, userId, activeTenantId } = useTenant()
   const syncAttempted = useRef(false)
 
   const [state, setState] = useState<UserSyncState>({
-    isSynced: false,
     isSyncing: false,
     error: null,
-    userId: null,
-    tenantId: null,
-    role: null,
-    status: null,
     isNewUser: false,
     apiKey: null,
-    memberships: [],
   })
 
   useEffect(() => {
     // Reset on sign-out
     if (isLoaded && !isSignedIn) {
       setState({
-        isSynced: false,
         isSyncing: false,
         error: null,
-        userId: null,
-        tenantId: null,
-        role: null,
-        status: null,
         isNewUser: false,
         apiKey: null,
-        memberships: [],
       })
       localStorage.removeItem('user_id')
       localStorage.removeItem('tenant_id')
@@ -102,30 +89,20 @@ export function useUserSync(): UserSyncState {
 
         const data = await res.json()
 
-        // Handle new memberships[] response from multi-tenant auth sync.
+        // Store userId in TenantContext (shared state).
+        setUserId(data.user_id)
+        localStorage.setItem('user_status', data.status ?? '')
+
+        // Store memberships in TenantContext — this also sets activeTenantId and orgRole.
         const memberships: TenantMembership[] = data.memberships ?? []
         setMemberships(memberships)
 
-        // Determine active tenant + role from TenantContext (it auto-selects).
-        const firstMembership = memberships[0]
-        const tenantId = firstMembership?.tenant_id ?? null
-        const role = firstMembership?.org_role as UserRole ?? null
-
         setState({
-          isSynced: true,
           isSyncing: false,
           error: null,
-          userId: data.user_id,
-          tenantId,
-          role,
-          status: data.status as UserStatus,
           isNewUser: data.is_new_user ?? false,
           apiKey: data.api_key ?? null,
-          memberships,
         })
-
-        localStorage.setItem('user_id', String(data.user_id))
-        localStorage.setItem('user_status', data.status ?? '')
       } catch (err) {
         console.error('User sync failed:', err)
         setState(prev => ({
@@ -139,12 +116,14 @@ export function useUserSync(): UserSyncState {
     syncUser()
   }, [isLoaded, isSignedIn, user])
 
-  // Keep role in sync with active tenant from TenantContext.
-  const effectiveRole = (orgRole as UserRole) ?? state.role
-
   return {
     ...state,
+    // These come from TenantContext (single source of truth).
+    isSynced,
+    userId,
     tenantId: activeTenantId,
-    role: effectiveRole,
+    role: (orgRole as UserRole) ?? null,
+    status: (localStorage.getItem('user_status') as UserStatus) ?? null,
+    memberships: [],  // Deprecated: use useTenant().memberships instead
   }
 }

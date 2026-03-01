@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useClerk } from '@clerk/clerk-react'
-import { useUserSync, hasPermission } from '../hooks/useUserSync'
-import type { UserRole } from '../hooks/useUserSync'
+import { hasPermission, type UserRole } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import { useProjects, type Project, type ProjectMember } from '../hooks/useProjects'
 import { apiFetch } from '../lib/api'
 import Navbar from '../components/Navbar'
@@ -21,7 +21,8 @@ interface User {
 export default function SettingsPage() {
   const navigate = useNavigate()
   const { signOut } = useClerk()
-  const { role, userId, isSynced } = useUserSync()
+  const { orgRole, userId, isSynced } = useTenant()
+  const role = (orgRole as UserRole) ?? null
 
   const isAdmin = hasPermission(role, 'admin')
   const isOwner = role === 'owner'
