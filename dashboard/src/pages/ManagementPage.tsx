@@ -63,13 +63,6 @@ export default function ManagementPage() {
   const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, removeMember } = useProjects()
   const { catalog } = usePricingConfig()
 
-  // Deduplicated model names from the pricing catalog, sorted alphabetically.
-  const availableModels = useMemo(() => {
-    const names = new Set<string>()
-    for (const entry of catalog) names.add(entry.model_name)
-    return Array.from(names).sort()
-  }, [catalog])
-
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
   const [keyLimit, setKeyLimit] = useState<number | null>(null)
@@ -97,6 +90,16 @@ export default function ManagementPage() {
   const [newBillingMode, setNewBillingMode] = useState<string>('MONTHLY_SUBSCRIPTION')
   const [newKeyProjectId, setNewKeyProjectId] = useState<number | ''>('')
   const [newKeyModelAllowlist, setNewKeyModelAllowlist] = useState<string[]>([])
+
+  // Deduplicated model names from the pricing catalog, filtered by selected provider.
+  const availableModels = useMemo(() => {
+    const names = new Set<string>()
+    for (const entry of catalog) {
+      if (entry.provider === newKeyProvider) names.add(entry.model_name)
+    }
+    return Array.from(names).sort()
+  }, [catalog, newKeyProvider])
+
   const [createdAuthMethod, setCreatedAuthMethod] = useState<string>('')
   const [createdBillingMode, setCreatedBillingMode] = useState<string>('')
   const [createdProvider, setCreatedProvider] = useState<string>('')
@@ -751,7 +754,7 @@ export default function ManagementPage() {
                 <label>Provider</label>
                 <select
                   value={newKeyProvider}
-                  onChange={e => setNewKeyProvider(e.target.value)}
+                  onChange={e => { setNewKeyProvider(e.target.value); setNewKeyModelAllowlist([]) }}
                 >
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
