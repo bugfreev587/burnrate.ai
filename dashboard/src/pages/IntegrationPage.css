@@ -87,6 +87,7 @@
 .ig-icon--notification { background: rgba(251, 146, 60, 0.2); color: #fb923c; font-size: 0.75rem; }
 .ig-icon--info      { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 .ig-icon--faq       { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+.ig-icon--rbac      { background: rgba(59, 130, 246, 0.2); color: #60a5fa; font-size: 0.75rem; }
 
 /* ── main content ─────────────────────────────────────────────────────────── */
 
@@ -655,6 +656,43 @@
 
 .ig-faq-a p:last-child {
   margin-bottom: 0;
+}
+
+/* ── permission matrix ────────────────────────────────────────────────────── */
+
+.ig-h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+
+.ig-permission-matrix th:not(:first-child),
+.ig-permission-matrix td:not(:first-child) {
+  text-align: center;
+  width: 100px;
+}
+
+.ig-perm-yes {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.ig-perm-no {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+.ig-matrix-group {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #a5b4fc !important;
+  background: rgba(99, 102, 241, 0.06);
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
 }
 
 /* ── responsive ───────────────────────────────────────────────────────────── */

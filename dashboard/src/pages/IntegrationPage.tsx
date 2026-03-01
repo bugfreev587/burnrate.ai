@@ -22,6 +22,7 @@ const SECTIONS: Section[] = [
   { id: 'notifications',  title: 'Notification Setup',                          icon: 'notification' },
   { id: 'troubleshoot',   title: 'Troubleshooting',                             icon: 'help' },
   { id: 'faq',            title: 'FAQ',                                          icon: 'faq' },
+  { id: 'rbac',           title: 'Roles & Permissions',                          icon: 'rbac' },
 ]
 
 /* ── icon map ─────────────────────────────────────────────────────────────── */
@@ -42,6 +43,8 @@ function SectionIcon({ type }: { type: string }) {
       return <span className="ig-icon ig-icon--help">?</span>
     case 'faq':
       return <span className="ig-icon ig-icon--faq">Q</span>
+    case 'rbac':
+      return <span className="ig-icon ig-icon--rbac">&#x1f6e1;</span>
     default:
       return <span className="ig-icon ig-icon--info">i</span>
   }
@@ -761,6 +764,233 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
                 <Callout type="warn">
                   Store provider keys securely. If you lose a key, create a new one. In TokenGate, add it from <a href="/management"><strong>Management → Provider Keys</strong></a> using <strong>Add Provider Key</strong>.
                 </Callout>
+              </FaqItem>
+            </div>
+          </section>
+
+          {/* ── Roles & Permissions (RBAC) ────────────────────────────── */}
+          <section id="rbac" ref={ref('rbac')} className="ig-section">
+            <h2 className="ig-h2">
+              <SectionIcon type="rbac" />
+              Roles &amp; Permissions
+            </h2>
+            <p className="ig-desc">
+              A complete reference for understanding who can do what in your TokenGate organization.
+            </p>
+
+            <Callout type="info">
+              TokenGate uses a <strong>two-level role system</strong>: <strong>Organization roles</strong> control
+              tenant-wide access (members, billing, provider keys), while <strong>Project roles</strong> control
+              access within individual projects (API keys, limits). Org Owners and Admins automatically have
+              full access to all projects.
+            </Callout>
+
+            {/* ── Organization Roles ──────────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Organization Roles</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Role</th><th>Description</th><th>Key Capabilities</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Owner</strong></td>
+                    <td>Full control of the organization</td>
+                    <td>All permissions including delete org, manage billing, and cancel subscription</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Admin</strong></td>
+                    <td>Day-to-day organization management</td>
+                    <td>Everything except deleting the org, updating the billing plan, and cancelling the subscription</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Editor</strong></td>
+                    <td>Project-level contributor</td>
+                    <td>List projects and view usage. Must be added to individual projects for deeper access</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Viewer</strong></td>
+                    <td>Read-only observer</td>
+                    <td>List projects, view usage, and view plan status. Must be added to projects for project access</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Organization Permission Matrix ─────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Organization Permission Matrix</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table ig-permission-matrix">
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Owner</th>
+                    <th>Admin</th>
+                    <th>Editor</th>
+                    <th>Viewer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colSpan={5} className="ig-matrix-group">Organization</td></tr>
+                  <tr><td>View org settings</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update org settings</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Delete organization</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Members</td></tr>
+                  <tr><td>List members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Invite members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update member roles</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Remove members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Projects</td></tr>
+                  <tr><td>List projects</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Create projects</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Provider Keys</td></tr>
+                  <tr><td>List / view provider keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Create provider keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update provider keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Delete provider keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Usage &amp; Reports</td></tr>
+                  <tr><td>View usage</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Generate reports</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Audit</td></tr>
+                  <tr><td>View audit logs</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={5} className="ig-matrix-group">Billing</td></tr>
+                  <tr><td>View billing / plan status</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Update billing plan</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Cancel subscription</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Check downgrade impact</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Project Roles ───────────────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Project Roles</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Role</th><th>Description</th><th>Key Capabilities</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Project Admin</strong></td>
+                    <td>Full control of the project</td>
+                    <td>Manage project settings, members, API keys, and limits (including create &amp; delete)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Project Editor</strong></td>
+                    <td>Manage API keys within the project</td>
+                    <td>View &amp; update project settings, create/update/revoke API keys, view limits</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Project Viewer</strong></td>
+                    <td>Read-only project access</td>
+                    <td>View project settings, list API keys, and view limits</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Project Permission Matrix ───────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Project Permission Matrix</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table ig-permission-matrix">
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Project Admin</th>
+                    <th>Project Editor</th>
+                    <th>Project Viewer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colSpan={4} className="ig-matrix-group">Project Settings</td></tr>
+                  <tr><td>View project</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Update project</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Delete project</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={4} className="ig-matrix-group">Project Members</td></tr>
+                  <tr><td>List members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Add members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update member roles</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Remove members</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={4} className="ig-matrix-group">API Keys</td></tr>
+                  <tr><td>List / view API keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Create API keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update API keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Revoke API keys</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+
+                  <tr><td colSpan={4} className="ig-matrix-group">Limits</td></tr>
+                  <tr><td>List / view limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Create limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Update limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Delete limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td><td className="ig-perm-no">&mdash;</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── How Roles Interact ──────────────────────────────────── */}
+            <Callout type="info">
+              <strong>How roles interact:</strong> Org <strong>Owners</strong> and <strong>Admins</strong> automatically
+              bypass project-level role checks &mdash; they have full access to every project without needing explicit
+              membership. Org <strong>Editors</strong> and <strong>Viewers</strong> must be explicitly added to a project
+              and assigned a project role to access it.
+            </Callout>
+
+            {/* ── Dashboard Navigation by Role ────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Dashboard Navigation by Role</h3>
+            <p className="ig-desc" style={{ marginBottom: '1rem' }}>
+              The pages visible in the navigation bar depend on the user's org role.
+            </p>
+            <div className="ig-table-wrap">
+              <table className="ig-table ig-permission-matrix">
+                <thead>
+                  <tr>
+                    <th>Page</th>
+                    <th>Owner</th>
+                    <th>Admin</th>
+                    <th>Editor</th>
+                    <th>Viewer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Dashboard</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Management</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Notifications</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Pricing Config</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Integration</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                  <tr><td>Audit</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── RBAC FAQ ────────────────────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Common Questions</h3>
+            <div className="ig-faq-list">
+              <FaqItem question="How do I invite a new team member?">
+                <p>Go to the <strong>Management</strong> page and open the <strong>Members</strong> section. Click <strong>Invite Member</strong>, enter their email, and select an org role. Only <strong>Owners</strong> and <strong>Admins</strong> can invite members.</p>
+              </FaqItem>
+
+              <FaqItem question="Can I invite someone directly as an Admin?">
+                <p>Yes. When inviting a member, you can assign any org role (Owner, Admin, Editor, or Viewer). Owners and Admins can set the role at invite time.</p>
+              </FaqItem>
+
+              <FaqItem question="What happens when a user is suspended?">
+                <p>Suspended users cannot log in or make API requests. Their membership record is preserved so they can be reinstated later. Only Owners and Admins can suspend or reinstate members.</p>
+              </FaqItem>
+
+              <FaqItem question="What is the Default project?">
+                <p>Every organization has a <strong>Default</strong> project created automatically. All org members have access to the Default project. It cannot be deleted but can be renamed. New API keys are assigned to the Default project unless you choose a different one.</p>
+              </FaqItem>
+
+              <FaqItem question="Which plan supports multi-user teams?">
+                <p>Multi-user teams with role-based access control are available on the <strong>Team</strong> plan and above. The Free plan is limited to a single user. Visit the <a href="/pricing"><strong>Pricing</strong></a> page for plan details.</p>
               </FaqItem>
             </div>
           </section>
