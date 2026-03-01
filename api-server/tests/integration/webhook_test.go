@@ -46,6 +46,7 @@ func webhookRouter() http.Handler {
 	rateLimiter := ratelimit.NewLimiter(testDB, nil)
 	pdb := db.NewFromDB(testDB)
 
+	auditLogSvc := services.NewAuditLogService(testDB)
 	srv := api.NewServer(
 		cfg, pdb,
 		nil, // rdb
@@ -55,6 +56,7 @@ func webhookRouter() http.Handler {
 		rateLimiter,
 		stripeSvc,
 		nil, // auditSvc
+		auditLogSvc,
 		nil, // reportQueue
 		nil, // notifWorker
 	)

@@ -45,8 +45,16 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Drop legacy columns that may exist from prior test runs.
+	gormDB.Exec("DROP INDEX IF EXISTS idx_users_tenant_id")
+	gormDB.Exec("ALTER TABLE users DROP COLUMN IF EXISTS tenant_id")
+	gormDB.Exec("ALTER TABLE users DROP COLUMN IF EXISTS role")
+	gormDB.Exec("ALTER TABLE tenants DROP COLUMN IF EXISTS max_api_keys")
+
 	if err := gormDB.AutoMigrate(
-		&models.Tenant{}, &models.User{}, &models.APIKey{},
+		&models.Tenant{}, &models.User{},
+		&models.TenantMembership{}, &models.Project{}, &models.ProjectMembership{},
+		&models.APIKey{}, &models.APIKeyProviderKeyBinding{},
 		&models.ProviderKey{}, &models.TenantProviderSettings{},
 		&models.UsageLog{}, &models.Provider{}, &models.ModelDef{},
 		&models.ModelPricing{}, &models.ContractPricing{},
@@ -54,7 +62,8 @@ func TestMain(m *testing.M) {
 		&models.BudgetLimit{}, &models.PricingConfig{},
 		&models.PricingConfigRate{}, &models.APIKeyConfig{},
 		&models.RateLimit{}, &models.ProcessedStripeEvent{},
-		&models.AuditReport{},
+		&models.AuditReport{}, &models.NotificationChannel{},
+		&models.GatewayEvent{}, &models.AuditLog{},
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "automigrate: %v\n", err)
 		os.Exit(1)
@@ -75,6 +84,7 @@ func TestMain(m *testing.M) {
 	pricingEngine := pricing.NewPricingEngine(testDB, nil)
 	stripeSvc := services.NewStripeService(testDB, config.StripeCfg{})
 	rateLimiter := ratelimit.NewLimiter(testDB, nil)
+	auditLogSvc := services.NewAuditLogService(testDB)
 	pdb := db.NewFromDB(testDB)
 
 	srv := api.NewServer(
@@ -86,6 +96,7 @@ func TestMain(m *testing.M) {
 		rateLimiter,
 		stripeSvc,
 		nil, // auditSvc
+		auditLogSvc,
 		nil, // reportQueue
 		nil, // notifWorker
 	)
@@ -117,12 +128,58 @@ func parseJSON(t *testing.T, body []byte) map[string]interface{} {
 	return m
 }
 
+// userHeaders returns the standard auth headers for authenticated requests.
+func userHeaders(userID string, tenantID uint) map[string]string {
+	return map[string]string{
+		"X-User-ID":   userID,
+		"X-Tenant-Id": fmt.Sprintf("%d", tenantID),
+	}
+}
+
+// syncAndGetTenantID performs auth sync for a user and returns the tenant_id
+// from the first membership in the response.
+func syncAndGetTenantID(t *testing.T, body string) (map[string]interface{}, uint) {
+	t.Helper()
+	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync", body, nil)
+	if w.Code != 200 && w.Code != 201 {
+		t.Fatalf("auth/sync = %d; body: %s", w.Code, w.Body.String())
+	}
+	resp := testutil.ParseJSON(t, w)
+	memberships, ok := resp["memberships"].([]interface{})
+	if !ok || len(memberships) == 0 {
+		t.Fatal("no memberships in auth sync response")
+	}
+	first := memberships[0].(map[string]interface{})
+	return resp, uint(first["tenant_id"].(float64))
+}
+
+// getDefaultProjectID looks up the default project for a tenant.
+func getDefaultProjectID(t *testing.T, tenantID uint) uint {
+	t.Helper()
+	var project models.Project
+	if err := testDB.Where("tenant_id = ? AND name = ?", tenantID, "Default").First(&project).Error; err != nil {
+		t.Fatalf("default project not found for tenant %d: %v", tenantID, err)
+	}
+	return project.ID
+}
+
+// mkKeyBody returns a JSON body for creating an API key in the given project.
+func mkKeyBody(label string, projectID uint) string {
+	return fmt.Sprintf(`{
+		"label":%q,
+		"project_id":%d,
+		"provider":"anthropic",
+		"auth_method":"BROWSER_OAUTH",
+		"billing_mode":"MONTHLY_SUBSCRIPTION"
+	}`, label, projectID)
+}
+
 // ---------------------------------------------------------------------------
 // Flow 1: Full user onboarding → API key lifecycle
 //
 // Steps:
-//   1. Auth sync (new user) → creates tenant + owner
-//   2. Create API key
+//   1. Auth sync (new user) → creates tenant + owner + default project
+//   2. Create API key (with project_id)
 //   3. List API keys → verify key appears
 //   4. Revoke API key
 //   5. List API keys → verify empty
@@ -132,29 +189,22 @@ func TestFlow_UserOnboarding_APIKeyLifecycle(t *testing.T) {
 	cleanup(t)
 
 	// Step 1: New user signs up via auth/sync
-	syncBody := `{"clerk_user_id":"e2e_owner_1","email":"owner@e2e.test","first_name":"E2E","last_name":"Owner"}`
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync", syncBody, nil)
-	if w.Code != 201 {
-		t.Fatalf("auth/sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	syncResp := testutil.ParseJSON(t, w)
-	if syncResp["role"] != "owner" {
-		t.Fatalf("expected owner role, got %v", syncResp["role"])
-	}
+	syncResp, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_owner_1","email":"owner@e2e.test","first_name":"E2E","last_name":"Owner"}`)
 	if syncResp["is_new_user"] != true {
 		t.Fatalf("expected is_new_user=true")
 	}
+	memberships := syncResp["memberships"].([]interface{})
+	firstMem := memberships[0].(map[string]interface{})
+	if firstMem["org_role"] != "owner" {
+		t.Fatalf("expected owner role, got %v", firstMem["org_role"])
+	}
 
-	headers := map[string]string{"X-User-ID": "e2e_owner_1"}
+	headers := userHeaders("e2e_owner_1", tenantID)
+	projectID := getDefaultProjectID(t, tenantID)
 
-	// Step 2: Create an API key
-	keyBody := `{
-		"label":"e2e-test-key",
-		"provider":"anthropic",
-		"auth_method":"BROWSER_OAUTH",
-		"billing_mode":"MONTHLY_SUBSCRIPTION"
-	}`
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", keyBody, headers)
+	// Step 2: Create an API key bound to the default project.
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("e2e-test-key", projectID), headers)
 	if w.Code != 201 {
 		t.Fatalf("create key = %d; body: %s", w.Code, w.Body.String())
 	}
@@ -168,6 +218,9 @@ func TestFlow_UserOnboarding_APIKeyLifecycle(t *testing.T) {
 	}
 	if createResp["label"] != "e2e-test-key" {
 		t.Errorf("label = %v, want e2e-test-key", createResp["label"])
+	}
+	if createResp["project_id"] != float64(projectID) {
+		t.Errorf("project_id = %v, want %d", createResp["project_id"], projectID)
 	}
 
 	// Step 3: List keys → should have 1
@@ -202,40 +255,36 @@ func TestFlow_UserOnboarding_APIKeyLifecycle(t *testing.T) {
 //
 // Steps:
 //   1. Auth sync owner
-//   2. Invite a new user (editor)
-//   3. List users → pending invite visible
-//   4. Invited user signs up via auth/sync → joins as editor
-//   5. Owner changes their role to viewer
-//   6. Owner suspends them
-//   7. Suspended user cannot access viewer endpoints
-//   8. Owner unsuspends them
-//   9. User can access viewer endpoints again
+//   2. Upgrade to team plan
+//   3. Invite a new user (editor)
+//   4. List users → pending invite visible
+//   5. Invited user signs up via auth/sync → joins as editor
+//   6. Owner changes their role to viewer
+//   7. Owner suspends them
+//   8. Suspended user cannot access viewer endpoints
+//   9. Owner unsuspends them
+//  10. User can access viewer endpoints again
 // ---------------------------------------------------------------------------
 
 func TestFlow_TeamManagement(t *testing.T) {
 	cleanup(t)
 
 	// Step 1: Owner signs up
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_tm_owner","email":"tm-owner@e2e.test","first_name":"TM","last_name":"Owner"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	ownerHeaders := map[string]string{"X-User-ID": "e2e_tm_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_tm_owner","email":"tm-owner@e2e.test","first_name":"TM","last_name":"Owner"}`)
+	ownerHeaders := userHeaders("e2e_tm_owner", tenantID)
 
-	// Upgrade tenant to team plan (free and pro only allow 1 member)
-	var tmUser models.User
-	testDB.Where("id = ?", "e2e_tm_owner").First(&tmUser)
-	testDB.Model(&models.Tenant{}).Where("id = ?", tmUser.TenantID).Update("plan", models.PlanTeam)
+	// Step 2: Upgrade tenant to team plan (free only allows 1 member)
+	testDB.Model(&models.Tenant{}).Where("id = ?", tenantID).Update("plan", models.PlanTeam)
 
-	// Step 2: Invite a new team member as editor
+	// Step 3: Invite a new team member as editor
 	inviteBody := `{"email":"tm-editor@e2e.test","name":"Team Editor","role":"editor"}`
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite", inviteBody, ownerHeaders)
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite", inviteBody, ownerHeaders)
 	if w.Code != 201 {
 		t.Fatalf("invite = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 3: List users → should have owner + pending invite
+	// Step 4: List users → should have owner + pending invite
 	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/users", "", ownerHeaders)
 	if w.Code != 200 {
 		t.Fatalf("list users = %d; body: %s", w.Code, w.Body.String())
@@ -246,18 +295,31 @@ func TestFlow_TeamManagement(t *testing.T) {
 		t.Errorf("total users = %v, want 2 (owner + pending)", total)
 	}
 
-	// Step 4: Invited user signs up
+	// Step 5: Invited user signs up — gets their memberships
 	w = testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
 		`{"clerk_user_id":"e2e_tm_editor","email":"tm-editor@e2e.test","first_name":"Team","last_name":"Editor"}`, nil)
 	if w.Code != 200 {
 		t.Fatalf("editor sync = %d; body: %s", w.Code, w.Body.String())
 	}
 	editorSync := testutil.ParseJSON(t, w)
-	if editorSync["role"] != "editor" {
-		t.Errorf("editor role = %v, want editor", editorSync["role"])
+	// Should have at least 2 memberships: invited tenant (editor) + personal tenant (owner)
+	editorMemberships := editorSync["memberships"].([]interface{})
+	if len(editorMemberships) < 2 {
+		t.Fatalf("expected at least 2 memberships, got %d", len(editorMemberships))
+	}
+	// Find the editor role in the team tenant
+	var editorRole string
+	for _, m := range editorMemberships {
+		mem := m.(map[string]interface{})
+		if uint(mem["tenant_id"].(float64)) == tenantID {
+			editorRole = mem["org_role"].(string)
+		}
+	}
+	if editorRole != "editor" {
+		t.Errorf("editor role in team tenant = %v, want editor", editorRole)
 	}
 
-	editorHeaders := map[string]string{"X-User-ID": "e2e_tm_editor"}
+	editorHeaders := userHeaders("e2e_tm_editor", tenantID)
 
 	// Editor should be able to access admin endpoints
 	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/api_keys", "", editorHeaders)
@@ -265,7 +327,7 @@ func TestFlow_TeamManagement(t *testing.T) {
 		t.Fatalf("editor access admin = %d, want 200", w.Code)
 	}
 
-	// Step 5: Owner changes editor's role to viewer
+	// Step 6: Owner changes editor's role to viewer
 	w = testutil.DoRequest(testRouter, "PATCH", "/v1/admin/users/e2e_tm_editor/role",
 		`{"role":"viewer"}`, ownerHeaders)
 	if w.Code != 200 {
@@ -284,25 +346,25 @@ func TestFlow_TeamManagement(t *testing.T) {
 		t.Fatalf("viewer access usage = %d, want 200", w.Code)
 	}
 
-	// Step 6: Owner suspends the user
+	// Step 7: Owner suspends the user
 	w = testutil.DoRequest(testRouter, "PATCH", "/v1/admin/users/e2e_tm_editor/suspend", "", ownerHeaders)
 	if w.Code != 200 {
 		t.Fatalf("suspend = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 7: Suspended user cannot access anything
+	// Step 8: Suspended user cannot access anything
 	w = testutil.DoRequest(testRouter, "GET", "/v1/usage", "", editorHeaders)
 	if w.Code != 403 {
 		t.Fatalf("suspended user access = %d, want 403", w.Code)
 	}
 
-	// Step 8: Owner unsuspends the user
+	// Step 9: Owner unsuspends the user
 	w = testutil.DoRequest(testRouter, "PATCH", "/v1/admin/users/e2e_tm_editor/unsuspend", "", ownerHeaders)
 	if w.Code != 200 {
 		t.Fatalf("unsuspend = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 9: User can access again
+	// Step 10: User can access again
 	w = testutil.DoRequest(testRouter, "GET", "/v1/usage", "", editorHeaders)
 	if w.Code != 200 {
 		t.Fatalf("unsuspended user access = %d, want 200", w.Code)
@@ -311,65 +373,44 @@ func TestFlow_TeamManagement(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 3: Usage tracking — create key, seed usage, view summary/ledger
-//
-// Steps:
-//   1. Auth sync owner
-//   2. Create API key
-//   3. Seed usage data directly in DB
-//   4. Get usage summary → verify totals
-//   5. List usage → verify logs present
-//   6. Get cost ledger
 // ---------------------------------------------------------------------------
 
 func TestFlow_UsageTracking(t *testing.T) {
 	cleanup(t)
 
 	// Step 1: Owner signs up
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_usage_owner","email":"usage@e2e.test","first_name":"Usage","last_name":"Test"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headers := map[string]string{"X-User-ID": "e2e_usage_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_usage_owner","email":"usage@e2e.test","first_name":"Usage","last_name":"Test"}`)
+	headers := userHeaders("e2e_usage_owner", tenantID)
+	projectID := getDefaultProjectID(t, tenantID)
 
 	// Step 2: Create an API key
-	keyBody := `{
-		"label":"usage-track-key",
-		"provider":"anthropic",
-		"auth_method":"BROWSER_OAUTH",
-		"billing_mode":"MONTHLY_SUBSCRIPTION"
-	}`
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", keyBody, headers)
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("usage-track-key", projectID), headers)
 	if w.Code != 201 {
 		t.Fatalf("create key = %d; body: %s", w.Code, w.Body.String())
 	}
 	createResp := testutil.ParseJSON(t, w)
 	keyID := createResp["key_id"].(string)
 
-	// Get the tenant ID from DB
-	var user models.User
-	testDB.Where("id = ?", "e2e_usage_owner").First(&user)
-	tenantID := user.TenantID
-
 	// Step 3: Seed usage data
 	now := time.Now()
 	logs := []models.UsageLog{
 		{
-			TenantID: tenantID, KeyID: keyID,
+			TenantID: tenantID, KeyID: keyID, ProjectID: projectID,
 			Provider: "anthropic", Model: "claude-3-opus",
 			PromptTokens: 1000, CompletionTokens: 500,
 			RequestID: "e2e_req_1", APIUsageBilled: true,
 			CreatedAt: now,
 		},
 		{
-			TenantID: tenantID, KeyID: keyID,
+			TenantID: tenantID, KeyID: keyID, ProjectID: projectID,
 			Provider: "anthropic", Model: "claude-3-sonnet",
 			PromptTokens: 2000, CompletionTokens: 1000,
 			RequestID: "e2e_req_2", APIUsageBilled: true,
 			CreatedAt: now.Add(-1 * time.Hour),
 		},
 		{
-			TenantID: tenantID, KeyID: keyID,
+			TenantID: tenantID, KeyID: keyID, ProjectID: projectID,
 			Provider: "openai", Model: "gpt-4",
 			PromptTokens: 500, CompletionTokens: 200,
 			RequestID: "e2e_req_3", APIUsageBilled: true,
@@ -414,35 +455,22 @@ func TestFlow_UsageTracking(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 4: Budget management — create, read, update, delete
-//
-// Steps:
-//   1. Auth sync owner
-//   2. Get budget → empty
-//   3. Create monthly budget
-//   4. Get budget → verify limit
-//   5. Update budget amount
-//   6. Delete budget
-//   7. Get budget → empty again
 // ---------------------------------------------------------------------------
 
 func TestFlow_BudgetManagement(t *testing.T) {
 	cleanup(t)
 
-	// Step 1: Owner signs up
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_budget_owner","email":"budget@e2e.test","first_name":"Budget","last_name":"Test"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headers := map[string]string{"X-User-ID": "e2e_budget_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_budget_owner","email":"budget@e2e.test","first_name":"Budget","last_name":"Test"}`)
+	headers := userHeaders("e2e_budget_owner", tenantID)
 
-	// Step 2: Get budget → empty
-	w = testutil.DoRequest(testRouter, "GET", "/v1/budget", "", headers)
+	// Get budget → empty
+	w := testutil.DoRequest(testRouter, "GET", "/v1/budget", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("get budget = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 3: Create monthly budget
+	// Create monthly budget
 	budgetBody := `{
 		"scope_type":"account",
 		"period_type":"monthly",
@@ -456,12 +484,11 @@ func TestFlow_BudgetManagement(t *testing.T) {
 	}
 	budgetResp := testutil.ParseJSON(t, w)
 	budgetID := budgetResp["ID"]
-
 	if budgetID == nil || budgetID == float64(0) {
 		t.Fatal("expected budget ID in response")
 	}
 
-	// Step 4: Get budget → verify limit
+	// Get budget → verify limit
 	w = testutil.DoRequest(testRouter, "GET", "/v1/budget", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("get budget = %d; body: %s", w.Code, w.Body.String())
@@ -472,7 +499,7 @@ func TestFlow_BudgetManagement(t *testing.T) {
 		t.Fatal("expected budget_limits in response")
 	}
 
-	// Step 5: Update budget amount
+	// Update budget amount
 	updateBody := `{
 		"scope_type":"account",
 		"period_type":"monthly",
@@ -485,14 +512,14 @@ func TestFlow_BudgetManagement(t *testing.T) {
 		t.Fatalf("update budget = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 6: Delete budget
+	// Delete budget
 	idStr := fmt.Sprintf("%.0f", budgetID.(float64))
 	w = testutil.DoRequest(testRouter, "DELETE", "/v1/admin/budget/"+idStr, "", headers)
 	if w.Code != 200 {
 		t.Fatalf("delete budget = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 7: Get budget → should be empty now
+	// Get budget → should be empty now
 	w = testutil.DoRequest(testRouter, "GET", "/v1/budget", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("get budget after delete = %d; body: %s", w.Code, w.Body.String())
@@ -501,34 +528,22 @@ func TestFlow_BudgetManagement(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 5: Rate limit CRUD
-//
-// Steps:
-//   1. Auth sync owner
-//   2. List rate limits → empty
-//   3. Create RPM rate limit
-//   4. List rate limits → 1 entry
-//   5. Delete rate limit
-//   6. List rate limits → empty
 // ---------------------------------------------------------------------------
 
 func TestFlow_RateLimitCRUD(t *testing.T) {
 	cleanup(t)
 
-	// Step 1: Owner signs up
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_rl_owner","email":"rl@e2e.test","first_name":"RL","last_name":"Test"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headers := map[string]string{"X-User-ID": "e2e_rl_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_rl_owner","email":"rl@e2e.test","first_name":"RL","last_name":"Test"}`)
+	headers := userHeaders("e2e_rl_owner", tenantID)
 
-	// Step 2: List rate limits → empty
-	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/rate-limits", "", headers)
+	// List rate limits → empty
+	w := testutil.DoRequest(testRouter, "GET", "/v1/admin/rate-limits", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("list rate limits = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 3: Create RPM rate limit
+	// Create RPM rate limit
 	rlBody := `{
 		"provider":"anthropic",
 		"model":"claude-3-opus",
@@ -547,7 +562,7 @@ func TestFlow_RateLimitCRUD(t *testing.T) {
 		t.Fatal("expected rate limit ID in response")
 	}
 
-	// Step 4: List rate limits → 1 entry
+	// List rate limits → 1 entry
 	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/rate-limits", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("list rate limits = %d", w.Code)
@@ -558,14 +573,14 @@ func TestFlow_RateLimitCRUD(t *testing.T) {
 		t.Errorf("expected 1 rate limit, got %d", len(rls))
 	}
 
-	// Step 5: Delete rate limit
+	// Delete rate limit
 	idStr := fmt.Sprintf("%.0f", rlID.(float64))
 	w = testutil.DoRequest(testRouter, "DELETE", "/v1/admin/rate-limits/"+idStr, "", headers)
 	if w.Code != 200 {
 		t.Fatalf("delete rate limit = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 6: List rate limits → empty
+	// List rate limits → empty
 	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/rate-limits", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("list rate limits after delete = %d", w.Code)
@@ -579,32 +594,21 @@ func TestFlow_RateLimitCRUD(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 6: RBAC escalation — viewers/editors cannot access owner routes
-//
-// Steps:
-//   1. Auth sync owner
-//   2. Invite editor and viewer
-//   3. Editor and viewer sign up
-//   4. Verify RBAC for each role across all route groups
 // ---------------------------------------------------------------------------
 
 func TestFlow_RBACEscalation(t *testing.T) {
 	cleanup(t)
 
 	// Owner signs up
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_rbac_owner","email":"rbac-owner@e2e.test","first_name":"RBAC","last_name":"Owner"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	ownerH := map[string]string{"X-User-ID": "e2e_rbac_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_rbac_owner","email":"rbac-owner@e2e.test","first_name":"RBAC","last_name":"Owner"}`)
+	ownerH := userHeaders("e2e_rbac_owner", tenantID)
 
-	// Upgrade tenant to team plan (free and pro only allow 1 member)
-	var rbacUser models.User
-	testDB.Where("id = ?", "e2e_rbac_owner").First(&rbacUser)
-	testDB.Model(&models.Tenant{}).Where("id = ?", rbacUser.TenantID).Update("plan", models.PlanTeam)
+	// Upgrade tenant to team plan (free only allows 1 member)
+	testDB.Model(&models.Tenant{}).Where("id = ?", tenantID).Update("plan", models.PlanTeam)
 
 	// Invite editor
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite",
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite",
 		`{"email":"rbac-editor@e2e.test","role":"editor"}`, ownerH)
 	if w.Code != 201 {
 		t.Fatalf("invite editor = %d; body: %s", w.Code, w.Body.String())
@@ -623,7 +627,7 @@ func TestFlow_RBACEscalation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("editor sync = %d; body: %s", w.Code, w.Body.String())
 	}
-	editorH := map[string]string{"X-User-ID": "e2e_rbac_editor"}
+	editorH := userHeaders("e2e_rbac_editor", tenantID)
 
 	// Viewer signs up
 	w = testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
@@ -631,7 +635,7 @@ func TestFlow_RBACEscalation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("viewer sync = %d; body: %s", w.Code, w.Body.String())
 	}
-	viewerH := map[string]string{"X-User-ID": "e2e_rbac_viewer"}
+	viewerH := userHeaders("e2e_rbac_viewer", tenantID)
 
 	// --- Viewer can access viewer routes ---
 	viewerRoutes := []struct {
@@ -696,52 +700,27 @@ func TestFlow_RBACEscalation(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 7: Multi-key management with plan limit enforcement
-//
-// Steps:
-//   1. Auth sync owner (free plan → max 1 key)
-//   2. Create first key → success
-//   3. Create second key → 422 plan_limit_reached
-//   4. Revoke first key
-//   5. Create second key → success (slot freed)
 // ---------------------------------------------------------------------------
 
 func TestFlow_PlanLimitEnforcement(t *testing.T) {
 	cleanup(t)
 
-	// Owner signs up (default is Pro plan from SeedTenant, but auth/sync creates tenant directly)
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_plan_owner","email":"plan@e2e.test","first_name":"Plan","last_name":"Test"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_plan_owner","email":"plan@e2e.test","first_name":"Plan","last_name":"Test"}`)
+	// Auth/sync creates free plan tenant. Free plan allows max 1 API key.
+	projectID := getDefaultProjectID(t, tenantID)
+	headers := userHeaders("e2e_plan_owner", tenantID)
 
-	// Force the tenant to free plan with max_api_keys=1
-	var user models.User
-	testDB.Where("id = ?", "e2e_plan_owner").First(&user)
-	testDB.Model(&models.Tenant{}).Where("id = ?", user.TenantID).
-		Updates(map[string]interface{}{"plan": models.PlanFree, "max_api_keys": 1})
-
-	headers := map[string]string{"X-User-ID": "e2e_plan_owner"}
-
-	mkKey := func(label string) string {
-		return fmt.Sprintf(`{
-			"label":%q,
-			"provider":"anthropic",
-			"auth_method":"BROWSER_OAUTH",
-			"billing_mode":"MONTHLY_SUBSCRIPTION"
-		}`, label)
-	}
-
-	// Step 2: First key → success
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKey("key-1"), headers)
+	// First key → success
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("key-1", projectID), headers)
 	if w.Code != 201 {
 		t.Fatalf("first key = %d; body: %s", w.Code, w.Body.String())
 	}
 	firstResp := testutil.ParseJSON(t, w)
 	firstKeyID := firstResp["key_id"].(string)
 
-	// Step 3: Second key → plan limit
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKey("key-2"), headers)
+	// Second key → plan limit
+	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("key-2", projectID), headers)
 	if w.Code != 422 {
 		t.Fatalf("second key = %d, want 422; body: %s", w.Code, w.Body.String())
 	}
@@ -750,14 +729,14 @@ func TestFlow_PlanLimitEnforcement(t *testing.T) {
 		t.Errorf("error = %v, want plan_limit_reached", errResp["error"])
 	}
 
-	// Step 4: Revoke first key
+	// Revoke first key
 	w = testutil.DoRequest(testRouter, "DELETE", "/v1/admin/api_keys/"+firstKeyID, "", headers)
 	if w.Code != 200 {
 		t.Fatalf("revoke = %d; body: %s", w.Code, w.Body.String())
 	}
 
-	// Step 5: Now second key should succeed
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKey("key-2"), headers)
+	// Now second key should succeed
+	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("key-2", projectID), headers)
 	if w.Code != 201 {
 		t.Fatalf("second key after revoke = %d, want 201; body: %s", w.Code, w.Body.String())
 	}
@@ -765,26 +744,17 @@ func TestFlow_PlanLimitEnforcement(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Flow 8: Dashboard + billing status flow
-//
-// Steps:
-//   1. Auth sync owner
-//   2. Get dashboard config → verify plan info
-//   3. Get billing status → verify free plan has no subscription
-//   4. Attempt billing checkout → 503 (Stripe not configured)
 // ---------------------------------------------------------------------------
 
 func TestFlow_DashboardAndBilling(t *testing.T) {
 	cleanup(t)
 
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_dash_owner","email":"dash@e2e.test","first_name":"Dash","last_name":"Test"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("owner sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headers := map[string]string{"X-User-ID": "e2e_dash_owner"}
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_dash_owner","email":"dash@e2e.test","first_name":"Dash","last_name":"Test"}`)
+	headers := userHeaders("e2e_dash_owner", tenantID)
 
-	// Step 2: Dashboard config
-	w = testutil.DoRequest(testRouter, "GET", "/v1/dashboard/config", "", headers)
+	// Dashboard config
+	w := testutil.DoRequest(testRouter, "GET", "/v1/dashboard/config", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("dashboard config = %d; body: %s", w.Code, w.Body.String())
 	}
@@ -799,7 +769,7 @@ func TestFlow_DashboardAndBilling(t *testing.T) {
 		t.Error("expected preset_options in dashboard config")
 	}
 
-	// Step 3: Billing status
+	// Billing status
 	w = testutil.DoRequest(testRouter, "GET", "/v1/billing/status", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("billing status = %d; body: %s", w.Code, w.Body.String())
@@ -812,7 +782,7 @@ func TestFlow_DashboardAndBilling(t *testing.T) {
 		t.Errorf("stripe_configured = %v, want false (Stripe not configured in tests)", billingResp["stripe_configured"])
 	}
 
-	// Step 4: Billing checkout → 503 without Stripe
+	// Billing checkout → 503 without Stripe
 	checkoutBody := `{"plan":"pro","success_url":"https://example.com/ok","cancel_url":"https://example.com/cancel"}`
 	w = testutil.DoRequest(testRouter, "POST", "/v1/billing/checkout", checkoutBody, headers)
 	if w.Code != 503 {
@@ -821,11 +791,7 @@ func TestFlow_DashboardAndBilling(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Flow 9: Concurrent auth sync (idempotency)
-//
-// Steps:
-//   1. Auth sync same user twice → first 201, second 200
-//   2. Verify only one tenant/user created
+// Flow 9: Auth sync idempotency
 // ---------------------------------------------------------------------------
 
 func TestFlow_AuthSyncIdempotency(t *testing.T) {
@@ -866,67 +832,52 @@ func TestFlow_AuthSyncIdempotency(t *testing.T) {
 	if userCount != 1 {
 		t.Errorf("user count = %d, want 1", userCount)
 	}
+
+	// Verify exactly one membership
+	var membershipCount int64
+	testDB.Model(&models.TenantMembership{}).Count(&membershipCount)
+	if membershipCount != 1 {
+		t.Errorf("membership count = %d, want 1", membershipCount)
+	}
 }
 
 // ---------------------------------------------------------------------------
-// Flow 10: Cross-tenant isolation — users from different tenants cannot see
-// each other's data
-//
-// Steps:
-//   1. Create two tenants with owners
-//   2. Each creates an API key
-//   3. Seed usage for each
-//   4. Verify each can only see their own keys, usage, budget
+// Flow 10: Cross-tenant isolation
 // ---------------------------------------------------------------------------
 
 func TestFlow_CrossTenantIsolation(t *testing.T) {
 	cleanup(t)
 
 	// Tenant A
-	w := testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_iso_a","email":"a@e2e.test","first_name":"Tenant","last_name":"A"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("tenant A sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headersA := map[string]string{"X-User-ID": "e2e_iso_a"}
+	_, tenantIDA := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_iso_a","email":"a@e2e.test","first_name":"Tenant","last_name":"A"}`)
+	headersA := userHeaders("e2e_iso_a", tenantIDA)
+	projectIDA := getDefaultProjectID(t, tenantIDA)
 
 	// Tenant B
-	w = testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
-		`{"clerk_user_id":"e2e_iso_b","email":"b@e2e.test","first_name":"Tenant","last_name":"B"}`, nil)
-	if w.Code != 201 {
-		t.Fatalf("tenant B sync = %d; body: %s", w.Code, w.Body.String())
-	}
-	headersB := map[string]string{"X-User-ID": "e2e_iso_b"}
-
-	keyBody := `{
-		"label":"iso-key",
-		"provider":"anthropic",
-		"auth_method":"BROWSER_OAUTH",
-		"billing_mode":"MONTHLY_SUBSCRIPTION"
-	}`
+	_, tenantIDB := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_iso_b","email":"b@e2e.test","first_name":"Tenant","last_name":"B"}`)
+	headersB := userHeaders("e2e_iso_b", tenantIDB)
+	projectIDB := getDefaultProjectID(t, tenantIDB)
 
 	// Each creates a key
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", keyBody, headersA)
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("iso-key", projectIDA), headersA)
 	if w.Code != 201 {
 		t.Fatalf("tenant A key = %d; body: %s", w.Code, w.Body.String())
 	}
-	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", keyBody, headersB)
+	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("iso-key", projectIDB), headersB)
 	if w.Code != 201 {
 		t.Fatalf("tenant B key = %d; body: %s", w.Code, w.Body.String())
 	}
 
 	// Seed usage for each tenant
-	var userA, userB models.User
-	testDB.Where("id = ?", "e2e_iso_a").First(&userA)
-	testDB.Where("id = ?", "e2e_iso_b").First(&userB)
-
 	testDB.Create(&models.UsageLog{
-		TenantID: userA.TenantID, Provider: "anthropic", Model: "claude-3-opus",
+		TenantID: tenantIDA, ProjectID: projectIDA, Provider: "anthropic", Model: "claude-3-opus",
 		PromptTokens: 100, CompletionTokens: 50, RequestID: "iso_a_1",
 		APIUsageBilled: true, CreatedAt: time.Now(),
 	})
 	testDB.Create(&models.UsageLog{
-		TenantID: userB.TenantID, Provider: "anthropic", Model: "claude-3-opus",
+		TenantID: tenantIDB, ProjectID: projectIDB, Provider: "anthropic", Model: "claude-3-opus",
 		PromptTokens: 200, CompletionTokens: 100, RequestID: "iso_b_1",
 		APIUsageBilled: true, CreatedAt: time.Now(),
 	})
@@ -969,5 +920,287 @@ func TestFlow_CrossTenantIsolation(t *testing.T) {
 	bUsers := testutil.ParseJSON(t, w)
 	if bUsers["total"] != float64(1) {
 		t.Errorf("tenant B user count = %v, want 1", bUsers["total"])
+	}
+
+	// Tenant A cannot access Tenant B's data via X-Tenant-Id spoofing
+	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/api_keys", "", userHeaders("e2e_iso_a", tenantIDB))
+	if w.Code != 403 {
+		t.Fatalf("cross-tenant access = %d, want 403", w.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Flow 11: Project lifecycle with API key binding
+//
+// Steps:
+//   1. Owner signs up, upgrade to team plan
+//   2. Create a new project
+//   3. Create an API key bound to the new project
+//   4. List keys → key shows correct project_id
+//   5. Try to delete project → blocked by active keys
+//   6. Revoke the key
+//   7. Delete the project → success
+//   8. Verify default project cannot be deleted
+// ---------------------------------------------------------------------------
+
+func TestFlow_ProjectLifecycle(t *testing.T) {
+	cleanup(t)
+
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_proj_owner","email":"proj@e2e.test","first_name":"Proj","last_name":"Owner"}`)
+	testDB.Model(&models.Tenant{}).Where("id = ?", tenantID).Update("plan", models.PlanTeam)
+	headers := userHeaders("e2e_proj_owner", tenantID)
+
+	// List projects → should have 1 (Default)
+	w := testutil.DoRequest(testRouter, "GET", "/v1/projects", "", headers)
+	if w.Code != 200 {
+		t.Fatalf("list projects = %d; body: %s", w.Code, w.Body.String())
+	}
+	listResp := testutil.ParseJSON(t, w)
+	if listResp["count"] != float64(1) {
+		t.Errorf("initial project count = %v, want 1", listResp["count"])
+	}
+
+	// Create a new project
+	w = testutil.DoRequest(testRouter, "POST", "/v1/projects",
+		`{"name":"Backend","description":"Backend services"}`, headers)
+	if w.Code != 201 {
+		t.Fatalf("create project = %d; body: %s", w.Code, w.Body.String())
+	}
+	projResp := testutil.ParseJSON(t, w)
+	projectID := uint(projResp["id"].(float64))
+	if projResp["name"] != "Backend" {
+		t.Errorf("project name = %v, want Backend", projResp["name"])
+	}
+	if projResp["is_default"] != false {
+		t.Errorf("is_default = %v, want false", projResp["is_default"])
+	}
+
+	// Create an API key bound to the new project
+	w = testutil.DoRequest(testRouter, "POST", "/v1/admin/api_keys", mkKeyBody("proj-key", projectID), headers)
+	if w.Code != 201 {
+		t.Fatalf("create key = %d; body: %s", w.Code, w.Body.String())
+	}
+	keyResp := testutil.ParseJSON(t, w)
+	keyID := keyResp["key_id"].(string)
+	if keyResp["project_id"] != float64(projectID) {
+		t.Errorf("key project_id = %v, want %d", keyResp["project_id"], projectID)
+	}
+
+	// Try to delete the project → blocked (active key)
+	w = testutil.DoRequest(testRouter, "DELETE", fmt.Sprintf("/v1/projects/%d", projectID), "", headers)
+	if w.Code != 409 {
+		t.Fatalf("delete project with key = %d, want 409; body: %s", w.Code, w.Body.String())
+	}
+
+	// Revoke the key
+	w = testutil.DoRequest(testRouter, "DELETE", "/v1/admin/api_keys/"+keyID, "", headers)
+	if w.Code != 200 {
+		t.Fatalf("revoke key = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	// Now delete the project → success
+	w = testutil.DoRequest(testRouter, "DELETE", fmt.Sprintf("/v1/projects/%d", projectID), "", headers)
+	if w.Code != 200 {
+		t.Fatalf("delete project = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify default project cannot be deleted
+	defaultProjectID := getDefaultProjectID(t, tenantID)
+	w = testutil.DoRequest(testRouter, "DELETE", fmt.Sprintf("/v1/projects/%d", defaultProjectID), "", headers)
+	if w.Code != 409 {
+		t.Fatalf("delete default project = %d, want 409; body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Flow 12: Multi-tenant membership — user belongs to multiple tenants
+//
+// Steps:
+//   1. Owner A signs up (gets personal tenant)
+//   2. Owner B signs up (gets personal tenant)
+//   3. Owner A upgrades to team, invites Owner B
+//   4. Owner B syncs → now has 2 memberships
+//   5. Owner B can access tenant A's data with X-Tenant-Id = A
+//   6. Owner B can access their own data with X-Tenant-Id = B
+//   7. Owner B cannot access tenant A as owner (they are editor in A)
+// ---------------------------------------------------------------------------
+
+func TestFlow_MultiTenantMembership(t *testing.T) {
+	cleanup(t)
+
+	// Owner A signs up
+	_, tenantIDA := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_mt_a","email":"mt-a@e2e.test","first_name":"MT","last_name":"A"}`)
+	testDB.Model(&models.Tenant{}).Where("id = ?", tenantIDA).Update("plan", models.PlanTeam)
+	headersA := userHeaders("e2e_mt_a", tenantIDA)
+
+	// Owner B signs up
+	syncRespB, tenantIDB := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_mt_b","email":"mt-b@e2e.test","first_name":"MT","last_name":"B"}`)
+	_ = syncRespB
+
+	// Owner A invites Owner B as editor
+	w := testutil.DoRequest(testRouter, "POST", "/v1/admin/users/invite",
+		`{"email":"mt-b@e2e.test","role":"editor"}`, headersA)
+	if w.Code != 201 {
+		t.Fatalf("invite = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	// Owner B re-syncs to pick up the activated membership
+	w = testutil.DoRequest(testRouter, "POST", "/v1/auth/sync",
+		`{"clerk_user_id":"e2e_mt_b","email":"mt-b@e2e.test"}`, nil)
+	if w.Code != 200 {
+		t.Fatalf("re-sync = %d; body: %s", w.Code, w.Body.String())
+	}
+	reSyncResp := testutil.ParseJSON(t, w)
+	memberships := reSyncResp["memberships"].([]interface{})
+	if len(memberships) < 2 {
+		t.Fatalf("expected at least 2 memberships, got %d", len(memberships))
+	}
+
+	// Owner B can access tenant A's admin keys (as editor)
+	headersBinA := userHeaders("e2e_mt_b", tenantIDA)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/api_keys", "", headersBinA)
+	if w.Code != 200 {
+		t.Fatalf("B in A list keys = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Owner B can access their own tenant
+	headersBinB := userHeaders("e2e_mt_b", tenantIDB)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/admin/api_keys", "", headersBinB)
+	if w.Code != 200 {
+		t.Fatalf("B in B list keys = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Owner B cannot access owner routes in tenant A (they are editor, not owner)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/owner/settings", "", headersBinA)
+	if w.Code != 403 {
+		t.Fatalf("B owner route in A = %d, want 403", w.Code)
+	}
+
+	// But Owner B CAN access owner routes in their own tenant B (they are owner)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/owner/settings", "", headersBinB)
+	if w.Code != 200 {
+		t.Fatalf("B owner route in B = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Flow 13: Audit log tracking
+//
+// Steps:
+//   1. Owner signs up
+//   2. Seed audit log entries
+//   3. Query audit logs (admin only)
+//   4. Verify filtering works
+// ---------------------------------------------------------------------------
+
+func TestFlow_AuditLogTracking(t *testing.T) {
+	cleanup(t)
+
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_audit_owner","email":"audit@e2e.test","first_name":"Audit","last_name":"Owner"}`)
+	headers := userHeaders("e2e_audit_owner", tenantID)
+
+	// Seed audit log entries directly
+	testDB.Create(&models.AuditLog{
+		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
+		Action: "api_key:create", ResourceType: "api_key", ResourceID: "key_1",
+		Success: true, CreatedAt: time.Now(),
+	})
+	testDB.Create(&models.AuditLog{
+		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
+		Action: "project:create", ResourceType: "project", ResourceID: "proj_1",
+		Success: true, CreatedAt: time.Now().Add(-1 * time.Hour),
+	})
+	testDB.Create(&models.AuditLog{
+		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
+		Action: "api_key:revoke", ResourceType: "api_key", ResourceID: "key_1",
+		Success: true, CreatedAt: time.Now().Add(-2 * time.Hour),
+	})
+
+	// Query all audit logs
+	w := testutil.DoRequest(testRouter, "GET", "/v1/audit-logs", "", headers)
+	if w.Code != 200 {
+		t.Fatalf("audit logs = %d; body: %s", w.Code, w.Body.String())
+	}
+	resp := testutil.ParseJSON(t, w)
+	logs, ok := resp["audit_logs"].([]interface{})
+	if !ok {
+		t.Fatal("expected audit_logs array")
+	}
+	if len(logs) != 3 {
+		t.Errorf("audit log count = %d, want 3", len(logs))
+	}
+
+	// Filter by action
+	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?action=api_key:create", "", headers)
+	if w.Code != 200 {
+		t.Fatalf("filtered audit = %d; body: %s", w.Code, w.Body.String())
+	}
+	resp = testutil.ParseJSON(t, w)
+	logs = resp["audit_logs"].([]interface{})
+	if len(logs) != 1 {
+		t.Errorf("filtered api_key:create count = %d, want 1", len(logs))
+	}
+
+	// Filter by resource_type
+	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?resource_type=project", "", headers)
+	if w.Code != 200 {
+		t.Fatalf("filtered by resource = %d; body: %s", w.Code, w.Body.String())
+	}
+	resp = testutil.ParseJSON(t, w)
+	logs = resp["audit_logs"].([]interface{})
+	if len(logs) != 1 {
+		t.Errorf("filtered project count = %d, want 1", len(logs))
+	}
+
+	// Limit
+	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?limit=2", "", headers)
+	if w.Code != 200 {
+		t.Fatalf("limited audit = %d; body: %s", w.Code, w.Body.String())
+	}
+	resp = testutil.ParseJSON(t, w)
+	logs = resp["audit_logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Errorf("limited count = %d, want 2", len(logs))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Flow 14: Project plan limit enforcement
+//
+// Steps:
+//   1. Owner signs up (free plan → max 1 project, already has Default)
+//   2. Try to create another project → 422 plan_limit_reached
+//   3. Upgrade to team plan
+//   4. Create project → success
+// ---------------------------------------------------------------------------
+
+func TestFlow_ProjectPlanLimit(t *testing.T) {
+	cleanup(t)
+
+	_, tenantID := syncAndGetTenantID(t,
+		`{"clerk_user_id":"e2e_pp_owner","email":"pp@e2e.test","first_name":"PP","last_name":"Owner"}`)
+	headers := userHeaders("e2e_pp_owner", tenantID)
+
+	// Free plan: already have Default project (max 1).
+	w := testutil.DoRequest(testRouter, "POST", "/v1/projects", `{"name":"Extra"}`, headers)
+	if w.Code != 422 {
+		t.Fatalf("create project on free = %d, want 422; body: %s", w.Code, w.Body.String())
+	}
+	errResp := testutil.ParseJSON(t, w)
+	if errResp["error"] != "plan_limit_reached" {
+		t.Errorf("error = %v, want plan_limit_reached", errResp["error"])
+	}
+
+	// Upgrade to team plan
+	testDB.Model(&models.Tenant{}).Where("id = ?", tenantID).Update("plan", models.PlanTeam)
+
+	// Now can create a project
+	w = testutil.DoRequest(testRouter, "POST", "/v1/projects", `{"name":"Extra"}`, headers)
+	if w.Code != 201 {
+		t.Fatalf("create project after upgrade = %d; body: %s", w.Code, w.Body.String())
 	}
 }

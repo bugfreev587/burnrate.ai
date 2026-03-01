@@ -23,7 +23,7 @@ func TestRoleLevel(t *testing.T) {
 	}
 }
 
-func TestHasPermission(t *testing.T) {
+func TestRoleLevelComparison(t *testing.T) {
 	tests := []struct {
 		name     string
 		role     string
@@ -42,9 +42,29 @@ func TestHasPermission(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := &User{Role: tt.role}
-			if got := u.HasPermission(tt.required); got != tt.want {
-				t.Errorf("User{Role:%q}.HasPermission(%q) = %v, want %v", tt.role, tt.required, got, tt.want)
+			got := RoleLevel(tt.role) >= RoleLevel(tt.required)
+			if got != tt.want {
+				t.Errorf("RoleLevel(%q) >= RoleLevel(%q) = %v, want %v", tt.role, tt.required, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProjectRoleLevel(t *testing.T) {
+	tests := []struct {
+		role string
+		want int
+	}{
+		{ProjectRoleAdmin, 3},
+		{ProjectRoleEditor, 2},
+		{ProjectRoleViewer, 1},
+		{"unknown", 0},
+		{"", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if got := ProjectRoleLevel(tt.role); got != tt.want {
+				t.Errorf("ProjectRoleLevel(%q) = %d, want %d", tt.role, got, tt.want)
 			}
 		})
 	}
