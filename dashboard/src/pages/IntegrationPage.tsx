@@ -217,10 +217,10 @@ export default function IntegrationPage() {
                       <td>3</td><td>Anthropic</td><td>BYOK</td><td>API Usage</td><td>curl / SDK</td>
                     </tr>
                     <tr onClick={() => scrollTo('scenario-4')} className="ig-table-link">
-                      <td>4</td><td>OpenAI</td><td>Browser OAuth</td><td>Monthly Subscription</td><td>Codex CLI</td>
+                      <td>4</td><td>OpenAI</td><td>Browser OAuth</td><td>Monthly Subscription</td><td>Codex CLI / App / VS Code extension</td>
                     </tr>
                     <tr onClick={() => scrollTo('scenario-5')} className="ig-table-link">
-                      <td>5</td><td>OpenAI</td><td>BYOK</td><td>API Usage</td><td>Codex CLI / curl / SDK</td>
+                      <td>5</td><td>OpenAI</td><td>BYOK</td><td>API Usage</td><td>Codex CLI / App / VS Code extension / curl / SDK</td>
                     </tr>
                   </tbody>
                 </table>
