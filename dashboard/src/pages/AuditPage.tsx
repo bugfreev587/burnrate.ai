@@ -1,10 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
 import { useAuditReports } from '../hooks/useAuditReports'
+import { apiFetch } from '../lib/api'
 import type { CreateReportRequest } from '../hooks/useAuditReports'
 import Navbar from '../components/Navbar'
 import './AuditPage.css'
+
+interface AuditLogEntry {
+  id: number
+  tenant_id: number
+  actor_user_id: string
+  action: string
+  resource_type: string
+  resource_id: string
+  success: boolean
+  ip_address: string
+  created_at: string
+}
 
 export default function AuditPage() {
   const { role, isSynced } = useUserSync()
@@ -12,6 +25,37 @@ export default function AuditPage() {
   const { reports, loading, error, refresh, generate, deleteReport, downloadReport } = useAuditReports()
 
   const isAdmin = isSynced && hasPermission(role, 'admin')
+
+  // ── Audit Logs state ──────────────────────────────────────────────
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsError, setLogsError] = useState<string | null>(null)
+  const [logAction, setLogAction] = useState('')
+  const [logResourceType, setLogResourceType] = useState('')
+  const [logLimit, setLogLimit] = useState(50)
+
+  const fetchAuditLogs = useCallback(async () => {
+    setLogsLoading(true)
+    setLogsError(null)
+    try {
+      const params = new URLSearchParams()
+      if (logAction) params.set('action', logAction)
+      if (logResourceType) params.set('resource_type', logResourceType)
+      params.set('limit', String(logLimit))
+      const res = await apiFetch(`/v1/audit-logs?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch audit logs')
+      const data = await res.json()
+      setAuditLogs(data.logs ?? [])
+    } catch (e) {
+      setLogsError(e instanceof Error ? e.message : 'Failed to load audit logs')
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [logAction, logResourceType, logLimit])
+
+  useEffect(() => {
+    if (isAdmin) fetchAuditLogs()
+  }, [isAdmin, fetchAuditLogs])
   const plan = config?.plan || 'free'
   const canExport = plan !== 'free'
 
@@ -135,6 +179,92 @@ export default function AuditPage() {
             <div className={`flash flash-${flashMsg.type}`}>{flashMsg.text}</div>
           )}
           {error && <div className="flash flash-error">{error}</div>}
+
+          {/* ── Audit Logs (Admin only) ────────────────────────── */}
+          {isAdmin && (
+            <section className="audit-section">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h2>Activity Log</h2>
+                <button className="btn btn-secondary" onClick={fetchAuditLogs} disabled={logsLoading}>
+                  {logsLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+              <div className="audit-filter-row" style={{ marginBottom: '0.75rem' }}>
+                <label className="audit-filter-label">
+                  Action
+                  <select className="audit-select" value={logAction} onChange={e => setLogAction(e.target.value)}>
+                    <option value="">All Actions</option>
+                    <option value="api_key:create">API Key Create</option>
+                    <option value="api_key:revoke">API Key Revoke</option>
+                    <option value="provider_key:create">Provider Key Create</option>
+                    <option value="provider_key:revoke">Provider Key Revoke</option>
+                    <option value="project:create">Project Create</option>
+                    <option value="project:update">Project Update</option>
+                    <option value="project:delete">Project Delete</option>
+                    <option value="member:invite">Member Invite</option>
+                    <option value="member:remove">Member Remove</option>
+                    <option value="billing:update_plan">Plan Change</option>
+                  </select>
+                </label>
+                <label className="audit-filter-label">
+                  Resource
+                  <select className="audit-select" value={logResourceType} onChange={e => setLogResourceType(e.target.value)}>
+                    <option value="">All Resources</option>
+                    <option value="api_key">API Key</option>
+                    <option value="provider_key">Provider Key</option>
+                    <option value="project">Project</option>
+                    <option value="membership">Membership</option>
+                    <option value="budget_limit">Budget Limit</option>
+                    <option value="rate_limit">Rate Limit</option>
+                    <option value="billing">Billing</option>
+                  </select>
+                </label>
+                <label className="audit-filter-label">
+                  Limit
+                  <select className="audit-select" value={logLimit} onChange={e => setLogLimit(parseInt(e.target.value, 10))}>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+              </div>
+              {logsError && <div className="flash flash-error">{logsError}</div>}
+              {auditLogs.length === 0 && !logsLoading ? (
+                <p className="audit-empty">No audit log entries found.</p>
+              ) : (
+                <div className="table-scroll">
+                  <table className="audit-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Resource</th>
+                        <th>Resource ID</th>
+                        <th>Result</th>
+                        <th>IP Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map(log => (
+                        <tr key={log.id}>
+                          <td className="text-muted">{formatDateTime(log.created_at)}</td>
+                          <td><span className="audit-format-badge">{log.action}</span></td>
+                          <td>{log.resource_type}</td>
+                          <td className="text-muted">{log.resource_id?.slice(0, 12) || '\u2014'}</td>
+                          <td>
+                            <span className={`audit-status-badge audit-status-${log.success ? 'completed' : 'failed'}`}>
+                              {log.success ? 'Success' : 'Failed'}
+                            </span>
+                          </td>
+                          <td className="text-muted">{log.ip_address || '\u2014'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Filters */}
           <section className="audit-section">

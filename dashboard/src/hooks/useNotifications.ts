@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-
-const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
-
-function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('user_id') || ''
-  return { 'Content-Type': 'application/json', 'X-User-ID': userId }
-}
+import { apiFetch } from '../lib/api'
 
 export interface NotificationChannel {
   id: number
@@ -44,7 +38,7 @@ export function useNotifications() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/v1/admin/notifications`, { headers: authHeaders() })
+      const res = await apiFetch('/v1/admin/notifications')
       if (!res.ok) throw new Error('Failed to fetch notification channels')
       const data = await res.json()
       setChannels(data.notification_channels || [])
@@ -58,9 +52,8 @@ export function useNotifications() {
   useEffect(() => { fetchChannels() }, [fetchChannels])
 
   async function createChannel(req: CreateNotificationChannelReq): Promise<NotificationChannel> {
-    const res = await fetch(`${API_URL}/v1/admin/notifications`, {
+    const res = await apiFetch('/v1/admin/notifications', {
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify(req),
     })
     if (!res.ok) {
@@ -73,9 +66,8 @@ export function useNotifications() {
   }
 
   async function updateChannel(id: number, req: UpdateNotificationChannelReq): Promise<NotificationChannel> {
-    const res = await fetch(`${API_URL}/v1/admin/notifications/${id}`, {
+    const res = await apiFetch(`/v1/admin/notifications/${id}`, {
       method: 'PUT',
-      headers: authHeaders(),
       body: JSON.stringify(req),
     })
     if (!res.ok) {
@@ -88,9 +80,8 @@ export function useNotifications() {
   }
 
   async function deleteChannel(id: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/notifications/${id}`, {
+    const res = await apiFetch(`/v1/admin/notifications/${id}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()
@@ -100,9 +91,8 @@ export function useNotifications() {
   }
 
   async function testChannel(id: number): Promise<{ success: boolean; error?: string }> {
-    const res = await fetch(`${API_URL}/v1/admin/notifications/${id}/test`, {
+    const res = await apiFetch(`/v1/admin/notifications/${id}/test`, {
       method: 'POST',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()

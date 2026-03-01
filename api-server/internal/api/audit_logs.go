@@ -1,0 +1,58 @@
+package api
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
+)
+
+// handleListAuditLogs returns audit log entries for the tenant.
+// GET /v1/audit-logs
+func (s *Server) handleListAuditLogs(c *gin.Context) {
+	_, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
+	filter := services.AuditFilter{
+		Action:       c.Query("action"),
+		ResourceType: c.Query("resource_type"),
+		ActorUserID:  c.Query("actor_user_id"),
+	}
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			filter.Limit = n
+		}
+	}
+	if v := c.Query("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			filter.Offset = n
+		}
+	}
+	if v := c.Query("start_date"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			filter.StartDate = &t
+		}
+	}
+	if v := c.Query("end_date"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			end := t.Add(24*time.Hour - time.Nanosecond)
+			filter.EndDate = &end
+		}
+	}
+
+	logs, err := s.auditLogSvc.List(c.Request.Context(), tenantID, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list audit logs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"audit_logs": logs, "count": len(logs)})
+}

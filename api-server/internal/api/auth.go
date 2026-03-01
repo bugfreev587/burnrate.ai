@@ -20,15 +20,36 @@ type authSyncReq struct {
 	LastName    string `json:"last_name"`
 }
 
+// membershipResponse is the JSON shape for each entry in the memberships array.
+type membershipResponse struct {
+	TenantID   uint   `json:"tenant_id"`
+	TenantName string `json:"tenant_name"`
+	OrgRole    string `json:"org_role"`
+}
+
+// loadMemberships returns all active tenant memberships for the given user,
+// joined with the tenants table to include the tenant name.
+func loadMemberships(db *gorm.DB, userID string) []membershipResponse {
+	var results []membershipResponse
+	db.Table("tenant_memberships").
+		Select("tenant_memberships.tenant_id, tenants.name AS tenant_name, tenant_memberships.org_role").
+		Joins("JOIN tenants ON tenants.id = tenant_memberships.tenant_id").
+		Where("tenant_memberships.user_id = ? AND tenant_memberships.status = ?", userID, models.StatusActive).
+		Scan(&results)
+	if results == nil {
+		results = []membershipResponse{}
+	}
+	return results
+}
+
 // handleAuthSync syncs a Clerk-authenticated user with the local database.
 // POST /v1/auth/sync
 //
 // Flow:
-//  1. User exists by Clerk ID → return existing user + tenant
+//  1. User exists by Clerk ID → return existing user + memberships
 //  2. User exists by email (different Clerk ID) → update ID and return
-//  3. Pending invitation found by email → activate with invited role + tenant
-//  4. Neither → create new tenant and make caller the owner (in a transaction
-//     so concurrent duplicate calls don't leave orphan tenants)
+//  3. Pending invitation found by email → activate invited memberships + create personal tenant
+//  4. Neither → create new tenant, project, and memberships (in a transaction)
 func (s *Server) handleAuthSync(c *gin.Context) {
 	// If an auth sync secret is configured, require it in the request header.
 	if secret := s.cfg.Security.AuthSyncSecret; secret != "" {
@@ -62,14 +83,14 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 			return
 		}
+		memberships := loadMemberships(db, user.ID)
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":     user.ID,
-			"tenant_id":   user.TenantID,
 			"email":       user.Email,
 			"name":        user.Name,
-			"role":        user.Role,
 			"status":      user.Status,
 			"is_new_user": false,
+			"memberships": memberships,
 		})
 		return
 	}
@@ -81,82 +102,196 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 			return
 		}
+		oldID := byEmail.ID
 		// Update the Clerk ID to the new one so future lookups hit step 1.
 		db.Model(&byEmail).Update("id", req.ClerkUserID)
+		// Update the user_id in tenant_memberships to match the new Clerk ID.
+		db.Model(&models.TenantMembership{}).Where("user_id = ?", oldID).Update("user_id", req.ClerkUserID)
+		// Update the user_id in project_memberships to match the new Clerk ID.
+		db.Model(&models.ProjectMembership{}).Where("user_id = ?", oldID).Update("user_id", req.ClerkUserID)
+
+		memberships := loadMemberships(db, req.ClerkUserID)
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":     req.ClerkUserID,
-			"tenant_id":   byEmail.TenantID,
 			"email":       byEmail.Email,
 			"name":        byEmail.Name,
-			"role":        byEmail.Role,
 			"status":      byEmail.Status,
 			"is_new_user": false,
+			"memberships": memberships,
 		})
 		return
 	}
 
 	// ── 3. Pending invitation by email ──────────────────────────────────────
+	// Invitations create a User with status=pending and TenantMembership(s) with status=pending.
 	var pending models.User
 	if err := db.Where("email = ? AND status = ?", req.Email, models.StatusPending).First(&pending).Error; err == nil {
 		oldID := pending.ID
-		pending.ID = req.ClerkUserID
-		pending.Name = name
-		pending.Status = models.StatusActive
 
-		if err := db.Delete(&models.User{}, "id = ?", oldID).Error; err != nil {
-			slog.Error("auth_sync_delete_pending_user_failed", "error", err)
+		txErr := db.Transaction(func(tx *gorm.DB) error {
+			// Delete the placeholder pending user and create the real one with the Clerk ID.
+			if err := tx.Delete(&models.User{}, "id = ?", oldID).Error; err != nil {
+				return fmt.Errorf("delete pending user: %w", err)
+			}
+
+			newUser := models.User{
+				ID:        req.ClerkUserID,
+				Email:     req.Email,
+				Name:      name,
+				Status:    models.StatusActive,
+				CreatedAt: time.Now(),
+			}
+			if err := tx.Create(&newUser).Error; err != nil {
+				return fmt.Errorf("create activated user: %w", err)
+			}
+
+			// Activate all pending TenantMembership(s) and re-point them to the new user ID.
+			if err := tx.Model(&models.TenantMembership{}).
+				Where("user_id = ? AND status = ?", oldID, models.StatusPending).
+				Updates(map[string]interface{}{
+					"user_id":    req.ClerkUserID,
+					"status":     models.StatusActive,
+					"updated_at": time.Now(),
+				}).Error; err != nil {
+				return fmt.Errorf("activate pending memberships: %w", err)
+			}
+
+			// Also migrate any other memberships that may exist for the old placeholder ID.
+			tx.Model(&models.ProjectMembership{}).Where("user_id = ?", oldID).Update("user_id", req.ClerkUserID)
+
+			// Create the user's personal Free tenant + default project + owner membership.
+			personalTenant := models.Tenant{
+				Name:      fmt.Sprintf("%s's Workspace", name),
+				Plan:      models.PlanFree,
+				CreatedAt: time.Now(),
+			}
+			if err := tx.Create(&personalTenant).Error; err != nil {
+				return fmt.Errorf("create personal tenant: %w", err)
+			}
+
+			defaultProject := models.Project{
+				TenantID:  personalTenant.ID,
+				Name:      "Default",
+				Status:    models.ProjectStatusActive,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			if err := tx.Create(&defaultProject).Error; err != nil {
+				return fmt.Errorf("create default project: %w", err)
+			}
+
+			if err := tx.Model(&personalTenant).Update("default_project_id", defaultProject.ID).Error; err != nil {
+				return fmt.Errorf("set default project: %w", err)
+			}
+
+			ownerMembership := models.TenantMembership{
+				TenantID:  personalTenant.ID,
+				UserID:    req.ClerkUserID,
+				OrgRole:   models.RoleOwner,
+				Status:    models.StatusActive,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			if err := tx.Create(&ownerMembership).Error; err != nil {
+				return fmt.Errorf("create owner membership: %w", err)
+			}
+
+			projectMembership := models.ProjectMembership{
+				ProjectID:   defaultProject.ID,
+				UserID:      req.ClerkUserID,
+				ProjectRole: models.ProjectRoleAdmin,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}
+			if err := tx.Create(&projectMembership).Error; err != nil {
+				return fmt.Errorf("create project membership: %w", err)
+			}
+
+			return nil
+		})
+
+		if txErr != nil {
+			slog.Error("auth_sync_invitation_activation_failed", "email", req.Email, "error", txErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
 			return
 		}
-		if err := db.Create(&pending).Error; err != nil {
-			slog.Error("auth_sync_create_activated_user_failed", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate invited user"})
-			return
-		}
-		slog.Info("auth_sync_user_activated", "email", pending.Email, "tenant_id", pending.TenantID, "role", pending.Role)
+
+		slog.Info("auth_sync_user_activated", "email", req.Email, "user_id", req.ClerkUserID)
+		memberships := loadMemberships(db, req.ClerkUserID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     pending.ID,
-			"tenant_id":   pending.TenantID,
-			"email":       pending.Email,
-			"name":        pending.Name,
-			"role":        pending.Role,
-			"status":      pending.Status,
+			"user_id":     req.ClerkUserID,
+			"email":       req.Email,
+			"name":        name,
+			"status":      models.StatusActive,
 			"is_new_user": true,
+			"memberships": memberships,
 		})
 		return
 	}
 
-	// ── 4. Brand-new user — create tenant + owner in a transaction ───────────
-	// Wrapped in a transaction so that if a concurrent duplicate request also
-	// reaches this point, only one succeeds and the other rolls back cleanly
-	// instead of leaving an orphan tenant behind.
+	// ── 4. Brand-new user — create tenant + project + memberships in a transaction ─
 	var newUser models.User
 	var newTenant models.Tenant
 
 	txErr := db.Transaction(func(tx *gorm.DB) error {
-		freeLimits := models.GetPlanLimits(models.PlanFree)
 		newTenant = models.Tenant{
-			Name:       fmt.Sprintf("%s's Workspace", name),
-			Plan:       models.PlanFree,
-			MaxAPIKeys: freeLimits.MaxAPIKeys,
-			CreatedAt:  time.Now(),
+			Name:      fmt.Sprintf("%s's Workspace", name),
+			Plan:      models.PlanFree,
+			CreatedAt: time.Now(),
 		}
 		if err := tx.Create(&newTenant).Error; err != nil {
 			return fmt.Errorf("create tenant: %w", err)
 		}
 
+		defaultProject := models.Project{
+			TenantID:  newTenant.ID,
+			Name:      "Default",
+			Status:    models.ProjectStatusActive,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if err := tx.Create(&defaultProject).Error; err != nil {
+			return fmt.Errorf("create default project: %w", err)
+		}
+
+		if err := tx.Model(&newTenant).Update("default_project_id", defaultProject.ID).Error; err != nil {
+			return fmt.Errorf("set default project: %w", err)
+		}
+
 		newUser = models.User{
 			ID:        req.ClerkUserID,
-			TenantID:  newTenant.ID,
 			Email:     req.Email,
 			Name:      name,
-			Role:      models.RoleOwner,
 			Status:    models.StatusActive,
 			CreatedAt: time.Now(),
 		}
 		if err := tx.Create(&newUser).Error; err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
+
+		ownerMembership := models.TenantMembership{
+			TenantID:  newTenant.ID,
+			UserID:    req.ClerkUserID,
+			OrgRole:   models.RoleOwner,
+			Status:    models.StatusActive,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if err := tx.Create(&ownerMembership).Error; err != nil {
+			return fmt.Errorf("create owner membership: %w", err)
+		}
+
+		projectMembership := models.ProjectMembership{
+			ProjectID:   defaultProject.ID,
+			UserID:      req.ClerkUserID,
+			ProjectRole: models.ProjectRoleAdmin,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		if err := tx.Create(&projectMembership).Error; err != nil {
+			return fmt.Errorf("create project membership: %w", err)
+		}
+
 		return nil
 	})
 
@@ -171,14 +306,14 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "user_suspended"})
 				return
 			}
+			memberships := loadMemberships(db, recovered.ID)
 			c.JSON(http.StatusOK, gin.H{
 				"user_id":     recovered.ID,
-				"tenant_id":   recovered.TenantID,
 				"email":       recovered.Email,
 				"name":        recovered.Name,
-				"role":        recovered.Role,
 				"status":      recovered.Status,
 				"is_new_user": false,
+				"memberships": memberships,
 			})
 			return
 		}
@@ -188,13 +323,13 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 	}
 
 	slog.Info("auth_sync_new_tenant", "email", newUser.Email, "tenant_id", newTenant.ID, "user_id", newUser.ID)
+	memberships := loadMemberships(db, newUser.ID)
 	c.JSON(http.StatusCreated, gin.H{
 		"user_id":     newUser.ID,
-		"tenant_id":   newTenant.ID,
 		"email":       newUser.Email,
 		"name":        newUser.Name,
-		"role":        newUser.Role,
 		"status":      newUser.Status,
 		"is_new_user": true,
+		"memberships": memberships,
 	})
 }

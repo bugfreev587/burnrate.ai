@@ -96,6 +96,9 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	}
 	tenantID := uint(tenantID64)
 
+	projectID64, _ := strconv.ParseUint(fmt.Sprintf("%v", v["project_id"]), 10, 64)
+	projectID := uint(projectID64)
+
 	inputTokens, _ := strconv.ParseInt(fmt.Sprintf("%v", v["input_tokens"]), 10, 64)
 	outputTokens, _ := strconv.ParseInt(fmt.Sprintf("%v", v["output_tokens"]), 10, 64)
 	cacheCreationTokens, _ := strconv.ParseInt(fmt.Sprintf("%v", v["cache_creation_tokens"]), 10, 64)
@@ -142,6 +145,7 @@ func (w *UsageWorker) process(ctx context.Context, msg redis.XMessage) error {
 	// Write UsageLog record with the computed cost.
 	usageLog := &models.UsageLog{
 		TenantID:            tenantID,
+		ProjectID:           projectID,
 		Provider:            provider,
 		Model:               model,
 		PromptTokens:        inputTokens,

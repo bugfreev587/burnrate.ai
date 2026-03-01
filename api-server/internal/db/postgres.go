@@ -73,11 +73,24 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 	db.Exec("DROP INDEX IF EXISTS idx_usage_logs_api_key_fingerprint")
 	db.Exec("ALTER TABLE usage_logs DROP COLUMN IF EXISTS api_key_fingerprint")
 
+	// RBAC v2: drop legacy users.tenant_id and users.role columns.
+	// Users now belong to tenants via tenant_memberships table.
+	db.Exec("DROP INDEX IF EXISTS idx_users_tenant_id")
+	db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS tenant_id")
+	db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS role")
+
+	// RBAC v2: drop legacy tenants.max_api_keys column (use GetPlanLimits exclusively).
+	db.Exec("ALTER TABLE tenants DROP COLUMN IF EXISTS max_api_keys")
+
 	// Auto-migrate schema (in dependency order)
 	if err := db.AutoMigrate(
 		&models.Tenant{},
 		&models.User{},
+		&models.TenantMembership{},
+		&models.Project{},
+		&models.ProjectMembership{},
 		&models.APIKey{},
+		&models.APIKeyProviderKeyBinding{},
 		&models.ProviderKey{},
 		&models.TenantProviderSettings{},
 		&models.UsageLog{},
@@ -96,6 +109,7 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.AuditReport{},
 		&models.NotificationChannel{},
 		&models.GatewayEvent{},
+		&models.AuditLog{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}

@@ -84,7 +84,7 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 func (s *Server) handleListProviderKeys(c *gin.Context) {
 	tenantID := c.GetUint("tenant_id")
 
-	user, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -130,7 +130,7 @@ func (s *Server) handleListProviderKeys(c *gin.Context) {
 
 	// Fetch tenant for plan-aware limit display.
 	var tenant models.Tenant
-	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	planLim := models.GetPlanLimits(tenant.Plan)
 
 	var limitResp, slotsLeft interface{}

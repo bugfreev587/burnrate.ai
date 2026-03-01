@@ -155,6 +155,7 @@ const (
 const (
 	BudgetScopeAccount = "account"
 	BudgetScopeAPIKey  = "api_key"
+	BudgetScopeProject = "project"
 )
 
 // RateLimit defines a tenant-aware, model-scoped rate limit.
@@ -179,4 +180,11 @@ const (
 	RateLimitMetricRPM  = "rpm"
 	RateLimitMetricITPM = "itpm"
 	RateLimitMetricOTPM = "otpm"
+)
+
+// Rate limit scope constants
+const (
+	RateLimitScopeAccount = "account"
+	RateLimitScopeAPIKey  = "api_key"
+	RateLimitScopeProject = "project"
 )

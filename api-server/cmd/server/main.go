@@ -139,6 +139,7 @@ func main() {
 
 	// Audit report service + queue + worker
 	auditSvc := services.NewAuditReportService(postgresDB.GetDB())
+	auditLogSvc := services.NewAuditLogService(postgresDB.GetDB())
 	reportQueue := events.NewReportQueue(rdb)
 	reportWorker := events.NewReportWorker(rdb, postgresDB.GetDB(), auditSvc)
 	go reportWorker.Run(context.Background())
@@ -175,7 +176,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter, gatewayEventSvc)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, reportQueue, notifWorker)
+	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, auditLogSvc, reportQueue, notifWorker)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			slog.Error("server error", "error", err)

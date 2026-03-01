@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import Navbar from '../components/Navbar'
 import { useUserSync } from '../hooks/useUserSync'
+import { apiFetch } from '../lib/api'
 import './PublicPricingPage.css'
-
-const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -162,7 +161,7 @@ export default function PublicPricingPage() {
 
   useEffect(() => {
     if (!isOwner || !userId) return
-    fetch(`${API_BASE}/v1/owner/settings`, { headers: { 'X-User-ID': userId } })
+    apiFetch('/v1/owner/settings')
       .then(r => r.json())
       .then(d => setCurrentPlan(d.plan ?? null))
       .catch(() => {})
@@ -175,9 +174,8 @@ export default function PublicPricingPage() {
     setSwitching(plan)
     setFlash(null)
     try {
-      const res = await fetch(`${API_BASE}/v1/owner/plan`, {
+      const res = await apiFetch('/v1/owner/plan', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
         body: JSON.stringify({ plan }),
       })
       const data = await res.json()

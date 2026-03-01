@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
+import { TenantProvider } from './contexts/TenantContext'
 import { useUserSync } from './hooks/useUserSync'
 import APIKeyModal from './components/APIKeyModal'
 import InactivityGuard from './components/InactivityGuard'
@@ -74,9 +75,10 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <UserSyncProvider>
-      <BrowserRouter>
-        <Routes>
+    <TenantProvider>
+      <UserSyncProvider>
+        <BrowserRouter>
+          <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/sign-in/*" element={<PublicOnlyRoute><SignInPage /></PublicOnlyRoute>} />
           <Route path="/sign-up/*" element={<PublicOnlyRoute><SignUpPage /></PublicOnlyRoute>} />
@@ -93,8 +95,9 @@ export default function App() {
           <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
           <Route path="/plans" element={<PublicPricingPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </UserSyncProvider>
+          </Routes>
+        </BrowserRouter>
+      </UserSyncProvider>
+    </TenantProvider>
   )
 }

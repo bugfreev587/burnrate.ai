@@ -33,6 +33,7 @@ type ResponsesRequest struct {
 func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
+	projectID := c.GetUint("project_id")
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
 
@@ -64,6 +65,19 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 			"message": "Missing required field: model.",
 		}})
 		return
+	}
+
+	// Model allowlist enforcement.
+	if akI, exists := c.Get("api_key"); exists {
+		if ak, ok := akI.(*models.APIKey); ok && ak.ModelAllowlist != "" {
+			if !isModelAllowed(ak.ModelAllowlist, req.Model) {
+				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+					"type":    "model_not_allowed",
+					"message": fmt.Sprintf("Model %q is not in this API key's allowlist.", req.Model),
+				}})
+				return
+			}
+		}
 	}
 
 	// Resolve provider from model name, falling back to the API key's provider field.
@@ -184,7 +198,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
 	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
-	h.publishUsageEvent(c.Request.Context(), tenantID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
+	h.publishUsageEvent(c.Request.Context(), tenantID, projectID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 
 	slog.Info("proxy_request_completed",
 		"tenant_id", tenantID, "key_id", keyIDStr,

@@ -19,6 +19,9 @@ type PlanLimits struct {
 	// MaxMembers is the maximum number of users (owner + all others, including pending invites).
 	// -1 means unlimited.
 	MaxMembers int `json:"max_members"`
+	// MaxProjects is the maximum number of projects per tenant.
+	// -1 means unlimited.
+	MaxProjects int `json:"max_projects"`
 	// AllowedPeriods lists the budget period types the plan permits.
 	AllowedPeriods []string `json:"allowed_periods"`
 	// AllowBlockAction permits setting budget action="block" (hard limit → HTTP 402).
@@ -50,6 +53,7 @@ var planLimitsMap = map[string]PlanLimits{
 		MaxAPIKeys:              1,
 		MaxProviderKeys:         1,
 		MaxMembers:              1,
+		MaxProjects:             1,
 		AllowedPeriods:          []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:        true,
 		AllowPerKeyBudget:       false,
@@ -65,6 +69,7 @@ var planLimitsMap = map[string]PlanLimits{
 		MaxAPIKeys:              5,
 		MaxProviderKeys:         3,
 		MaxMembers:              1,
+		MaxProjects:             3,
 		AllowedPeriods:          []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:        true,
 		AllowPerKeyBudget:       false,
@@ -80,6 +85,7 @@ var planLimitsMap = map[string]PlanLimits{
 		MaxAPIKeys:              50,
 		MaxProviderKeys:         10,
 		MaxMembers:              10,
+		MaxProjects:             20,
 		AllowedPeriods:          []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:        true,
 		AllowPerKeyBudget:       true,
@@ -95,6 +101,7 @@ var planLimitsMap = map[string]PlanLimits{
 		MaxAPIKeys:              200,
 		MaxProviderKeys:         50,
 		MaxMembers:              -1,
+		MaxProjects:             -1,
 		AllowedPeriods:          []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:        true,
 		AllowPerKeyBudget:       true,

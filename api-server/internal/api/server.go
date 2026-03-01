@@ -15,6 +15,7 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/db"
 	"github.com/xiaoboyu/tokengate/api-server/internal/events"
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
 	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
@@ -33,6 +34,7 @@ type Server struct {
 	rateLimiter    *ratelimit.Limiter
 	stripeSvc      *services.StripeService
 	auditSvc       *services.AuditReportService
+	auditLogSvc    *services.AuditLogService
 	reportQueue    *events.ReportQueue
 	notifWorker    *events.NotificationWorker
 	rbac           *middleware.RBACMiddleware
@@ -54,6 +56,7 @@ func NewServer(
 	rateLimiter *ratelimit.Limiter,
 	stripeSvc *services.StripeService,
 	auditSvc *services.AuditReportService,
+	auditLogSvc *services.AuditLogService,
 	reportQueue *events.ReportQueue,
 	notifWorker *events.NotificationWorker,
 ) *Server {
@@ -76,6 +79,7 @@ func NewServer(
 		rateLimiter:    rateLimiter,
 		stripeSvc:      stripeSvc,
 		auditSvc:       auditSvc,
+		auditLogSvc:    auditLogSvc,
 		reportQueue:    reportQueue,
 		notifWorker:    notifWorker,
 		rbac:           rbac,
@@ -128,9 +132,28 @@ func (s *Server) setupRoutes() {
 		agent.POST("/usage", s.handleReportUsage)
 	}
 
+	// ─── Projects (viewer+ for read, admin+ for mutations) ──────────────────
+	projectViewer := s.router.Group("/v1/projects")
+	projectViewer.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleViewer))
+	{
+		projectViewer.GET("", s.handleListProjects)
+		projectViewer.GET("/:id", s.handleGetProject)
+		projectViewer.GET("/:id/members", s.handleListProjectMembers)
+	}
+	projectAdmin := s.router.Group("/v1/projects")
+	projectAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleAdmin))
+	{
+		projectAdmin.POST("", s.handleCreateProject)
+		projectAdmin.PATCH("/:id", s.handleUpdateProject)
+		projectAdmin.DELETE("/:id", s.handleDeleteProject)
+		projectAdmin.POST("/:id/members", s.handleAddProjectMember)
+		projectAdmin.PATCH("/:id/members/:user_id", s.handleUpdateProjectMemberRole)
+		projectAdmin.DELETE("/:id/members/:user_id", s.handleRemoveProjectMember)
+	}
+
 	// ─── Viewer+ (any signed-in tenant member) ───────────────────────────────
 	viewer := s.router.Group("/v1")
-	viewer.Use(s.rbac.RequireUser(), s.rbac.RequireViewer())
+	viewer.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleViewer))
 	{
 		viewer.GET("/usage", s.handleListUsage)
 		viewer.GET("/usage/summary", s.handleUsageSummary)
@@ -144,17 +167,22 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/audit/reports/:id/download", s.handleDownloadAuditReport)
 	}
 
-	// ─── Audit Admin (create/delete reports, admin+) ────────────────────────
+	// ─── Audit Admin (create/delete reports + audit logs, admin+) ───────────
 	auditAdmin := s.router.Group("/v1/audit")
-	auditAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
+	auditAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleAdmin))
 	{
 		auditAdmin.POST("/reports", s.handleCreateAuditReport)
 		auditAdmin.DELETE("/reports/:id", s.handleDeleteAuditReport)
 	}
+	auditLogsGroup := s.router.Group("/v1")
+	auditLogsGroup.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleAdmin))
+	{
+		auditLogsGroup.GET("/audit-logs", s.handleListAuditLogs)
+	}
 
 	// ─── Editor+ (Management, Limits, Pricing Config) ───────────────────────
 	admin := s.router.Group("/v1/admin")
-	admin.Use(s.rbac.RequireUser(), s.rbac.RequireEditor())
+	admin.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleEditor))
 	{
 		// User management
 		admin.GET("/users", s.handleListUsers)
@@ -222,14 +250,14 @@ func (s *Server) setupRoutes() {
 
 	// ─── Billing (viewer+ for read, admin+ for mutations) ───────────────────
 	billingViewer := s.router.Group("/v1/billing")
-	billingViewer.Use(s.rbac.RequireUser(), s.rbac.RequireViewer())
+	billingViewer.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleViewer))
 	{
 		billingViewer.GET("/status", s.handleBillingStatus)
 		billingViewer.GET("/invoices", s.handleBillingInvoices)
 	}
 
 	billingAdmin := s.router.Group("/v1/billing")
-	billingAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireAdmin())
+	billingAdmin.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleAdmin))
 	{
 		billingAdmin.POST("/checkout", s.handleBillingCheckout)
 		billingAdmin.POST("/checkout/verify", s.handleBillingCheckoutVerify)
@@ -244,7 +272,7 @@ func (s *Server) setupRoutes() {
 
 	// ─── Owner only ──────────────────────────────────────────────────────────
 	owner := s.router.Group("/v1/owner")
-	owner.Use(s.rbac.RequireUser(), s.rbac.RequireOwner())
+	owner.Use(s.rbac.RequireUser(), s.rbac.RequireOrgRole(models.RoleOwner))
 	{
 		owner.POST("/users/:user_id/promote-admin", s.handlePromoteAdmin)
 		owner.DELETE("/users/:user_id/demote-admin", s.handleDemoteAdmin)

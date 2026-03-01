@@ -15,6 +15,7 @@ import (
 
 type createAPIKeyReq struct {
 	Label       string     `json:"label"        binding:"required"`
+	ProjectID   uint       `json:"project_id"   binding:"required"`
 	Provider    string     `json:"provider"     binding:"required"`
 	AuthMethod  string     `json:"auth_method"  binding:"required"`
 	BillingMode string     `json:"billing_mode" binding:"required"`
@@ -22,7 +23,7 @@ type createAPIKeyReq struct {
 	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
-// handleCreateAPIKey creates a new tenant-scoped API key.
+// handleCreateAPIKey creates a new tenant-scoped API key bound to a project.
 // POST /v1/admin/api_keys
 func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	var req createAPIKeyReq
@@ -31,20 +32,29 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	user, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
+	// Validate project exists in this tenant.
+	var project models.Project
+	if err := s.postgresDB.GetDB().Where("id = ? AND tenant_id = ?", req.ProjectID, tenantID).First(&project).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project not found in this tenant"})
+		return
+	}
+
 	// Enforce plan-based API key limit before hitting the service.
 	var tenant models.Tenant
-	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	planLim := models.GetPlanLimits(tenant.Plan)
 	if planLim.MaxAPIKeys != -1 {
 		var activeCount int64
 		s.postgresDB.GetDB().Model(&models.APIKey{}).
-			Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", user.TenantID).
+			Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", tenantID).
 			Count(&activeCount)
 		if int(activeCount) >= planLim.MaxAPIKeys {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{
@@ -64,7 +74,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "provider key service not configured"})
 			return
 		}
-		settings, err := s.providerKeySvc.GetActiveSettings(c.Request.Context(), user.TenantID, req.Provider)
+		settings, err := s.providerKeySvc.GetActiveSettings(c.Request.Context(), tenantID, req.Provider)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check provider key status"})
 			return
@@ -78,7 +88,8 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		}
 	}
 
-	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), user.TenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode)
+	user, _ := middleware.GetUserFromContext(c)
+	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), tenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode, req.ProjectID, user.ID)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
 		if errors.As(err, &limitErr) {
@@ -98,6 +109,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		"key_id":       kid,
 		"secret":       secret, // shown only once
 		"label":        req.Label,
+		"project_id":   req.ProjectID,
 		"provider":     req.Provider,
 		"auth_method":  req.AuthMethod,
 		"billing_mode": req.BillingMode,
@@ -108,13 +120,15 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 // including the tenant's key limit for display in the dashboard.
 // GET /v1/admin/api_keys
 func (s *Server) handleListAPIKeys(c *gin.Context) {
-	user, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	keys, err := s.apiKeySvc.ListKeys(c.Request.Context(), user.TenantID)
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
+	keys, err := s.apiKeySvc.ListKeys(c.Request.Context(), tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -122,12 +136,13 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 
 	// Fetch tenant for plan-aware limit display.
 	var tenant models.Tenant
-	s.postgresDB.GetDB().First(&tenant, user.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	planLim := models.GetPlanLimits(tenant.Plan)
 
 	type keyView struct {
 		KeyID       string     `json:"key_id"`
 		Label       string     `json:"label"`
+		ProjectID   uint       `json:"project_id"`
 		Provider    string     `json:"provider"`
 		AuthMethod  string     `json:"auth_method"`
 		BillingMode string     `json:"billing_mode"`
@@ -141,6 +156,7 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 		out[i] = keyView{
 			KeyID:       k.KeyID,
 			Label:       k.Label,
+			ProjectID:   k.ProjectID,
 			Provider:    k.Provider,
 			AuthMethod:  k.AuthMethod,
 			BillingMode: k.BillingMode,
@@ -170,14 +186,16 @@ func (s *Server) handleListAPIKeys(c *gin.Context) {
 // handleRevokeAPIKey revokes a tenant API key by key_id.
 // DELETE /v1/admin/api_keys/:key_id
 func (s *Server) handleRevokeAPIKey(c *gin.Context) {
-	user, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
 	keyID := c.Param("key_id")
-	if err := s.apiKeySvc.RevokeKey(c.Request.Context(), user.TenantID, keyID); err != nil {
+	if err := s.apiKeySvc.RevokeKey(c.Request.Context(), tenantID, keyID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}

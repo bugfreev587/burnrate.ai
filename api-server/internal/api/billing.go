@@ -38,14 +38,15 @@ func (s *Server) validateRedirectURL(rawURL string) error {
 // ── GET /v1/billing/status ───────────────────────────────────────────────────
 
 func (s *Server) handleBillingStatus(c *gin.Context) {
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -63,9 +64,9 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 
 	// Fetch payment method info from Stripe if configured and subscribed
 	if s.stripeSvc.IsConfigured() && tenant.StripeSubscriptionID != "" {
-		subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), caller.TenantID)
+		subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), tenantID)
 		if err != nil {
-			slog.Error("billing_fetch_subscription_failed", "tenant_id", caller.TenantID, "error", err)
+			slog.Error("billing_fetch_subscription_failed", "tenant_id", tenantID, "error", err)
 		} else if subInfo != nil {
 			resp["cancel_at_period_end"] = subInfo.CancelAtPeriodEnd
 			if subInfo.PaymentMethodLast4 != "" {
@@ -80,15 +81,13 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 			// Self-heal: if Stripe's actual plan differs from DB (e.g. Portal
 			// upgrade webhook was missed or failed), correct it on read.
 			if subInfo.DetectedPlan != "" && subInfo.DetectedPlan != tenant.Plan && tenant.PendingPlan == "" {
-				newLimits := models.GetPlanLimits(subInfo.DetectedPlan)
 				if err := s.postgresDB.GetDB().Model(&tenant).Updates(map[string]any{
-					"plan":         subInfo.DetectedPlan,
-					"max_api_keys": newLimits.MaxAPIKeys,
+					"plan": subInfo.DetectedPlan,
 				}).Error; err != nil {
-					slog.Error("billing_plan_sync_failed", "tenant_id", caller.TenantID, "error", err)
+					slog.Error("billing_plan_sync_failed", "tenant_id", tenantID, "error", err)
 				} else {
 					slog.Info("billing_plan_synced_from_stripe",
-						"tenant_id", caller.TenantID,
+						"tenant_id", tenantID,
 						"old_plan", tenant.Plan,
 						"new_plan", subInfo.DetectedPlan,
 					)
@@ -115,11 +114,12 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var req checkoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -143,7 +143,7 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 
 	// Reject if already subscribed
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -155,9 +155,9 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 		return
 	}
 
-	url, err := s.stripeSvc.CreateCheckoutSession(c.Request.Context(), caller.TenantID, req.Plan, req.SuccessURL, req.CancelURL)
+	url, err := s.stripeSvc.CreateCheckoutSession(c.Request.Context(), tenantID, req.Plan, req.SuccessURL, req.CancelURL)
 	if err != nil {
-		slog.Error("billing_checkout_error", "tenant_id", caller.TenantID, "error", err)
+		slog.Error("billing_checkout_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
 		return
 	}
@@ -177,11 +177,12 @@ func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var req verifyCheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -189,15 +190,15 @@ func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.VerifyCheckoutSession(c.Request.Context(), caller.TenantID, req.SessionID); err != nil {
-		slog.Error("billing_checkout_verify_error", "tenant_id", caller.TenantID, "error", err)
+	if err := s.stripeSvc.VerifyCheckoutSession(c.Request.Context(), tenantID, req.SessionID); err != nil {
+		slog.Error("billing_checkout_verify_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to verify checkout session"})
 		return
 	}
 
 	// Return updated tenant info
 	var tenant models.Tenant
-	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
 		"plan":        tenant.Plan,
 		"plan_status": tenant.PlanStatus,
@@ -216,11 +217,12 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var req portalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -234,7 +236,7 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 	}
 
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -243,9 +245,9 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 		return
 	}
 
-	url, err := s.stripeSvc.CreatePortalSession(c.Request.Context(), caller.TenantID, req.ReturnURL)
+	url, err := s.stripeSvc.CreatePortalSession(c.Request.Context(), tenantID, req.ReturnURL)
 	if err != nil {
-		slog.Error("billing_portal_error", "tenant_id", caller.TenantID, "error", err)
+		slog.Error("billing_portal_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create portal session"})
 		return
 	}
@@ -265,11 +267,12 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var req downgradeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -283,7 +286,7 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 	}
 
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -298,13 +301,13 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.ScheduleDowngrade(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
-		slog.Error("billing_downgrade_error", "tenant_id", caller.TenantID, "error", err)
+	if err := s.stripeSvc.ScheduleDowngrade(c.Request.Context(), tenantID, req.Plan); err != nil {
+		slog.Error("billing_downgrade_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
 		"plan":              tenant.Plan,
 		"plan_status":       tenant.PlanStatus,
@@ -322,20 +325,21 @@ func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
-	if err := s.stripeSvc.CancelScheduledDowngrade(c.Request.Context(), caller.TenantID); err != nil {
-		slog.Error("billing_cancel_downgrade_error", "tenant_id", caller.TenantID, "error", err)
+	if err := s.stripeSvc.CancelScheduledDowngrade(c.Request.Context(), tenantID); err != nil {
+		slog.Error("billing_cancel_downgrade_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var tenant models.Tenant
-	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
 		"plan":        tenant.Plan,
 		"plan_status": tenant.PlanStatus,
@@ -355,11 +359,12 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	var req changeBillingPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -373,7 +378,7 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 	}
 
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, caller.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -393,13 +398,13 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), caller.TenantID, req.Plan); err != nil {
-		slog.Error("billing_change_plan_error", "tenant_id", caller.TenantID, "error", err)
+	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), tenantID, req.Plan); err != nil {
+		slog.Error("billing_change_plan_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change plan"})
 		return
 	}
 
-	s.postgresDB.GetDB().First(&tenant, caller.TenantID)
+	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
 		"plan":        tenant.Plan,
 		"plan_status": tenant.PlanStatus,
@@ -414,15 +419,16 @@ func (s *Server) handleBillingInvoices(c *gin.Context) {
 		return
 	}
 
-	caller, ok := middleware.GetUserFromContext(c)
+	_, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
-	invoices, err := s.stripeSvc.ListInvoices(c.Request.Context(), caller.TenantID, 24)
+	invoices, err := s.stripeSvc.ListInvoices(c.Request.Context(), tenantID, 24)
 	if err != nil {
-		slog.Error("billing_invoices_error", "tenant_id", caller.TenantID, "error", err)
+		slog.Error("billing_invoices_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoices"})
 		return
 	}

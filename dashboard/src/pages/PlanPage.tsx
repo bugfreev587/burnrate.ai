@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { apiFetch } from '../lib/api'
 import './PlanPage.css'
-
-const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -225,9 +224,8 @@ export default function PlanPage() {
     try {
       if (isDowngrade(currentPlan, newPlan)) {
         // Schedule downgrade at period end
-        const res = await fetch(`${API_BASE}/v1/billing/downgrade`, {
+        const res = await apiFetch('/v1/billing/downgrade', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
           body: JSON.stringify({ plan: newPlan }),
         })
         const d = await res.json()
@@ -237,9 +235,8 @@ export default function PlanPage() {
         setRefreshTrigger(t => t + 1)
       } else if (currentPlan === 'free' && newPlan !== 'free') {
         // Free → Paid: Stripe Checkout
-        const res = await fetch(`${API_BASE}/v1/billing/checkout`, {
+        const res = await apiFetch('/v1/billing/checkout', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
           body: JSON.stringify({
             plan: newPlan,
             success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
@@ -252,9 +249,8 @@ export default function PlanPage() {
         return // navigating away
       } else if (isUpgrade(currentPlan, newPlan)) {
         // Paid → higher Paid: immediate upgrade via API
-        const res = await fetch(`${API_BASE}/v1/billing/change-plan`, {
+        const res = await apiFetch('/v1/billing/change-plan', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
           body: JSON.stringify({ plan: newPlan }),
         })
         const d = await res.json()
@@ -276,9 +272,8 @@ export default function PlanPage() {
     setResultModal(null)
 
     try {
-      const res = await fetch(`${API_BASE}/v1/billing/downgrade/cancel`, {
+      const res = await apiFetch('/v1/billing/downgrade/cancel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message ?? d.error ?? `HTTP ${res.status}`)
@@ -294,18 +289,16 @@ export default function PlanPage() {
   useEffect(() => {
     if (!isSynced || !userId) return
 
-    const headers = { 'X-User-ID': userId }
-
     async function load() {
       setLoading(true)
       setError(null)
       try {
         const [settingsRes, keysRes, providerKeysRes, usersRes, billingRes] = await Promise.all([
-          fetch(`${API_BASE}/v1/owner/settings`, { headers }),
-          fetch(`${API_BASE}/v1/admin/api_keys`, { headers }),
-          fetch(`${API_BASE}/v1/admin/provider_keys`, { headers }),
-          fetch(`${API_BASE}/v1/admin/users`, { headers }),
-          fetch(`${API_BASE}/v1/billing/status`, { headers }),
+          apiFetch('/v1/owner/settings'),
+          apiFetch('/v1/admin/api_keys'),
+          apiFetch('/v1/admin/provider_keys'),
+          apiFetch('/v1/admin/users'),
+          apiFetch('/v1/billing/status'),
         ])
 
         if (!settingsRes.ok) throw new Error(`Settings fetch failed: HTTP ${settingsRes.status}`)

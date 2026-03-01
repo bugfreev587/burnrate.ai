@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-
-const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
-
-function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('user_id') || ''
-  return { 'Content-Type': 'application/json', 'X-User-ID': userId }
-}
+import { apiFetch, authHeaders } from '../lib/api'
 
 export interface AuditReport {
   id: number
@@ -41,7 +35,7 @@ export function useAuditReports() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/v1/audit/reports`, { headers: authHeaders() })
+      const res = await apiFetch('/v1/audit/reports')
       if (!res.ok) throw new Error('Failed to fetch reports')
       const data = await res.json()
       setReports(data.reports || [])
@@ -56,9 +50,8 @@ export function useAuditReports() {
 
   async function generate(req: CreateReportRequest): Promise<AuditReport | null> {
     try {
-      const res = await fetch(`${API_URL}/v1/audit/reports`, {
+      const res = await apiFetch('/v1/audit/reports', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify(req),
       })
       if (!res.ok) {
@@ -75,9 +68,8 @@ export function useAuditReports() {
 
   async function deleteReport(id: number): Promise<boolean> {
     try {
-      const res = await fetch(`${API_URL}/v1/audit/reports/${id}`, {
+      const res = await apiFetch(`/v1/audit/reports/${id}`, {
         method: 'DELETE',
-        headers: authHeaders(),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -91,9 +83,9 @@ export function useAuditReports() {
   }
 
   async function downloadReport(id: number, format: string): Promise<void> {
-    const userId = localStorage.getItem('user_id') || ''
+    const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
     const res = await fetch(`${API_URL}/v1/audit/reports/${id}/download`, {
-      headers: { 'X-User-ID': userId },
+      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))

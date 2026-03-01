@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { useProjects } from '../hooks/useProjects'
+import { apiFetch } from '../lib/api'
 import Navbar from '../components/Navbar'
 import './ManagementPage.css'
-
-const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 interface APIKey {
   key_id: string
@@ -16,6 +16,8 @@ interface APIKey {
   expires_at: string | null
   created_at: string
   last_seen_at: string | null
+  project_id: number | null
+  model_allowlist: string | null
 }
 
 const AUTH_METHODS: { value: string; label: string; description: string }[] = [
@@ -55,6 +57,7 @@ interface ProviderKey {
 export default function ManagementPage() {
   const navigate = useNavigate()
   const { role, userId, isSynced } = useUserSync()
+  const { projects, loading: projectsLoading } = useProjects()
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ProviderKey[]>([])
@@ -63,6 +66,9 @@ export default function ManagementPage() {
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Project filter
+  const [filterProjectId, setFilterProjectId] = useState<number | ''>('')
 
   // Add provider key modal
   const [showAddKeyModal, setShowAddKeyModal] = useState(false)
@@ -78,6 +84,8 @@ export default function ManagementPage() {
   const [newKeyProvider, setNewKeyProvider] = useState<string>('anthropic')
   const [newAuthMethod, setNewAuthMethod] = useState<string>('BROWSER_OAUTH')
   const [newBillingMode, setNewBillingMode] = useState<string>('MONTHLY_SUBSCRIPTION')
+  const [newKeyProjectId, setNewKeyProjectId] = useState<number | ''>('')
+  const [newKeyModelAllowlist, setNewKeyModelAllowlist] = useState<string>('')
   const [createdAuthMethod, setCreatedAuthMethod] = useState<string>('')
   const [createdBillingMode, setCreatedBillingMode] = useState<string>('')
   const [createdProvider, setCreatedProvider] = useState<string>('')
@@ -89,11 +97,7 @@ export default function ManagementPage() {
   const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'provider_keys' } | null>(null)
 
   const canAccess = hasPermission(role, 'editor')
-
-  const headers = useCallback(() => ({
-    'Content-Type': 'application/json',
-    'X-User-ID': userId ?? '',
-  }), [userId])
+  const canManageProviderKeys = hasPermission(role, 'admin')
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg)
@@ -106,7 +110,7 @@ export default function ManagementPage() {
 
   const fetchAPIKeys = useCallback(async () => {
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys`, { headers: headers() })
+      const res = await apiFetch('/v1/admin/api_keys')
       if (res.ok) {
         const data = await res.json()
         setApiKeys(data.api_keys ?? [])
@@ -115,11 +119,11 @@ export default function ManagementPage() {
     } catch (err) {
       console.error('fetch api keys:', err)
     }
-  }, [headers])
+  }, [])
 
   const fetchProviderKeys = useCallback(async () => {
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys`, { headers: headers() })
+      const res = await apiFetch('/v1/admin/provider_keys')
       if (res.ok) {
         const data = await res.json()
         setProviderKeys(data.provider_keys ?? [])
@@ -128,7 +132,7 @@ export default function ManagementPage() {
     } catch (err) {
       console.error('fetch provider keys:', err)
     }
-  }, [headers])
+  }, [])
 
   useEffect(() => {
     if (!isSynced) return
@@ -151,12 +155,26 @@ export default function ManagementPage() {
       setCreateKeyError('Please enter a label')
       return
     }
+    if (!newKeyProjectId) {
+      setCreateKeyError('Please select a project')
+      return
+    }
     setCreateKeyError(null)
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys`, {
+      const body: Record<string, unknown> = {
+        label: newKeyLabel.trim(),
+        provider: newKeyProvider,
+        auth_method: newAuthMethod,
+        billing_mode: newBillingMode,
+        scopes: ['*'],
+        project_id: newKeyProjectId,
+      }
+      if (newKeyModelAllowlist.trim()) {
+        body.model_allowlist = newKeyModelAllowlist.split(',').map(m => m.trim()).filter(Boolean)
+      }
+      const res = await apiFetch('/v1/admin/api_keys', {
         method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ label: newKeyLabel.trim(), provider: newKeyProvider, auth_method: newAuthMethod, billing_mode: newBillingMode, scopes: ['*'] }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -171,6 +189,8 @@ export default function ManagementPage() {
       setCreateKeyError(null)
       setShowNewKeyModal(true)
       setNewKeyLabel('')
+      setNewKeyProjectId('')
+      setNewKeyModelAllowlist('')
       fetchAPIKeys()
     } catch (err) {
       setCreateKeyError(err instanceof Error ? err.message : 'Failed to create API key')
@@ -180,9 +200,8 @@ export default function ManagementPage() {
   const handleRevokeAPIKey = async (keyID: string) => {
     if (!confirm('Revoke this API key? Any agents using it will stop working.')) return
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/api_keys/${keyID}`, {
+      const res = await apiFetch(`/v1/admin/api_keys/${keyID}`, {
         method: 'DELETE',
-        headers: headers(),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -204,9 +223,8 @@ export default function ManagementPage() {
     }
     setAddingKey(true)
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys`, {
+      const res = await apiFetch('/v1/admin/provider_keys', {
         method: 'POST',
-        headers: headers(),
         body: JSON.stringify({ provider: addKeyProvider, label: addKeyLabel.trim(), api_key: addKeyValue.trim() }),
       })
       const data = await res.json().catch(() => ({}))
@@ -226,9 +244,8 @@ export default function ManagementPage() {
 
   const handleActivateKey = async (id: number) => {
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys/${id}/activate`, {
+      const res = await apiFetch(`/v1/admin/provider_keys/${id}/activate`, {
         method: 'PUT',
-        headers: headers(),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -244,9 +261,8 @@ export default function ManagementPage() {
   const handleRevokeProviderKey = async (id: number) => {
     if (!confirm('Revoke this provider key? Any proxied requests using it will fail.')) return
     try {
-      const res = await fetch(`${API_SERVER_URL}/v1/admin/provider_keys/${id}`, {
+      const res = await apiFetch(`/v1/admin/provider_keys/${id}`, {
         method: 'DELETE',
-        headers: headers(),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -307,22 +323,36 @@ export default function ManagementPage() {
                 <h2>
                   Gateway API Keys{' '}
                   <span className="section-count">
-                    {apiKeys.length}/{keyLimit === null ? '∞' : keyLimit}
+                    {apiKeys.length}/{keyLimit === null ? '\u221e' : keyLimit}
                   </span>
                 </h2>
                 <p className="section-desc">
                   Keys used by the AI code agent to report usage through the TokenGate gateway.
                 </p>
               </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {projects.length > 1 && (
+                  <select
+                    className="tenant-switcher"
+                    value={filterProjectId}
+                    onChange={e => setFilterProjectId(e.target.value ? parseInt(e.target.value, 10) : '')}
+                  >
+                    <option value="">All Projects</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
               <button className="btn btn-primary" onClick={() => {
                 if (keyLimit !== null && apiKeys.length >= keyLimit) {
                   setLimitModal({ type: 'keys' })
                   return
                 }
-                setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true)
+                setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist(''); setShowCreateKeyModal(true)
               }}>
                 Create Key
               </button>
+              </div>
             </div>
             <div className="table-scroll">
               <table className="mgmt-table">
@@ -330,40 +360,42 @@ export default function ManagementPage() {
                   <tr>
                     <th>Key ID</th>
                     <th>Label</th>
+                    <th>Project</th>
                     <th>Provider</th>
                     <th>Auth</th>
                     <th>Billing</th>
                     <th>Created</th>
                     <th>Last Seen</th>
-                    <th>Expires</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {apiKeys.length === 0 ? (
+                  {(() => {
+                    const filtered = filterProjectId ? apiKeys.filter(k => k.project_id === filterProjectId) : apiKeys
+                    return filtered.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="empty-cell">
                         <div className="empty-cta">
-                          <p>No API keys yet. Create one to start reporting usage.</p>
+                          <p>{filterProjectId ? 'No API keys in this project.' : 'No API keys yet. Create one to start reporting usage.'}</p>
+                          {!filterProjectId && (
                           <button className="btn btn-primary"
-                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setShowCreateKeyModal(true) }}>
+                            onClick={() => { setNewKeyLabel(''); setCreateKeyError(null); setNewKeyProjectId(projects[0]?.id ?? ''); setNewKeyModelAllowlist(''); setShowCreateKeyModal(true) }}>
                             Create Your First Key
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ) : apiKeys.map(k => (
+                  ) : filtered.map(k => (
                     <tr key={k.key_id}>
-                      <td><code className="key-id">{k.key_id.slice(0, 8)}…</code></td>
+                      <td><code className="key-id">{k.key_id.slice(0, 8)}\u2026</code></td>
                       <td>{k.label}</td>
+                      <td className="text-muted">{projects.find(p => p.id === k.project_id)?.name ?? '\u2014'}</td>
                       <td><span className="provider-badge">{k.provider}</span></td>
                       <td><span className="mode-badge">{k.auth_method}</span></td>
                       <td><span className="mode-badge">{k.billing_mode}</span></td>
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
-                      <td className="text-muted">
-                        {k.expires_at ? new Date(k.expires_at).toLocaleDateString() : 'Never'}
-                      </td>
                       <td>
                         <button className="btn btn-small btn-danger"
                           onClick={() => handleRevokeAPIKey(k.key_id)}>
@@ -371,13 +403,15 @@ export default function ManagementPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                  })()}
                 </tbody>
               </table>
             </div>
           </section>
 
-          {/* ── Provider Keys ────────────────────────────────────────────── */}
+          {/* ── Provider Keys (Owner/Admin only) ─────────────────────────── */}
+          {canManageProviderKeys && (
           <section className="mgmt-section">
             <div className="section-hdr">
               <div>
@@ -457,6 +491,7 @@ export default function ManagementPage() {
               </table>
             </div>
           </section>
+          )}
 
         </div>
       </div>
@@ -473,6 +508,19 @@ export default function ManagementPage() {
                 Give this key a descriptive label so you can identify which agent or environment
                 it belongs to (e.g. "laptop-dev", "ci-pipeline").
               </p>
+              <div className="form-group">
+                <label>Project <span className="required">*</span></label>
+                <select
+                  value={newKeyProjectId}
+                  onChange={e => setNewKeyProjectId(e.target.value ? parseInt(e.target.value, 10) : '')}
+                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-secondary, #1a1a2e)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '0.375rem' }}
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Default)' : ''}</option>
+                  ))}
+                </select>
+              </div>
               <div className="form-group">
                 <label>Label</label>
                 <input
@@ -553,6 +601,18 @@ export default function ManagementPage() {
                   })}
                 </div>
               </div>
+              <div className="form-group">
+                <label>Model Allowlist <span className="optional">(optional)</span></label>
+                <input
+                  type="text"
+                  value={newKeyModelAllowlist}
+                  onChange={e => setNewKeyModelAllowlist(e.target.value)}
+                  placeholder="e.g. claude-sonnet-4-6, gpt-4.1"
+                />
+                <p className="section-desc" style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
+                  Comma-separated list of allowed models. Leave empty to allow all models.
+                </p>
+              </div>
             </div>
             {createKeyError && (
               <div className="flash flash-error modal-flash">{createKeyError}</div>
@@ -562,7 +622,7 @@ export default function ManagementPage() {
                 Cancel
               </button>
               <button className="btn btn-primary" onClick={handleCreateAPIKey}
-                disabled={!newKeyLabel.trim()}>
+                disabled={!newKeyLabel.trim() || !newKeyProjectId}>
                 Create
               </button>
             </div>

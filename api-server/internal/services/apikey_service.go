@@ -28,6 +28,7 @@ type APIKeyService struct {
 type apiKeyCacheData struct {
 	KeyID       string     `json:"key_id"`
 	TenantID    uint       `json:"tenant_id"`
+	ProjectID   uint       `json:"project_id"`
 	Label       string     `json:"label"`
 	Revoked     bool       `json:"revoked"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
@@ -55,15 +56,16 @@ func (e *ErrAPIKeyLimitReached) Error() string {
 
 // CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
-func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, authMethod, billingMode string) (string, string, error) {
+func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, authMethod, billingMode string, projectID uint, createdByUserID string) (string, string, error) {
 	if !models.ValidAuthBillingCombo(provider, authMethod, billingMode) {
 		return "", "", fmt.Errorf("invalid auth_method %q + billing_mode %q for provider %q", authMethod, billingMode, provider)
 	}
-	// Fetch tenant to read the limit
+	// Fetch tenant to read the plan-based limit.
 	var tenant models.Tenant
 	if err := s.db.WithContext(ctx).First(&tenant, tenantID).Error; err != nil {
 		return "", "", fmt.Errorf("tenant not found: %w", err)
 	}
+	planLimits := models.GetPlanLimits(tenant.Plan)
 
 	// Count active keys: non-revoked and not yet expired
 	var activeCount int64
@@ -71,11 +73,8 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 		Where("tenant_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())", tenantID).
 		Count(&activeCount)
 
-	limit := tenant.MaxAPIKeys
-	if limit <= 0 {
-		limit = 5 // safety fallback
-	}
-	if activeCount >= int64(limit) {
+	limit := planLimits.MaxAPIKeys
+	if limit != -1 && activeCount >= int64(limit) {
 		return "", "", &ErrAPIKeyLimitReached{Limit: limit, Current: activeCount}
 	}
 	rawSecret := make([]byte, 32)
@@ -96,17 +95,19 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 
 	kid := "tg_" + uuid.New().String()
 	ak := models.APIKey{
-		TenantID:    tenantID,
-		KeyID:       kid,
-		Label:       label,
-		Salt:        salt,
-		SecretHash:  hash,
-		Scopes:      scopes,
-		Provider:    provider,
-		AuthMethod:  authMethod,
-		BillingMode: billingMode,
-		Revoked:     false,
-		ExpiresAt:   expiresAt,
+		TenantID:        tenantID,
+		KeyID:           kid,
+		Label:           label,
+		Salt:            salt,
+		SecretHash:      hash,
+		Scopes:          scopes,
+		Provider:        provider,
+		AuthMethod:      authMethod,
+		BillingMode:     billingMode,
+		Revoked:         false,
+		ExpiresAt:       expiresAt,
+		ProjectID:       projectID,
+		CreatedByUserID: createdByUserID,
 	}
 	if err := s.db.Create(&ak).Error; err != nil {
 		return "", "", err
@@ -142,6 +143,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, presented string) (*mod
 				}
 				return &models.APIKey{
 					TenantID:    cd.TenantID,
+					ProjectID:   cd.ProjectID,
 					KeyID:       cd.KeyID,
 					Label:       cd.Label,
 					Salt:        salt,
@@ -237,6 +239,7 @@ func (s *APIKeyService) cacheKey(ctx context.Context, ak *models.APIKey) {
 	cd := apiKeyCacheData{
 		KeyID:       ak.KeyID,
 		TenantID:    ak.TenantID,
+		ProjectID:   ak.ProjectID,
 		Label:       ak.Label,
 		Revoked:     ak.Revoked,
 		ExpiresAt:   ak.ExpiresAt,

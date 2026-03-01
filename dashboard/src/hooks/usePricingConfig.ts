@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-
-const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
-
-function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('user_id') || ''
-  return { 'Content-Type': 'application/json', 'X-User-ID': userId }
-}
+import { apiFetch } from '../lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,9 +63,9 @@ export function usePricingConfig() {
     setError(null)
     try {
       const [catalogRes, configsRes, keysRes] = await Promise.all([
-        fetch(`${API_URL}/v1/admin/pricing/catalog`, { headers: authHeaders() }),
-        fetch(`${API_URL}/v1/admin/pricing-configs`, { headers: authHeaders() }),
-        fetch(`${API_URL}/v1/admin/api_keys`, { headers: authHeaders() }),
+        apiFetch('/v1/admin/pricing/catalog'),
+        apiFetch('/v1/admin/pricing-configs'),
+        apiFetch('/v1/admin/api_keys'),
       ])
       if (!catalogRes.ok) throw new Error('Failed to fetch pricing catalog')
       if (!configsRes.ok) throw new Error('Failed to fetch pricing configs')
@@ -96,9 +90,8 @@ export function usePricingConfig() {
   // ── CRUD ─────────────────────────────────────────────────────────────────
 
   async function createConfig(name: string, description: string): Promise<PricingConfigView> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs`, {
+    const res = await apiFetch('/v1/admin/pricing-configs', {
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify({ name, description }),
     })
     if (!res.ok) {
@@ -111,9 +104,8 @@ export function usePricingConfig() {
   }
 
   async function deleteConfig(configId: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs/${configId}`, {
+    const res = await apiFetch(`/v1/admin/pricing-configs/${configId}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()
@@ -129,9 +121,8 @@ export function usePricingConfig() {
     pricePerUnit: string,
     unitSize = 1000000,
   ): Promise<ConfigRateView> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs/${configId}/rates`, {
+    const res = await apiFetch(`/v1/admin/pricing-configs/${configId}/rates`, {
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify({ model_id: modelId, price_type: priceType, price_per_unit: pricePerUnit, unit_size: unitSize }),
     })
     if (!res.ok) {
@@ -153,9 +144,8 @@ export function usePricingConfig() {
   }
 
   async function deleteRate(configId: number, rateId: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs/${configId}/rates/${rateId}`, {
+    const res = await apiFetch(`/v1/admin/pricing-configs/${configId}/rates/${rateId}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()
@@ -167,9 +157,8 @@ export function usePricingConfig() {
   }
 
   async function assignKey(configId: number, keyId: string, label: string): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs/${configId}/assign`, {
+    const res = await apiFetch(`/v1/admin/pricing-configs/${configId}/assign`, {
       method: 'PUT',
-      headers: authHeaders(),
       body: JSON.stringify({ key_id: keyId }),
     })
     if (!res.ok) {
@@ -182,9 +171,8 @@ export function usePricingConfig() {
   }
 
   async function unassignKey(configId: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/pricing-configs/${configId}/assign`, {
+    const res = await apiFetch(`/v1/admin/pricing-configs/${configId}/assign`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()

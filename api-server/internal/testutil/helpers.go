@@ -32,10 +32,20 @@ func MustConnectTestDB(t *testing.T, dsn string) *gorm.DB {
 		t.Fatalf("testutil: connect to test db: %v", err)
 	}
 
+	// Drop legacy columns that may exist from prior test runs.
+	db.Exec("DROP INDEX IF EXISTS idx_users_tenant_id")
+	db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS tenant_id")
+	db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS role")
+	db.Exec("ALTER TABLE tenants DROP COLUMN IF EXISTS max_api_keys")
+
 	if err := db.AutoMigrate(
 		&models.Tenant{},
 		&models.User{},
+		&models.TenantMembership{},
+		&models.Project{},
+		&models.ProjectMembership{},
 		&models.APIKey{},
+		&models.APIKeyProviderKeyBinding{},
 		&models.ProviderKey{},
 		&models.TenantProviderSettings{},
 		&models.UsageLog{},
@@ -52,6 +62,9 @@ func MustConnectTestDB(t *testing.T, dsn string) *gorm.DB {
 		&models.RateLimit{},
 		&models.ProcessedStripeEvent{},
 		&models.AuditReport{},
+		&models.NotificationChannel{},
+		&models.GatewayEvent{},
+		&models.AuditLog{},
 	); err != nil {
 		t.Fatalf("testutil: automigrate: %v", err)
 	}
@@ -69,12 +82,20 @@ func MustConnectTestDB(t *testing.T, dsn string) *gorm.DB {
 func TruncateAll(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	tables := []string{
+		"audit_logs",
+		"api_key_provider_key_bindings",
 		"cost_ledgers", "usage_logs", "pricing_markups",
 		"contract_pricings", "model_pricings", "model_defs", "providers",
 		"api_key_configs", "pricing_config_rates", "pricing_configs",
 		"budget_limits", "rate_limits",
 		"tenant_provider_settings", "provider_keys",
-		"api_keys", "users", "tenants",
+		"project_memberships",
+		"api_keys",
+		"projects",
+		"tenant_memberships",
+		"notification_channels",
+		"gateway_events",
+		"users", "tenants",
 		"processed_stripe_events", "audit_reports",
 	}
 	for _, tbl := range tables {
@@ -82,37 +103,86 @@ func TruncateAll(t *testing.T, db *gorm.DB) {
 	}
 }
 
-// SeedTenant creates a tenant and an owner user, returning both.
+// SeedTenant creates a tenant, an owner user, a TenantMembership, and a default Project,
+// returning the tenant and user.
 func SeedTenant(t *testing.T, db *gorm.DB, tenantName, ownerID, ownerEmail string) (models.Tenant, models.User) {
 	t.Helper()
-	tenant := models.Tenant{Name: tenantName, Plan: models.PlanPro, MaxAPIKeys: 5}
+
+	tenant := models.Tenant{Name: tenantName, Plan: models.PlanPro}
 	if err := db.Create(&tenant).Error; err != nil {
 		t.Fatalf("testutil: create tenant: %v", err)
 	}
-	user := models.User{
-		ID:       ownerID,
+
+	// Create default project.
+	project := models.Project{
 		TenantID: tenant.ID,
-		Email:    ownerEmail,
-		Name:     "Test Owner",
-		Role:     models.RoleOwner,
-		Status:   models.StatusActive,
+		Name:     "Default",
+		Status:   models.ProjectStatusActive,
+	}
+	if err := db.Create(&project).Error; err != nil {
+		t.Fatalf("testutil: create default project: %v", err)
+	}
+
+	// Set default_project_id on tenant.
+	db.Model(&tenant).Update("default_project_id", project.ID)
+	tenant.DefaultProjectID = &project.ID
+
+	user := models.User{
+		ID:     ownerID,
+		Email:  ownerEmail,
+		Name:   "Test Owner",
+		Status: models.StatusActive,
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("testutil: create user: %v", err)
 	}
+
+	// Create TenantMembership.
+	membership := models.TenantMembership{
+		TenantID: tenant.ID,
+		UserID:   user.ID,
+		OrgRole:  models.RoleOwner,
+		Status:   models.StatusActive,
+	}
+	if err := db.Create(&membership).Error; err != nil {
+		t.Fatalf("testutil: create tenant membership: %v", err)
+	}
+
+	// Create ProjectMembership for default project.
+	pm := models.ProjectMembership{
+		ProjectID:   project.ID,
+		UserID:      user.ID,
+		ProjectRole: models.ProjectRoleAdmin,
+	}
+	if err := db.Create(&pm).Error; err != nil {
+		t.Fatalf("testutil: create project membership: %v", err)
+	}
+
 	return tenant, user
 }
 
-// SeedUser creates an additional user in the given tenant.
+// SeedUser creates an additional user in the given tenant with a TenantMembership.
 func SeedUser(t *testing.T, db *gorm.DB, tenantID uint, id, email, role, status string) models.User {
 	t.Helper()
 	u := models.User{
-		ID: id, TenantID: tenantID, Email: email,
-		Name: "User " + role, Role: role, Status: status,
+		ID: id, Email: email,
+		Name: "User " + role, Status: status,
 	}
 	if err := db.Create(&u).Error; err != nil {
 		t.Fatalf("testutil: create user: %v", err)
 	}
+
+	// Create TenantMembership.
+	membership := models.TenantMembership{
+		TenantID: tenantID,
+		UserID:   u.ID,
+		OrgRole:  role,
+		Status:   status,
+	}
+	if err := db.Create(&membership).Error; err != nil {
+		t.Fatalf("testutil: create tenant membership: %v", err)
+	}
+
 	return u
 }
 

@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-
-const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
+import { apiFetch } from '../lib/api'
 
 // ─── Date range ───────────────────────────────────────────────────────────────
 export interface DateRange {
@@ -223,8 +222,6 @@ export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): Da
     }
 
     try {
-      const headers = { 'X-User-ID': userId }
-
       // Build optional date query string, always including the browser timezone.
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
       let dateQS = `?tz=${encodeURIComponent(tz)}`
@@ -236,11 +233,11 @@ export function useUsageData(dateRange?: DateRange, pollIntervalMs = 15_000): Da
       }
 
       const [logsRes, summaryRes, budgetRes, forecastRes, metricsRes] = await Promise.all([
-        fetch(`${API_SERVER_URL}/v1/usage${dateQS}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/usage/summary${dateQS}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/budget?tz=${encodeURIComponent(tz)}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/usage/forecast?tz=${encodeURIComponent(tz)}`, { headers }),
-        fetch(`${API_SERVER_URL}/v1/usage/metrics${dateQS}`, { headers }),
+        apiFetch(`/v1/usage${dateQS}`),
+        apiFetch(`/v1/usage/summary${dateQS}`),
+        apiFetch(`/v1/budget?tz=${encodeURIComponent(tz)}`),
+        apiFetch(`/v1/usage/forecast?tz=${encodeURIComponent(tz)}`),
+        apiFetch(`/v1/usage/metrics${dateQS}`),
       ])
 
       const logsData = logsRes.ok ? await logsRes.json() : { usage_logs: [] }

@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-
-const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
-
-function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('user_id') || ''
-  return { 'Content-Type': 'application/json', 'X-User-ID': userId }
-}
+import { apiFetch } from '../lib/api'
 
 export interface RateLimit {
   ID: number
@@ -43,7 +37,7 @@ export function useRateLimits(pollInterval?: number) {
   const fetchLimits = useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setError(null) }
     try {
-      const res = await fetch(`${API_URL}/v1/admin/rate-limits`, { headers: authHeaders() })
+      const res = await apiFetch('/v1/admin/rate-limits')
       if (!res.ok) throw new Error('Failed to fetch rate limits')
       const data = await res.json()
       setLimits(data.rate_limits || [])
@@ -68,9 +62,8 @@ export function useRateLimits(pollInterval?: number) {
   }, [pollInterval, fetchLimits])
 
   async function upsertLimit(req: UpsertRateLimitReq): Promise<RateLimit> {
-    const res = await fetch(`${API_URL}/v1/admin/rate-limits`, {
+    const res = await apiFetch('/v1/admin/rate-limits', {
       method: 'PUT',
-      headers: authHeaders(),
       body: JSON.stringify(req),
     })
     if (!res.ok) {
@@ -83,9 +76,8 @@ export function useRateLimits(pollInterval?: number) {
   }
 
   async function deleteLimit(id: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/rate-limits/${id}`, {
+    const res = await apiFetch(`/v1/admin/rate-limits/${id}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()

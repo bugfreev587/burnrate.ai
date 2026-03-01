@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,6 +58,27 @@ func NewProxyHandler(providerKeySvc *services.ProviderKeyService, eventQueue *ev
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
+
+// isModelAllowed checks if a model is in the JSON allowlist string (e.g. `["claude-3-opus","gpt-4"]`).
+// Returns true if allowlist is empty or model is found.
+func isModelAllowed(allowlistJSON string, model string) bool {
+	if allowlistJSON == "" || allowlistJSON == "[]" || allowlistJSON == "null" {
+		return true
+	}
+	var allowed []string
+	if err := json.Unmarshal([]byte(allowlistJSON), &allowed); err != nil {
+		return true // if we can't parse, don't block
+	}
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, a := range allowed {
+		if a == model {
+			return true
+		}
+	}
+	return false
+}
 
 // determineBillable returns true when the request should be recorded as billable API usage.
 func determineBillable(billingMode string) bool {
@@ -222,7 +244,7 @@ func (h *ProxyHandler) reconcilePostResponse(ctx context.Context, tenantID uint,
 }
 
 // publishUsageEvent publishes a usage event to Redis Streams (fire-and-forget).
-func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, keyID string, provider Provider, counts TokenCounts, billed bool, providerKeyHint string, latencyMs int64, ts time.Time) {
+func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, projectID uint, keyID string, provider Provider, counts TokenCounts, billed bool, providerKeyHint string, latencyMs int64, ts time.Time) {
 	if tenantID == 0 {
 		return
 	}
@@ -231,6 +253,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 	}
 	msg := events.UsageEventMsg{
 		TenantID:            tenantID,
+		ProjectID:           projectID,
 		KeyID:               keyID,
 		Provider:            string(provider),
 		Model:               counts.Model,
@@ -257,6 +280,7 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, key
 func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
+	projectID := c.GetUint("project_id")
 	keyID, _ := c.Get("key_id")
 	keyIDStr, _ := keyID.(string)
 
@@ -279,6 +303,19 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		return
 	}
 	reqMeta := parseRequestMeta(bodyBytes)
+
+	// Model allowlist enforcement: reject requests for models not in the API key's allowlist.
+	if akI, exists := c.Get("api_key"); exists {
+		if ak, ok := akI.(*models.APIKey); ok && ak.ModelAllowlist != "" {
+			if !isModelAllowed(ak.ModelAllowlist, reqMeta.Model) {
+				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+					"type":    "model_not_allowed",
+					"message": fmt.Sprintf("Model %q is not in this API key's allowlist.", reqMeta.Model),
+				}})
+				return
+			}
+		}
+	}
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, reqMeta.Model, len(bodyBytes), reqMeta.MaxTokens) {
 		if h.gatewayEventSvc != nil {
@@ -454,7 +491,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	go func() {
 		bgCtx := context.Background()
 		h.reconcilePostResponse(bgCtx, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens, counts.OutputTokens, reservedAmount)
-		h.publishUsageEvent(bgCtx, tenantID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
+		h.publishUsageEvent(bgCtx, tenantID, projectID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 	}()
 
 	slog.Info("proxy_request_completed",

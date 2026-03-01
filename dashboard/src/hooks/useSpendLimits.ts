@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-
-const API_URL = import.meta.env.VITE_API_SERVER_URL || ''
-
-function authHeaders(): Record<string, string> {
-  const userId = localStorage.getItem('user_id') || ''
-  return { 'Content-Type': 'application/json', 'X-User-ID': userId }
-}
+import { apiFetch } from '../lib/api'
 
 export interface SpendLimit {
   id: number
@@ -42,7 +36,7 @@ export function useSpendLimits() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/v1/admin/budget`, { headers: authHeaders() })
+      const res = await apiFetch('/v1/admin/budget')
       if (!res.ok) throw new Error('Failed to fetch spend limits')
       const data = await res.json()
       setLimits(data.budget_limits || [])
@@ -56,9 +50,8 @@ export function useSpendLimits() {
   useEffect(() => { fetchLimits() }, [fetchLimits])
 
   async function upsertLimit(req: UpsertSpendLimitReq): Promise<SpendLimit> {
-    const res = await fetch(`${API_URL}/v1/admin/budget`, {
+    const res = await apiFetch('/v1/admin/budget', {
       method: 'PUT',
-      headers: authHeaders(),
       body: JSON.stringify(req),
     })
     if (!res.ok) {
@@ -71,9 +64,8 @@ export function useSpendLimits() {
   }
 
   async function deleteLimit(id: number): Promise<void> {
-    const res = await fetch(`${API_URL}/v1/admin/budget/${id}`, {
+    const res = await apiFetch(`/v1/admin/budget/${id}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     })
     if (!res.ok) {
       const d = await res.json()

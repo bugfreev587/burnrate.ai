@@ -8,13 +8,13 @@ import (
 )
 
 // Tenant is the top-level multi-tenant boundary.
-// Every user, API key, provider key, and usage log belongs to exactly one tenant.
+// Every API key, provider key, and usage log belongs to exactly one tenant.
 type Tenant struct {
 	ID                   uint       `gorm:"primaryKey"`
 	Name                 string
 	Status               string     `gorm:"default:active"`        // active | suspended
 	Plan                 string     `gorm:"default:free"` // free | pro | team | business
-	MaxAPIKeys           int        `gorm:"default:1"`    // plan-derived; use GetPlanLimits for enforcement
+	DefaultProjectID     *uint      `gorm:"column:default_project_id"` // FK to projects.id; nullable until first project is created
 	StripeCustomerID     string     `gorm:"column:stripe_customer_id;index"`
 	StripeSubscriptionID string     `gorm:"column:stripe_subscription_id"`
 	PlanStatus           string     `gorm:"column:plan_status;default:active"`
@@ -26,17 +26,70 @@ type Tenant struct {
 }
 
 // User represents a dashboard user synced from Clerk on first sign-in.
+// Users can belong to multiple tenants via TenantMembership.
 type User struct {
 	ID        string    `gorm:"primaryKey;type:text"` // Clerk user ID e.g. user_2lXYZ…
-	TenantID  uint      `gorm:"index"`
 	Email     string    `gorm:"uniqueIndex"`
 	Name      string
-	Role      string    `gorm:"default:viewer"` // owner | admin | editor | viewer
 	Status    string    `gorm:"default:active"` // active | suspended | pending
 	CreatedAt time.Time
 }
 
-// Role constants
+// TenantMembership associates a user with a tenant and defines their org-level role.
+type TenantMembership struct {
+	TenantID  uint   `gorm:"primaryKey;autoIncrement:false"`
+	UserID    string `gorm:"primaryKey;type:text;autoIncrement:false"`
+	OrgRole   string `gorm:"not null;default:viewer"` // owner | admin | editor | viewer
+	Status    string `gorm:"not null;default:active"`  // active | suspended | pending
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Project represents a logical grouping within a tenant. API keys are bound to projects.
+type Project struct {
+	ID          uint      `gorm:"primaryKey"`
+	TenantID    uint      `gorm:"index;uniqueIndex:idx_project_tenant_name"`
+	Name        string    `gorm:"size:128;uniqueIndex:idx_project_tenant_name"`
+	Description string
+	Status      string    `gorm:"not null;default:active"` // active | archived
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ProjectMembership associates a user with a project and defines their project-level role.
+type ProjectMembership struct {
+	ProjectID   uint   `gorm:"primaryKey;autoIncrement:false"`
+	UserID      string `gorm:"primaryKey;type:text;autoIncrement:false"`
+	ProjectRole string `gorm:"not null;default:project_viewer"` // project_admin | project_editor | project_viewer
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// APIKeyProviderKeyBinding allows a per-API-key override of the tenant's default provider key.
+type APIKeyProviderKeyBinding struct {
+	APIKeyID      uint      `gorm:"primaryKey;autoIncrement:false"`
+	ProviderKeyID uint      `gorm:"not null"`
+	CreatedAt     time.Time
+}
+
+// AuditLog records security-relevant mutations for compliance and debugging.
+type AuditLog struct {
+	ID            uint      `gorm:"primaryKey"`
+	TenantID      uint      `gorm:"index"`
+	ActorUserID   string    `gorm:"size:255"`
+	ActorAPIKeyID string    `gorm:"size:64"`
+	Action        string    `gorm:"size:64;index"`   // e.g. "api_key:create", "member:invite"
+	ResourceType  string    `gorm:"size:64;index"`   // e.g. "api_key", "project", "membership"
+	ResourceID    string    `gorm:"size:255"`
+	Success       bool      `gorm:"not null;default:true"`
+	IPAddress     string    `gorm:"size:45"`
+	BeforeJSON    string    `gorm:"type:jsonb"`
+	AfterJSON     string    `gorm:"type:jsonb"`
+	Metadata      string    `gorm:"type:jsonb"`
+	CreatedAt     time.Time `gorm:"index"`
+}
+
+// Role constants (org-level)
 const (
 	RoleOwner  = "owner"
 	RoleAdmin  = "admin"
@@ -44,11 +97,24 @@ const (
 	RoleViewer = "viewer"
 )
 
+// Project role constants
+const (
+	ProjectRoleAdmin  = "project_admin"
+	ProjectRoleEditor = "project_editor"
+	ProjectRoleViewer = "project_viewer"
+)
+
 // Status constants
 const (
 	StatusActive    = "active"
 	StatusSuspended = "suspended"
 	StatusPending   = "pending"
+)
+
+// Project status constants
+const (
+	ProjectStatusActive   = "active"
+	ProjectStatusArchived = "archived"
 )
 
 // PlanStatus constants (billing subscription status, independent from tenant Status).
@@ -81,8 +147,17 @@ func RoleLevel(role string) int {
 	}
 }
 
-func (u *User) HasPermission(required string) bool {
-	return RoleLevel(u.Role) >= RoleLevel(required)
+func ProjectRoleLevel(role string) int {
+	switch role {
+	case ProjectRoleAdmin:
+		return 3
+	case ProjectRoleEditor:
+		return 2
+	case ProjectRoleViewer:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (u *User) IsActive() bool {
@@ -126,22 +201,25 @@ func IsBillableMode(billingMode string) bool {
 }
 
 // APIKey is the machine-to-machine key used by the claude-code agent
-// to authenticate with the TokenGate gateway. Scoped to a tenant.
+// to authenticate with the TokenGate gateway. Scoped to a tenant and bound to a project.
 type APIKey struct {
-	ID         uint           `gorm:"primaryKey"`
-	TenantID   uint           `gorm:"index"`
-	KeyID      string         `gorm:"uniqueIndex;size:64"`
-	Label      string
-	Salt       []byte
-	SecretHash []byte
-	Scopes     pq.StringArray `gorm:"type:text[]"`
-	Provider    string         `gorm:"not null;default:anthropic"`
-	AuthMethod  string         `gorm:"not null;default:BROWSER_OAUTH"`
-	BillingMode string         `gorm:"not null;default:MONTHLY_SUBSCRIPTION"`
-	Revoked    bool
-	ExpiresAt  *time.Time
-	LastSeenAt *time.Time
-	CreatedAt  time.Time
+	ID              uint           `gorm:"primaryKey"`
+	TenantID        uint           `gorm:"index"`
+	ProjectID       uint           `gorm:"not null;index"` // FK to projects.id; every key belongs to exactly one project
+	KeyID           string         `gorm:"uniqueIndex;size:64"`
+	Label           string
+	Salt            []byte
+	SecretHash      []byte
+	Scopes          pq.StringArray `gorm:"type:text[]"`
+	Provider        string         `gorm:"not null;default:anthropic"`
+	AuthMethod      string         `gorm:"not null;default:BROWSER_OAUTH"`
+	BillingMode     string         `gorm:"not null;default:MONTHLY_SUBSCRIPTION"`
+	ModelAllowlist  string         `gorm:"type:jsonb"`     // JSON array of allowed model strings, empty = all
+	CreatedByUserID string         `gorm:"size:255"`       // Clerk user ID of the creator
+	Revoked         bool
+	ExpiresAt       *time.Time
+	LastSeenAt      *time.Time
+	CreatedAt       time.Time
 }
 
 // ProviderKey stores an upstream LLM provider API key using envelope encryption.
@@ -193,6 +271,7 @@ func MaskKey(key string) string {
 type UsageLog struct {
 	ID                  uint            `gorm:"primaryKey"                              json:"id"`
 	TenantID            uint            `gorm:"index"                                   json:"tenant_id"`
+	ProjectID           uint            `gorm:"index"                                   json:"project_id"`
 	UserID              string          `gorm:"index"                                   json:"user_id"`
 	Provider            string          `                                               json:"provider"`
 	Model               string          `                                               json:"model"`

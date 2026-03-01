@@ -5,6 +5,7 @@ import { useRateLimits } from '../hooks/useRateLimits'
 import { useSpendLimits } from '../hooks/useSpendLimits'
 import { usePricingConfig } from '../hooks/usePricingConfig'
 import { useDashboardConfig } from '../hooks/useDashboardConfig'
+import { useProjects } from '../hooks/useProjects'
 import type { RateLimit, UpsertRateLimitReq } from '../hooks/useRateLimits'
 import type { SpendLimit, UpsertSpendLimitReq } from '../hooks/useSpendLimits'
 import Navbar from '../components/Navbar'
@@ -35,6 +36,7 @@ export default function LimitsPage() {
   const { limits: spendLimits, loading: slLoading, error: slError, upsertLimit: upsertSpendLimit, deleteLimit: deleteSpendLimit } = useSpendLimits()
   const { catalog, activeKeys } = usePricingConfig()
   const { config } = useDashboardConfig()
+  const { projects } = useProjects()
   const planLimits = config?.plan_limits
 
   const spendLimitCapped = planLimits != null && planLimits.max_budget_limits !== -1
@@ -74,8 +76,9 @@ export default function LimitsPage() {
 
   // ── Spend limit modal state ───────────────────────────────────────────────
   const [showSLModal, setShowSLModal] = useState(false)
-  const [slScope, setSlScope] = useState<'account' | 'api_key'>('account')
+  const [slScope, setSlScope] = useState<'account' | 'api_key' | 'project'>('account')
   const [slKeyId, setSlKeyId] = useState('')
+  const [slProjectId, setSlProjectId] = useState('')
   const [slProvider, setSlProvider] = useState('')
   const [slPeriod, setSlPeriod] = useState('monthly')
   const [slLimitAmount, setSlLimitAmount] = useState('')
@@ -131,7 +134,7 @@ export default function LimitsPage() {
 
   // ── Spend limit handlers ──────────────────────────────────────────────────
   const resetSLForm = () => {
-    setSlScope('account'); setSlKeyId(''); setSlProvider(''); setSlPeriod('monthly')
+    setSlScope('account'); setSlKeyId(''); setSlProjectId(''); setSlProvider(''); setSlPeriod('monthly')
     setSlLimitAmount(''); setSlThreshold('80'); setSlActions(['alert']); setSlFormError(null)
   }
 
@@ -142,13 +145,14 @@ export default function LimitsPage() {
     if (isNaN(threshold) || threshold < 0 || threshold > 100) { setSlFormError('Alert threshold must be 0-100'); return }
     if (slActions.length === 0) { setSlFormError('Select at least one action'); return }
     if (slScope === 'api_key' && !slKeyId) { setSlFormError('Please select an API key'); return }
+    if (slScope === 'project' && !slProjectId) { setSlFormError('Please select a project'); return }
     const action = slActions.includes('alert') && slActions.includes('block')
       ? 'alert_block'
       : slActions[0]
     setSlSaving(true); setSlFormError(null)
     try {
       const req: UpsertSpendLimitReq = {
-        scope_type: slScope, scope_id: slScope === 'api_key' ? slKeyId : '',
+        scope_type: slScope, scope_id: slScope === 'api_key' ? slKeyId : slScope === 'project' ? slProjectId : '',
         period_type: slPeriod, provider: slProvider,
         limit_amount: slLimitAmount, alert_threshold: String(threshold), action,
       }
@@ -166,8 +170,9 @@ export default function LimitsPage() {
 
   const handleEditSL = (l: SpendLimit) => {
     setEditingSL(l)
-    setSlScope(l.scope_type as 'account' | 'api_key')
-    setSlKeyId(l.scope_id || '')
+    setSlScope(l.scope_type as 'account' | 'api_key' | 'project')
+    setSlKeyId(l.scope_type === 'api_key' ? (l.scope_id || '') : '')
+    setSlProjectId(l.scope_type === 'project' ? (l.scope_id || '') : '')
     setSlProvider(l.provider || '')
     setSlPeriod(l.period_type)
     setSlLimitAmount(l.limit_amount)
@@ -283,7 +288,11 @@ export default function LimitsPage() {
                         <td>
                           {l.scope_type === 'api_key' ? (
                             <span className="mode-badge" title={l.scope_id}>
-                              {l.key_label || l.scope_id?.slice(0, 8) + '…'}
+                              {l.key_label || l.scope_id?.slice(0, 8) + '\u2026'}
+                            </span>
+                          ) : l.scope_type === 'project' ? (
+                            <span className="mode-badge" title={l.scope_id}>
+                              {projects.find(p => String(p.id) === l.scope_id)?.name || 'Project ' + l.scope_id}
                             </span>
                           ) : (
                             <span className="provider-badge">Account</span>
@@ -456,11 +465,21 @@ export default function LimitsPage() {
                       <span className="role-desc">Applies to all usage across the account</span>
                     </div>
                   </label>
+                  <label className={`role-option ${slScope === 'project' ? 'selected' : ''} ${editingSL ? 'disabled' : ''}`}>
+                    <input type="radio" name="sl-scope" value="project"
+                      checked={slScope === 'project'}
+                      disabled={!!editingSL}
+                      onChange={() => { setSlScope('project'); setSlProjectId(projects[0]?.id?.toString() ?? ''); setSlKeyId(''); setSlProvider('') }} />
+                    <div>
+                      <strong>Per Project</strong>
+                      <span className="role-desc">Applies to all keys in a project</span>
+                    </div>
+                  </label>
                   <label className={`role-option ${slScope === 'api_key' ? 'selected' : ''} ${editingSL ? 'disabled' : ''}`}>
                     <input type="radio" name="sl-scope" value="api_key"
                       checked={slScope === 'api_key'}
                       disabled={!!editingSL}
-                      onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? ''); setSlProvider('') }} />
+                      onChange={() => { setSlScope('api_key'); setSlKeyId(activeKeys[0]?.key_id ?? ''); setSlProjectId(''); setSlProvider('') }} />
                     <div>
                       <strong>Per API Key</strong>
                       <span className="role-desc">Applies to a single API key (Team+ plans)</span>
@@ -468,6 +487,23 @@ export default function LimitsPage() {
                   </label>
                 </div>
               </div>
+
+              {slScope === 'project' && (
+                <div className="form-group">
+                  <label>Project <span className="required">*</span></label>
+                  {projects.length === 0 ? (
+                    <p className="text-muted">No projects. Create one in Settings first.</p>
+                  ) : (
+                    <select value={slProjectId} onChange={e => setSlProjectId(e.target.value)} disabled={!!editingSL}>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}{p.is_default ? ' (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {slScope === 'api_key' && (
                 <div className="form-group">

@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -11,6 +13,8 @@ import (
 
 const (
 	ContextKeyUser          = "user"
+	ContextKeyTenantID      = "tenant_id"
+	ContextKeyOrgRole       = "org_role"
 	ErrCodeUnauthorized     = "unauthorized"
 	ErrCodeForbidden        = "forbidden"
 	ErrCodeUserSuspended    = "user_suspended"
@@ -25,8 +29,8 @@ func NewRBACMiddleware(db *gorm.DB) *RBACMiddleware {
 	return &RBACMiddleware{db: db}
 }
 
-// RequireUser loads the user from X-User-ID header, checks active status,
-// and stores the user + tenant_id in context.
+// RequireUser loads the user from X-User-ID header, reads X-Tenant-Id,
+// loads the TenantMembership, and stores user + tenant_id + org_role in context.
 func (m *RBACMiddleware) RequireUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetHeader("X-User-ID")
@@ -58,28 +62,64 @@ func (m *RBACMiddleware) RequireUser() gin.HandlerFunc {
 			return
 		}
 
-		c.Set(ContextKeyUser, &user)
-		c.Set("tenant_id", user.TenantID)
-		c.Next()
-	}
-}
-
-// RequireRole checks that the authenticated user has at least the required role level.
-func (m *RBACMiddleware) RequireRole(requiredRole string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, ok := GetUserFromContext(c)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   ErrCodeUnauthorized,
-				"message": "Authentication required.",
+		// Read tenant from X-Tenant-Id header.
+		tenantIDStr := c.GetHeader("X-Tenant-Id")
+		if tenantIDStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "missing_tenant_id",
+				"message": "X-Tenant-Id header is required.",
 			})
 			c.Abort()
 			return
 		}
-		if !user.HasPermission(requiredRole) {
+
+		tenantID64, err := strconv.ParseUint(tenantIDStr, 10, 64)
+		if err != nil || tenantID64 == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "invalid_tenant_id",
+				"message": "X-Tenant-Id must be a valid positive integer.",
+			})
+			c.Abort()
+			return
+		}
+		tenantID := uint(tenantID64)
+
+		// Load TenantMembership.
+		var membership models.TenantMembership
+		if err := m.db.Where("tenant_id = ? AND user_id = ?", tenantID, userID).First(&membership).Error; err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   ErrCodeForbidden,
+				"message": "You are not a member of this tenant.",
+			})
+			c.Abort()
+			return
+		}
+
+		if membership.Status != models.StatusActive {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   ErrCodeUserSuspended,
+				"message": "Your membership in this tenant has been suspended.",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Set(ContextKeyUser, &user)
+		c.Set(ContextKeyTenantID, tenantID)
+		c.Set(ContextKeyOrgRole, membership.OrgRole)
+		c.Next()
+	}
+}
+
+// RequireOrgRole is a convenience middleware that checks the org role meets a minimum level.
+// Used as a simple gate during transition.
+func (m *RBACMiddleware) RequireOrgRole(minRole string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orgRole := GetOrgRoleFromContext(c)
+		if models.RoleLevel(orgRole) < models.RoleLevel(minRole) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"error":   ErrCodeInsufficientRole,
-				"message": "You don't have permission to perform this action. Required role: " + requiredRole,
+				"message": fmt.Sprintf("You don't have permission to perform this action. Required role: %s", minRole),
 			})
 			c.Abort()
 			return
@@ -87,11 +127,6 @@ func (m *RBACMiddleware) RequireRole(requiredRole string) gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-func (m *RBACMiddleware) RequireOwner() gin.HandlerFunc  { return m.RequireRole(models.RoleOwner) }
-func (m *RBACMiddleware) RequireAdmin() gin.HandlerFunc  { return m.RequireRole(models.RoleAdmin) }
-func (m *RBACMiddleware) RequireEditor() gin.HandlerFunc { return m.RequireRole(models.RoleEditor) }
-func (m *RBACMiddleware) RequireViewer() gin.HandlerFunc { return m.RequireRole(models.RoleViewer) }
 
 // GetUserFromContext retrieves the authenticated user from gin context.
 func GetUserFromContext(c *gin.Context) (*models.User, bool) {
@@ -103,17 +138,22 @@ func GetUserFromContext(c *gin.Context) (*models.User, bool) {
 	return u, ok
 }
 
-// GetTenantIDFromContext retrieves tenant ID from user or API key context.
+// GetTenantIDFromContext retrieves tenant ID from context.
 func GetTenantIDFromContext(c *gin.Context) (uint, bool) {
-	if user, ok := GetUserFromContext(c); ok {
-		return user.TenantID, true
+	if tid, exists := c.Get(ContextKeyTenantID); exists {
+		return tid.(uint), true
 	}
 	if akI, exists := c.Get(ContextKeyAPIKey); exists {
 		ak := akI.(*models.APIKey)
 		return ak.TenantID, true
 	}
-	if tid, exists := c.Get("tenant_id"); exists {
-		return tid.(uint), true
-	}
 	return 0, false
+}
+
+// GetOrgRoleFromContext retrieves the org role from context.
+func GetOrgRoleFromContext(c *gin.Context) string {
+	if role, exists := c.Get(ContextKeyOrgRole); exists {
+		return role.(string)
+	}
+	return ""
 }

@@ -33,9 +33,11 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		return
 	}
 
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
 	// Fetch tenant + plan limits.
 	var tenant models.Tenant
-	if err := s.postgresDB.GetDB().First(&tenant, user.TenantID).Error; err != nil {
+	if err := s.postgresDB.GetDB().First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load tenant"})
 		return
 	}
@@ -100,7 +102,7 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 	}
 
 	// Check concurrent limit.
-	pending, err := s.auditSvc.CountPending(c.Request.Context(), user.TenantID)
+	pending, err := s.auditSvc.CountPending(c.Request.Context(), tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check pending reports"})
 		return
@@ -123,7 +125,7 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 	endOfDay := time.Date(periodEnd.Year(), periodEnd.Month(), periodEnd.Day(), 23, 59, 59, 999999999, time.UTC)
 
 	report := &models.AuditReport{
-		TenantID:        user.TenantID,
+		TenantID:        tenantID,
 		CreatedByUserID: user.ID,
 		CreatedByEmail:  user.Email,
 		PeriodStart:     startOfDay,

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
+import { apiFetch } from '../lib/api'
 
 export interface PresetOption {
   key: string   // "1d" | "3d" | "7d" | "14d" | "30d" | "90d" | "custom"
@@ -42,9 +41,7 @@ export function useDashboardConfig(): { config: DashboardConfig | null; loading:
     if (!userId) return
 
     setLoading(true)
-    fetch(`${API_SERVER_URL}/v1/dashboard/config`, {
-      headers: { 'X-User-ID': userId },
-    })
+    apiFetch('/v1/dashboard/config')
       .then(res => (res.ok ? res.json() : null))
       .then((data: DashboardConfig | null) => {
         setConfig(data)

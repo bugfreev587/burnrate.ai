@@ -31,11 +31,12 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 		return
 	}
 
+	tenantID, _ := middleware.GetTenantIDFromContext(c)
 	db := s.postgresDB.GetDB()
 
 	// 1. Fetch tenant and validate confirm_name
 	var tenant models.Tenant
-	if err := db.First(&tenant, caller.TenantID).Error; err != nil {
+	if err := db.First(&tenant, tenantID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch tenant"})
 		return
 	}
@@ -69,14 +70,19 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 		slog.Warn("account_delete_revoke_provider_keys_failed", "tenant_id", tenant.ID, "error", err)
 	}
 
-	// 5. Delete all users from Clerk + DB
-	var users []models.User
-	db.Where("tenant_id = ?", tenant.ID).Find(&users)
+	// 5. Delete all tenant members from Clerk + DB
+	var memberships []models.TenantMembership
+	db.Where("tenant_id = ?", tenant.ID).Find(&memberships)
 	var clerkErrors []string
-	for _, u := range users {
-		if err := s.deleteClerkUser(u.ID); err != nil {
-			slog.Error("account_delete_clerk_user_failed", "user_id", u.ID, "tenant_id", tenant.ID, "error", err)
-			clerkErrors = append(clerkErrors, fmt.Sprintf("%s: %v", u.ID, err))
+	for _, m := range memberships {
+		// Only delete from Clerk if user has no other tenant memberships.
+		var otherCount int64
+		db.Model(&models.TenantMembership{}).Where("user_id = ? AND tenant_id != ?", m.UserID, tenant.ID).Count(&otherCount)
+		if otherCount == 0 {
+			if err := s.deleteClerkUser(m.UserID); err != nil {
+				slog.Error("account_delete_clerk_user_failed", "user_id", m.UserID, "tenant_id", tenant.ID, "error", err)
+				clerkErrors = append(clerkErrors, fmt.Sprintf("%s: %v", m.UserID, err))
+			}
 		}
 	}
 	if len(clerkErrors) > 0 {
@@ -86,7 +92,21 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 		})
 		return
 	}
-	db.Where("tenant_id = ?", tenant.ID).Delete(&models.User{})
+
+	// Delete project memberships for projects in this tenant.
+	db.Exec("DELETE FROM project_memberships WHERE project_id IN (SELECT id FROM projects WHERE tenant_id = ?)", tenant.ID)
+	// Delete projects.
+	db.Where("tenant_id = ?", tenant.ID).Delete(&models.Project{})
+	// Delete tenant memberships.
+	db.Where("tenant_id = ?", tenant.ID).Delete(&models.TenantMembership{})
+	// Delete users who have no remaining memberships.
+	for _, m := range memberships {
+		var remaining int64
+		db.Model(&models.TenantMembership{}).Where("user_id = ?", m.UserID).Count(&remaining)
+		if remaining == 0 {
+			db.Delete(&models.User{}, "id = ?", m.UserID)
+		}
+	}
 
 	// 6. Mark tenant as suspended + canceled
 	db.Model(&tenant).Updates(map[string]any{

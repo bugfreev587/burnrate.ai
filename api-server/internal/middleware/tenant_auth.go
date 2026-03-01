@@ -76,6 +76,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		}
 		c.Set(ContextKeyAPIKey, ak)
 		c.Set("tenant_id", ak.TenantID)
+		c.Set("project_id", ak.ProjectID)
 		c.Set("key_id", ak.KeyID)
 		c.Set("provider", ak.Provider)
 		c.Set("auth_method", ak.AuthMethod)

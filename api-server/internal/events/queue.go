@@ -24,6 +24,7 @@ func NewEventQueue(rdb *redis.Client) *EventQueue {
 // UsageEventMsg is the payload published to the Redis stream.
 type UsageEventMsg struct {
 	TenantID            uint
+	ProjectID           uint
 	KeyID               string // api_keys.key_id — used for api_key-level budget tracking
 	Provider            string
 	Model               string
@@ -43,6 +44,7 @@ type UsageEventMsg struct {
 func (q *EventQueue) Publish(ctx context.Context, msg UsageEventMsg) error {
 	values := map[string]interface{}{
 		"tenant_id":             strconv.FormatUint(uint64(msg.TenantID), 10),
+		"project_id":            strconv.FormatUint(uint64(msg.ProjectID), 10),
 		"key_id":                msg.KeyID,
 		"provider":              msg.Provider,
 		"model":                 msg.Model,

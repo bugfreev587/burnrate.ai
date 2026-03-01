@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useUser, useAuth, SignOutButton } from '@clerk/clerk-react'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { useTenant } from '../contexts/TenantContext'
 import logoDark from '../assets/logo-dark.svg'
 import './Navbar.css'
 
@@ -9,6 +10,7 @@ export default function Navbar() {
   const { user, isLoaded: userLoaded } = useUser()
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
   const { role, isSynced } = useUserSync()
+  const { memberships, activeTenantId, switchTenant } = useTenant()
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -34,6 +36,26 @@ export default function Navbar() {
           <img src={logoDark} alt="" className="navbar-logo-icon" aria-hidden="true" />
           TokenGate
         </Link>
+
+        {isLoaded && isSignedIn && memberships.length > 1 && (
+          <select
+            className="tenant-switcher"
+            value={activeTenantId ?? ''}
+            onChange={e => {
+              const id = parseInt(e.target.value, 10)
+              if (!isNaN(id)) {
+                switchTenant(id)
+                window.location.reload()
+              }
+            }}
+          >
+            {memberships.map(m => (
+              <option key={m.tenant_id} value={m.tenant_id}>
+                {m.tenant_name} ({m.org_role})
+              </option>
+            ))}
+          </select>
+        )}
 
         {isLoaded && isSignedIn && (
           <div className="navbar-center">

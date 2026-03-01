@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useUserSync, hasPermission } from '../hooks/useUserSync'
+import { apiFetch } from '../lib/api'
 import './BillingPage.css'
-
-const API_BASE = import.meta.env.VITE_API_SERVER_URL || 'http://localhost:8080'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -113,9 +112,8 @@ export default function BillingPage() {
     if (sessionId && userId) {
       // Verify the checkout session with the backend to sync plan
       setSearchParams({}, { replace: true })
-      fetch(`${API_BASE}/v1/billing/checkout/verify`, {
+      apiFetch('/v1/billing/checkout/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-ID': userId },
         body: JSON.stringify({ session_id: sessionId }),
       })
         .then(res => res.json())
@@ -141,15 +139,13 @@ export default function BillingPage() {
   useEffect(() => {
     if (!isSynced || !userId) return
 
-    const headers: Record<string, string> = { 'X-User-ID': userId }
-
     async function load() {
       setLoading(true)
       setError(null)
       try {
         const [statusRes, invoicesRes] = await Promise.all([
-          fetch(`${API_BASE}/v1/billing/status`, { headers }),
-          fetch(`${API_BASE}/v1/billing/invoices`, { headers }),
+          apiFetch('/v1/billing/status'),
+          apiFetch('/v1/billing/invoices'),
         ])
 
         if (!statusRes.ok) throw new Error(`Billing status fetch failed: HTTP ${statusRes.status}`)
@@ -277,9 +273,8 @@ export default function BillingPage() {
                       className="btn btn-secondary"
                       onClick={async () => {
                         try {
-                          const res = await fetch(`${API_BASE}/v1/billing/portal`, {
+                          const res = await apiFetch('/v1/billing/portal', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-User-ID': userId! },
                             body: JSON.stringify({ return_url: window.location.href }),
                           })
                           if (!res.ok) throw new Error(`HTTP ${res.status}`)
