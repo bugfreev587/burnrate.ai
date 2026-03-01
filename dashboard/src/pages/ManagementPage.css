@@ -187,6 +187,7 @@
 /* Match Gateway project filter to primary action button */
 .gateway-project-filter {
   padding: 0.5rem 1.25rem;
+  height: 2.4rem;
   border-radius: var(--radius);
   border: none;
   background: var(--color-primary);
