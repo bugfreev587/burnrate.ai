@@ -56,7 +56,7 @@ func (e *ErrAPIKeyLimitReached) Error() string {
 
 // CreateKey creates a new tenant-scoped API key and returns (keyID, secret, error).
 // The secret is shown only once and is never stored in plain text.
-func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, authMethod, billingMode string, projectID uint, createdByUserID string) (string, string, error) {
+func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label string, scopes []string, expiresAt *time.Time, provider, authMethod, billingMode string, projectID uint, createdByUserID string, modelAllowlist []string) (string, string, error) {
 	if !models.ValidAuthBillingCombo(provider, authMethod, billingMode) {
 		return "", "", fmt.Errorf("invalid auth_method %q + billing_mode %q for provider %q", authMethod, billingMode, provider)
 	}
@@ -108,6 +108,11 @@ func (s *APIKeyService) CreateKey(ctx context.Context, tenantID uint, label stri
 		ExpiresAt:       expiresAt,
 		ProjectID:       projectID,
 		CreatedByUserID: createdByUserID,
+	}
+	if len(modelAllowlist) > 0 {
+		j, _ := json.Marshal(modelAllowlist)
+		s := string(j)
+		ak.ModelAllowlist = &s
 	}
 	if err := s.db.Create(&ak).Error; err != nil {
 		return "", "", err

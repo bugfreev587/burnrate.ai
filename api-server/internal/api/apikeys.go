@@ -14,13 +14,14 @@ import (
 )
 
 type createAPIKeyReq struct {
-	Label       string     `json:"label"        binding:"required"`
-	ProjectID   uint       `json:"project_id"   binding:"required"`
-	Provider    string     `json:"provider"     binding:"required"`
-	AuthMethod  string     `json:"auth_method"  binding:"required"`
-	BillingMode string     `json:"billing_mode" binding:"required"`
-	Scopes      []string   `json:"scopes"`
-	ExpiresAt   *time.Time `json:"expires_at"`
+	Label          string     `json:"label"           binding:"required"`
+	ProjectID      uint       `json:"project_id"      binding:"required"`
+	Provider       string     `json:"provider"        binding:"required"`
+	AuthMethod     string     `json:"auth_method"     binding:"required"`
+	BillingMode    string     `json:"billing_mode"    binding:"required"`
+	Scopes         []string   `json:"scopes"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	ModelAllowlist []string   `json:"model_allowlist"` // optional list of allowed model names
 }
 
 // handleCreateAPIKey creates a new tenant-scoped API key bound to a project.
@@ -89,7 +90,7 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 	}
 
 	user, _ := middleware.GetUserFromContext(c)
-	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), tenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode, req.ProjectID, user.ID)
+	kid, secret, err := s.apiKeySvc.CreateKey(c.Request.Context(), tenantID, req.Label, req.Scopes, req.ExpiresAt, req.Provider, req.AuthMethod, req.BillingMode, req.ProjectID, user.ID, req.ModelAllowlist)
 	if err != nil {
 		var limitErr *services.ErrAPIKeyLimitReached
 		if errors.As(err, &limitErr) {

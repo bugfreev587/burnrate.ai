@@ -214,7 +214,7 @@ type APIKey struct {
 	Provider        string         `gorm:"not null;default:anthropic"`
 	AuthMethod      string         `gorm:"not null;default:BROWSER_OAUTH"`
 	BillingMode     string         `gorm:"not null;default:MONTHLY_SUBSCRIPTION"`
-	ModelAllowlist  string         `gorm:"type:jsonb"`     // JSON array of allowed model strings, empty = all
+	ModelAllowlist  *string        `gorm:"type:jsonb"`     // JSON array of allowed model strings, nil = all
 	CreatedByUserID string         `gorm:"size:255"`       // Clerk user ID of the creator
 	Revoked         bool
 	ExpiresAt       *time.Time

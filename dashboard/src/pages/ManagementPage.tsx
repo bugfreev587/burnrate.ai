@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
 import { useTenant } from '../contexts/TenantContext'
-import { useProjects } from '../hooks/useProjects'
+import { useProjects, type Project, type ProjectMember } from '../hooks/useProjects'
 import { usePricingConfig } from '../hooks/usePricingConfig'
 import { apiFetch } from '../lib/api'
 import Navbar from '../components/Navbar'
@@ -60,7 +60,7 @@ export default function ManagementPage() {
   const navigate = useNavigate()
   const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
-  const { projects } = useProjects()
+  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, removeMember } = useProjects()
   const { catalog } = usePricingConfig()
 
   // Deduplicated model names from the pricing catalog, sorted alphabetically.
@@ -106,6 +106,19 @@ export default function ManagementPage() {
 
   // Limit-reached modal
   const [limitModal, setLimitModal] = useState<{ type: 'keys' | 'provider_keys' } | null>(null)
+
+  // Project management
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectDesc, setNewProjectDesc] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [editProjectName, setEditProjectName] = useState('')
+  const [editProjectDesc, setEditProjectDesc] = useState('')
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
+  const [showProjectMembers, setShowProjectMembers] = useState<number | null>(null)
+  const [loadingMembers, setLoadingMembers] = useState(false)
 
   const canAccess = hasPermission(role, 'editor')
   const canManageProviderKeys = hasPermission(role, 'admin')
@@ -293,6 +306,72 @@ export default function ManagementPage() {
       setTimeout(() => setCopiedID(null), 2000)
     } catch {
       showError('Failed to copy')
+    }
+  }
+
+  // ── Project actions ──────────────────────────────────────────────────────
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) { setCreateProjectError('Name is required'); return }
+    setCreatingProject(true)
+    setCreateProjectError(null)
+    try {
+      await createProject(newProjectName.trim(), newProjectDesc.trim())
+      showSuccess('Project created')
+      setShowCreateProjectModal(false)
+      setNewProjectName('')
+      setNewProjectDesc('')
+    } catch (err) {
+      setCreateProjectError(err instanceof Error ? err.message : 'Failed to create project')
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
+  const handleUpdateProject = async () => {
+    if (!editingProject) return
+    try {
+      await updateProject(editingProject.id, { name: editProjectName.trim(), description: editProjectDesc.trim() })
+      showSuccess('Project updated')
+      setEditingProject(null)
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to update project')
+    }
+  }
+
+  const handleDeleteProject = async (id: number) => {
+    if (!confirm('Delete this project? API keys and limits associated with it will need to be reassigned.')) return
+    try {
+      await deleteProject(id)
+      showSuccess('Project deleted')
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to delete project')
+    }
+  }
+
+  const handleViewProjectMembers = async (projectId: number) => {
+    if (showProjectMembers === projectId) { setShowProjectMembers(null); return }
+    setLoadingMembers(true)
+    try {
+      const members = await listMembers(projectId)
+      setProjectMembers(members)
+      setShowProjectMembers(projectId)
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load members')
+    } finally {
+      setLoadingMembers(false)
+    }
+  }
+
+  const handleRemoveProjectMember = async (projectId: number, memberId: string) => {
+    if (!confirm('Remove this member from the project?')) return
+    try {
+      await removeMember(projectId, memberId)
+      const members = await listMembers(projectId)
+      setProjectMembers(members)
+      showSuccess('Member removed from project')
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to remove member')
     }
   }
 
@@ -502,6 +581,116 @@ export default function ManagementPage() {
               </table>
             </div>
           </section>
+          )}
+
+          {/* ── Projects (admin only) ─────────────────────────────────────── */}
+          {canManageProviderKeys && (
+            <section className="mgmt-section">
+              <div className="section-hdr">
+                <div>
+                  <h2>
+                    Projects{' '}
+                    <span className="section-count">
+                      {projects.length}/{projectLimit === null ? '\u221e' : projectLimit}
+                    </span>
+                  </h2>
+                  <p className="section-desc">Organize API keys and limits by project.</p>
+                </div>
+                <button className="btn btn-primary" onClick={() => {
+                  if (projectSlotsLeft !== null && projectSlotsLeft <= 0) {
+                    showError('Project limit reached. Upgrade your plan to create more projects.')
+                    return
+                  }
+                  setNewProjectName(''); setNewProjectDesc(''); setCreateProjectError(null)
+                  setShowCreateProjectModal(true)
+                }}>
+                  Create Project
+                </button>
+              </div>
+              <div className="table-scroll">
+                <table className="mgmt-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Description</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.length === 0 ? (
+                      <tr><td colSpan={5} className="empty-cell">No projects yet.</td></tr>
+                    ) : projects.map(p => (
+                      <>
+                        <tr key={p.id}>
+                          <td>
+                            {p.name}
+                            {p.is_default && <span className="role-badge role-viewer" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>Default</span>}
+                          </td>
+                          <td className="text-muted">{p.description || '\u2014'}</td>
+                          <td><span className={`status-badge status-${p.status}`}>{p.status}</span></td>
+                          <td className="text-muted">{new Date(p.created_at).toLocaleDateString()}</td>
+                          <td className="actions-cell">
+                            <button className="btn btn-small btn-secondary" onClick={() => handleViewProjectMembers(p.id)}>
+                              {showProjectMembers === p.id ? 'Hide Members' : 'Members'}
+                            </button>
+                            <button className="btn btn-small btn-secondary" onClick={() => {
+                              setEditingProject(p)
+                              setEditProjectName(p.name)
+                              setEditProjectDesc(p.description)
+                            }}>
+                              Edit
+                            </button>
+                            {!p.is_default && (
+                              <button className="btn btn-small btn-danger" onClick={() => handleDeleteProject(p.id)}>
+                                Delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {showProjectMembers === p.id && (
+                          <tr key={`members-${p.id}`}>
+                            <td colSpan={5} style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary, #1a1a2e)' }}>
+                              {loadingMembers ? (
+                                <div className="spinner" style={{ margin: '0.5rem auto' }} />
+                              ) : projectMembers.length === 0 ? (
+                                <p className="text-muted" style={{ margin: '0.5rem 0' }}>No members assigned to this project.</p>
+                              ) : (
+                                <table className="mgmt-table" style={{ marginBottom: 0 }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Name</th>
+                                      <th>Email</th>
+                                      <th>Project Role</th>
+                                      <th>Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {projectMembers.map(m => (
+                                      <tr key={m.user_id}>
+                                        <td>{m.name || '\u2014'}</td>
+                                        <td className="text-muted">{m.email}</td>
+                                        <td><span className={`role-badge`}>{m.project_role}</span></td>
+                                        <td>
+                                          <button className="btn btn-small btn-danger" onClick={() => handleRemoveProjectMember(p.id, m.user_id)}>
+                                            Remove
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
 
         </div>
@@ -904,6 +1093,55 @@ export default function ManagementPage() {
               }}>
                 I've saved my key
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Project Modal ─────────────────────────────────────────── */}
+      {showCreateProjectModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateProjectModal(false)}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr"><h2>Create Project</h2></div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Name <span className="required">*</span></label>
+                <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="e.g. Backend API" autoFocus />
+              </div>
+              <div className="form-group">
+                <label>Description <span className="optional">(optional)</span></label>
+                <input type="text" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} placeholder="Brief description" />
+              </div>
+            </div>
+            {createProjectError && <div className="flash flash-error modal-flash">{createProjectError}</div>}
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setShowCreateProjectModal(false)} disabled={creatingProject}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleCreateProject} disabled={!newProjectName.trim() || creatingProject}>
+                {creatingProject ? 'Creating\u2026' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Project Modal ───────────────────────────────────────────── */}
+      {editingProject && (
+        <div className="modal-overlay" onClick={() => setEditingProject(null)}>
+          <div className="modal-box modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-hdr"><h2>Edit Project</h2></div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Name</label>
+                <input type="text" value={editProjectName} onChange={e => setEditProjectName(e.target.value)} autoFocus />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <input type="text" value={editProjectDesc} onChange={e => setEditProjectDesc(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-ftr">
+              <button className="btn btn-secondary" onClick={() => setEditingProject(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleUpdateProject} disabled={!editProjectName.trim()}>Save</button>
             </div>
           </div>
         </div>

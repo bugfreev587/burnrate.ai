@@ -69,8 +69,8 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 
 	// Model allowlist enforcement.
 	if akI, exists := c.Get("api_key"); exists {
-		if ak, ok := akI.(*models.APIKey); ok && ak.ModelAllowlist != "" {
-			if !isModelAllowed(ak.ModelAllowlist, req.Model) {
+		if ak, ok := akI.(*models.APIKey); ok && ak.ModelAllowlist != nil && *ak.ModelAllowlist != "" {
+			if !isModelAllowed(*ak.ModelAllowlist, req.Model) {
 				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
 					"type":    "model_not_allowed",
 					"message": fmt.Sprintf("Model %q is not in this API key's allowlist.", req.Model),
