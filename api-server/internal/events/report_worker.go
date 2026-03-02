@@ -458,14 +458,6 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		return nil, 0, fmt.Errorf("admin actions query: %w", err)
 	}
 
-	// Recent Requests (always included, last 100 by time DESC)
-	var recentRequests []usageRow
-	if err := w.buildQuery(ctx, report, filters).
-		Order("usage_logs.created_at DESC").
-		Limit(100).
-		Find(&recentRequests).Error; err != nil {
-		return nil, 0, fmt.Errorf("recent requests query: %w", err)
-	}
 
 	// ── Build PDF ────────────────────────────────────────────────────────
 	cfg := config.NewBuilder().
@@ -760,40 +752,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		}
 	}
 
-	// ── F. Recent Requests ───────────────────────────────────────────────
-	if len(recentRequests) > 0 {
-		addSectionHeader(m, fmt.Sprintf("Recent Requests (latest %d)", len(recentRequests)))
-		m.AddRows(
-			row.New(7).Add(
-				col.New(2).Add(text.New("Timestamp", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(2).Add(text.New("Provider", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(2).Add(text.New("Model", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(2).Add(text.New("Key Label", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(1).Add(text.New("In Tokens", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(1).Add(text.New("Out Tokens", props.Text{Size: 7, Style: fontstyle.Bold})),
-				col.New(2).Add(text.New("Cost", props.Text{Size: 7, Style: fontstyle.Bold})),
-			),
-		)
-		for _, r := range recentRequests {
-			label := r.KeyLabel
-			if label == "" {
-				label = truncate(r.KeyID, 12)
-			}
-			m.AddRows(
-				row.New(6).Add(
-					col.New(2).Add(text.New(r.CreatedAt.In(loc).Format("01-02 15:04"), props.Text{Size: 6})),
-					col.New(2).Add(text.New(r.Provider, props.Text{Size: 6})),
-					col.New(2).Add(text.New(truncate(r.Model, 20), props.Text{Size: 6})),
-					col.New(2).Add(text.New(truncate(label, 12), props.Text{Size: 6})),
-					col.New(1).Add(text.New(formatTokens(r.PromptTokens), props.Text{Size: 6})),
-					col.New(1).Add(text.New(formatTokens(r.CompletionTokens), props.Text{Size: 6})),
-					col.New(2).Add(text.New("$"+r.Cost.StringFixed(4), props.Text{Size: 6})),
-				),
-			)
-		}
-	}
-
-	// ── G. Definitions & Methodology ─────────────────────────────────────
+	// ── F. Definitions & Methodology ─────────────────────────────────────
 	addSectionHeader(m, "Definitions & Methodology")
 	addDefinitionRow(m, "API Usage Billed", "Requests billed directly via API usage metering (pay-per-token).")
 	addDefinitionRow(m, "Subscription", "Requests covered under a monthly subscription plan allocation.")
