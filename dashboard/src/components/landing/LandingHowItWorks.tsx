@@ -1,15 +1,15 @@
 import { useState } from 'react'
 
 export default function LandingHowItWorks() {
-  const [tab, setTab] = useState<'claude' | 'codex'>('claude')
+  const [tab, setTab] = useState<'claude' | 'vscode' | 'codex'>('claude')
 
   return (
     <section id="how-it-works" aria-labelledby="hiw-heading" className="py-20 sm:py-24 bg-gray-950 text-white">
-      <div className="mx-auto max-w-4xl px-4 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Setup</p>
           <h2 id="hiw-heading" className="text-3xl sm:text-4xl font-bold">How It Works</h2>
-          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute. Works with Claude Code, OpenAI Codex, and more.</p>
+          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute. Works with Claude Code, VS Code Extension, OpenAI Codex, and more.</p>
         </div>
 
         <ol className="space-y-10">
@@ -30,6 +30,12 @@ export default function LandingHowItWorks() {
                     onClick={() => setTab('claude')}
                   >
                     Claude Code
+                  </button>
+                  <button
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'vscode' ? 'text-blue-400 bg-white/5 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
+                    onClick={() => setTab('vscode')}
+                  >
+                    VS Code Extension
                   </button>
                   <button
                     className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'codex' ? 'text-blue-400 bg-white/5 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
@@ -55,6 +61,35 @@ export default function LandingHowItWorks() {
                       <span className="text-blue-300">ANTHROPIC_API_KEY</span>
                       <span className="text-gray-500">=</span>
                       <span className="text-green-400">tg_xxxxx</span>
+                    </code>
+                  ) : tab === 'vscode' ? (
+                    <code className="whitespace-pre">
+                      <span className="text-gray-500">// settings.json</span>
+                      {'\n'}
+                      <span className="text-blue-300">"claudeCode.environmentVariables"</span>
+                      <span className="text-gray-500">: [</span>
+                      {'\n'}
+                      <span className="text-gray-500">{'  { '}</span>
+                      <span className="text-blue-300">"name"</span>
+                      <span className="text-gray-500">: </span>
+                      <span className="text-green-400">"ANTHROPIC_BASE_URL"</span>
+                      <span className="text-gray-500">, </span>
+                      <span className="text-blue-300">"value"</span>
+                      <span className="text-gray-500">: </span>
+                      <span className="text-green-400">"https://gateway.tokengate.to"</span>
+                      <span className="text-gray-500">{' },'}</span>
+                      {'\n'}
+                      <span className="text-gray-500">{'  { '}</span>
+                      <span className="text-blue-300">"name"</span>
+                      <span className="text-gray-500">: </span>
+                      <span className="text-green-400">"ANTHROPIC_API_KEY"</span>
+                      <span className="text-gray-500">, </span>
+                      <span className="text-blue-300">"value"</span>
+                      <span className="text-gray-500">: </span>
+                      <span className="text-green-400">"tg_xxxxx"</span>
+                      <span className="text-gray-500">{' }'}</span>
+                      {'\n'}
+                      <span className="text-gray-500">]</span>
                     </code>
                   ) : (
                     <code className="whitespace-pre">

@@ -12,7 +12,7 @@ export default function LandingHero() {
         className="absolute top-0 left-1/2 -translate-x-1/2 h-[500px] w-[700px] rounded-full bg-blue-600/10 blur-3xl pointer-events-none"
       />
 
-      <div className="relative mx-auto max-w-4xl px-4 sm:px-6 pt-20 pb-28 text-center">
+      <div className="relative mx-auto max-w-5xl px-4 sm:px-6 pt-20 pb-28 text-center">
         <div className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-white/10 bg-white/5 px-5 py-2 mb-10 text-xs sm:text-sm text-gray-400">
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-blue-500" />
           <span className="font-medium text-gray-300">Works in 30 seconds</span>

@@ -13,7 +13,7 @@ const apiPains = [
 export default function LandingProblem() {
   return (
     <section id="problem" aria-labelledby="problem-heading" className="py-20 sm:py-24 bg-[#06090f]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">The Problem</p>
           <h2 id="problem-heading" className="text-3xl sm:text-4xl font-bold text-slate-100">

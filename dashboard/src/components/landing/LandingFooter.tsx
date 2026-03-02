@@ -20,7 +20,7 @@ const links = {
 export default function LandingFooter() {
   return (
     <footer className="border-t border-white/10 bg-[#04070d]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12">
         <div className="grid sm:grid-cols-4 gap-8 mb-10">
           <div>
             <Link to="/" className="font-bold text-slate-100 text-lg mb-2 block">

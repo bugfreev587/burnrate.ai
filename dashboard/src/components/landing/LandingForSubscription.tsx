@@ -15,7 +15,7 @@ const mockRows = [
 export default function LandingForSubscription() {
   return (
     <section aria-labelledby="sub-heading" className="py-20 sm:py-24 bg-[#070d18]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <span className="inline-block rounded-lg bg-violet-500/15 px-3 py-1 text-sm font-semibold text-violet-200 mb-5">

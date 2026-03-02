@@ -8,7 +8,7 @@ export default function LandingNav() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-md">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex h-14 items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <img src={logoLight} alt="TokenGate" className="h-8 w-8 shrink-0" />

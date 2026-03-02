@@ -9,7 +9,7 @@ const capabilities: { text: string; comingSoon?: boolean }[] = [
 export default function LandingSolution() {
   return (
     <section aria-labelledby="solution-heading" className="py-20 sm:py-24 bg-gray-950 text-white">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">The Solution</p>
@@ -37,7 +37,7 @@ export default function LandingSolution() {
                 <span className="text-gray-200">
                   {item.text}
                   {item.comingSoon && (
-                    <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 border border-amber-200">
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-950/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-800/50">
                       Coming Soon
                     </span>
                   )}

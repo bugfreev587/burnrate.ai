@@ -9,7 +9,7 @@ const guardrails = [
 export default function LandingForAPI() {
   return (
     <section aria-labelledby="api-heading" className="py-20 sm:py-24 bg-[#06090f]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div aria-label="Example active guardrails" className="rounded-2xl border border-white/15 bg-white/[0.03] p-6 order-2 md:order-1">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">

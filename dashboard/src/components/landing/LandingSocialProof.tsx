@@ -8,7 +8,7 @@ const pains = [
 export default function LandingSocialProof() {
   return (
     <section aria-label="Pain points" className="border-b border-white/10 bg-[#0b1220] py-12">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <p className="text-center text-sm font-medium text-slate-400 mb-8">
           Used by developers who rely on AI Code Assistant every day — and don&apos;t want surprises
         </p>

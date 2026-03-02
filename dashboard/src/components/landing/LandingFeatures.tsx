@@ -66,7 +66,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
 export default function LandingFeatures() {
   return (
     <section id="features" aria-labelledby="features-heading" className="py-20 sm:py-24 bg-[#070d18]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Features</p>
           <h2 id="features-heading" className="text-3xl sm:text-4xl font-bold text-slate-100">
@@ -96,7 +96,7 @@ export default function LandingFeatures() {
                     <span>
                       {item.text}
                       {item.comingSoon && (
-                        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 border border-amber-200">
+                        <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-950/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-800/50">
                           Coming Soon
                         </span>
                       )}
