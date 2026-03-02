@@ -378,13 +378,13 @@ export default function LandingPricing() {
               <tbody>
                 {comparisonCategories.map((section) => (
                   <Fragment key={section.category}>
-                    <tr className="bg-blue-500/10">
+                    <tr className="bg-blue-500/10 border-t-2 border-slate-600/40">
                       <th colSpan={5} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-blue-300">
                         {section.category}
                       </th>
                     </tr>
                     {section.rows.map((row) => (
-                      <tr key={`${section.category}-${row.feature}`} className="border-t border-white/20">
+                      <tr key={`${section.category}-${row.feature}`} className="border-t border-slate-700/50">
                         <th className="sticky left-0 bg-slate-950 px-6 py-4 text-left text-sm font-medium text-slate-300">
                           {row.feature}
                         </th>

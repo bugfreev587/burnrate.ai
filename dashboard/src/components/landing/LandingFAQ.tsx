@@ -2,28 +2,48 @@ import { useState } from 'react'
 
 const faqs = [
   {
-    q: 'Does this work with Claude Pro subscriptions?',
-    a: 'Yes. TokenGate tracks token usage and patterns for subscription plans, showing you real usage and the "API cost equivalent" so you understand exactly where your quota is going.',
+    q: 'What problem does TokenGate solve?',
+    a: 'TokenGate gives you visibility and control over AI tool usage. Whether your team uses Claude Code, VS Code extensions, or API keys directly — TokenGate tracks every request, shows real-time cost and token usage, and enforces budgets and rate limits before bills or caps surprise you.',
   },
   {
-    q: 'Does it work with Anthropic or OpenAI API keys?',
-    a: 'Yes. Set ANTHROPIC_BASE_URL to gateway.tokengate.to and TokenGate proxies your requests, tracking costs and enforcing budgets in real time.',
+    q: 'How is TokenGate different from a simple proxy?',
+    a: 'A proxy just forwards requests. TokenGate is a control plane: it tracks per-request costs, enforces spend and rate limits, provides per-key and per-model analytics, sends alerts, and gives teams role-based governance — all in real time. You get a full dashboard, not just a passthrough.',
   },
   {
-    q: 'Will it slow down my Claude Code sessions?',
-    a: 'No. TokenGate adds under 5ms of latency on average. Streaming responses are passed through in real time with no buffering.',
+    q: 'Does TokenGate work with Claude Code and the VS Code extension?',
+    a: 'Yes. For Claude Code (CLI), set two environment variables (ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY). For the VS Code extension, add the same variables in your settings.json under claudeCode.environmentVariables. Setup takes under 30 seconds for either.',
   },
   {
-    q: 'What happens when I hit a budget cap?',
-    a: 'Depending on your configured policy: requests can be hard-blocked, throttled, or auto-downgraded to a cheaper model (e.g., Opus → Sonnet). You choose the behavior.',
+    q: 'Can TokenGate work with browser-based OAuth tools like claude.ai or ChatGPT?',
+    a: 'Not directly. TokenGate works with tools that let you configure a custom API endpoint — like Claude Code, the VS Code extension, or OpenAI Codex CLI. Browser-based OAuth tools (claude.ai, chatgpt.com) don\'t support custom base URLs, so they can\'t be routed through TokenGate.',
   },
   {
-    q: 'Is my API key secure?',
-    a: 'Yes. Your Anthropic API key is encrypted at rest and never exposed to the frontend or request logs. TokenGate acts as a secure, audited proxy.',
+    q: 'What billing models does TokenGate support?',
+    a: 'TokenGate supports two billing models. Monthly subscription: pay a flat fee for the TokenGate platform (Free, Pro, Team, or Business). API usage-based: if you bring your own LLM provider keys, you pay the provider directly for token usage — TokenGate just tracks and controls it.',
   },
   {
-    q: 'Can I use this for my whole team?',
-    a: 'Yes. The Power plan supports multiple members with per-user budgets, per-key limits, and role-based access control.',
+    q: 'Can I use TokenGate without changing my developer workflow?',
+    a: 'Yes. You set environment variables or update a config file once — then use Claude Code, VS Code, or Codex exactly as before. Same commands, same editor, same speed. TokenGate adds under 5ms of latency on average and streams responses in real time.',
+  },
+  {
+    q: 'What governance controls does TokenGate provide?',
+    a: 'TokenGate supports monthly/daily spend caps, per-key and per-model rate limits (RPM, input/output tokens per minute), hard budget blocks (HTTP 402), alert thresholds, and model allowlists/blocklists. You choose whether to block, throttle, or alert when limits are hit.',
+  },
+  {
+    q: 'Is TokenGate suitable for teams and enterprises?',
+    a: 'Yes. The Team plan adds multi-user support, role-based access control (Owner / Admin / Member / Viewer), per-key budgets, webhook alerts, and 180-day data retention. The Business plan adds SSO, unlimited members, advanced RBAC, dedicated onboarding, and 1+ year retention.',
+  },
+  {
+    q: 'What providers are supported today, and what\'s coming next?',
+    a: 'Today TokenGate supports Anthropic (Claude) and OpenAI as LLM providers. Google Gemini and other providers are on the roadmap. On the tool side, Claude Code, the VS Code extension, and OpenAI Codex CLI are fully supported.',
+  },
+  {
+    q: 'How does TokenGate handle security and API keys?',
+    a: 'Your LLM provider API keys are encrypted at rest and never exposed to the frontend or request logs. TokenGate issues its own gateway keys (tg_xxxxx) that your tools use — your real provider keys stay server-side. All requests are proxied securely with full audit logging.',
+  },
+  {
+    q: 'Will TokenGate slow down my AI sessions?',
+    a: 'No. TokenGate adds under 5ms of latency on average. Streaming responses are passed through in real time with no buffering, so your Claude Code or Codex sessions feel exactly the same.',
   },
 ]
 

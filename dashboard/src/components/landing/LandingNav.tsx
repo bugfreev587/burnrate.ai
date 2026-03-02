@@ -18,11 +18,11 @@ export default function LandingNav() {
             </span>
           </Link>
 
-          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-6 text-sm text-slate-400">
-            <a href="#problem" className="hover:text-slate-100 transition-colors">Why</a>
-            <a href="#features" className="hover:text-slate-100 transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-slate-100 transition-colors">Setup</a>
-            <a href="#pricing" className="hover:text-slate-100 transition-colors">Pricing</a>
+          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-8 text-[15px] font-semibold text-slate-300">
+            <a href="#problem" className="hover:text-white transition-colors">Why</a>
+            <a href="#features" className="hover:text-white transition-colors">Features</a>
+            <a href="#how-it-works" className="hover:text-white transition-colors">Setup</a>
+            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           </nav>
 
           {/* Right-side actions — wait for Clerk to load before rendering */}
