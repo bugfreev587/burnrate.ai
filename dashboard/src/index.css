@@ -125,12 +125,11 @@ button {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: fit-content;    /* shrink to Clerk card width */
   gap: 0;
-  padding: 0 1rem;
 }
 
 .tos-consent {
-  width: 100%;
   background: var(--color-surface, #1a1a2e);
   border: 1px solid var(--color-border, rgba(255,255,255,0.1));
   border-bottom: none;
@@ -178,20 +177,6 @@ button {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 6px;
-}
-
-.signup-clerk-container {
-  position: relative;
-  width: 100%;
-}
-
-.signup-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  cursor: not-allowed;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 0 0 12px 12px;
 }
 
 /* ── Tailwind utilities (landing page) ──────────────────────────────────────── */

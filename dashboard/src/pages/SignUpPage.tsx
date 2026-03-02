@@ -1,10 +1,34 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { SignUp } from '@clerk/clerk-react'
 
 export default function SignUpPage() {
   const [agreed, setAgreed] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
+  const clerkRef = useRef<HTMLDivElement>(null)
+
+  // Block Clerk's buttons (Continue, OAuth) when ToS not accepted.
+  // Capture-phase listeners fire before Clerk's React handlers.
+  useEffect(() => {
+    const el = clerkRef.current
+    if (!el || agreed) return
+
+    const block = (e: Event) => {
+      const target = e.target as HTMLElement
+      if (target.closest('button')) {
+        e.stopPropagation()
+        e.preventDefault()
+        setShowReminder(true)
+      }
+    }
+
+    el.addEventListener('click', block, true)
+    el.addEventListener('submit', block, true)
+    return () => {
+      el.removeEventListener('click', block, true)
+      el.removeEventListener('submit', block, true)
+    }
+  }, [agreed])
 
   return (
     <div className="auth-container">
@@ -25,11 +49,11 @@ export default function SignUpPage() {
               <Link to="/terms" target="_blank" className="tos-link">
                 Terms of Service
               </Link>{' '}
-              and I'm aware my personal data is processed in accordance with our{' '}
+              and I&apos;m aware my personal data is processed in accordance with our{' '}
               <Link to="/privacy" target="_blank" className="tos-link">
                 Privacy Policy
               </Link>
-              . Please read it carefully.
+              .
             </span>
           </label>
           {showReminder && (
@@ -39,14 +63,7 @@ export default function SignUpPage() {
           )}
         </div>
 
-        <div className="signup-clerk-container">
-          {!agreed && (
-            <div
-              className="signup-overlay"
-              onClick={() => setShowReminder(true)}
-              aria-hidden="true"
-            />
-          )}
+        <div className="signup-clerk-container" ref={clerkRef}>
           <SignUp routing="path" path="/sign-up" />
         </div>
       </div>
