@@ -7,18 +7,18 @@ const pains = [
 
 export default function LandingSocialProof() {
   return (
-    <section aria-label="Pain points" className="border-b border-gray-100 bg-gray-50 py-12">
+    <section aria-label="Pain points" className="border-b border-white/10 bg-[#0b1220] py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <p className="text-center text-sm font-medium text-gray-500 mb-8">
+        <p className="text-center text-sm font-medium text-slate-400 mb-8">
           Used by developers who rely on AI Code Assistant every day — and don&apos;t want surprises
         </p>
         <ul className="flex flex-wrap justify-center gap-3" aria-label="Common problems">
           {pains.map((pain) => (
             <li
               key={pain}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600"
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300"
             >
-              <span aria-hidden="true" className="text-red-400 font-bold">✕</span>
+              <span aria-hidden="true" className="text-rose-400 font-bold">✕</span>
               {pain}
             </li>
           ))}

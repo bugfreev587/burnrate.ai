@@ -188,21 +188,21 @@ export default function LandingPricing() {
   const [annual, setAnnual] = useState(false)
 
   return (
-    <section id="pricing" aria-labelledby="pricing-heading" className="py-20 sm:py-24 bg-gray-50">
+    <section id="pricing" aria-labelledby="pricing-heading" className="py-20 sm:py-24 bg-[#06090f]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
 
         {/* Header */}
         <div className="text-center mb-12">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-widest mb-3">Pricing</p>
-          <h2 id="pricing-heading" className="text-3xl sm:text-4xl font-bold text-gray-900">
+          <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Pricing</p>
+          <h2 id="pricing-heading" className="text-3xl sm:text-4xl font-bold text-slate-100">
             Simple, transparent pricing
           </h2>
-          <p className="text-gray-500 mt-3 text-lg">
+          <p className="text-slate-400 mt-3 text-lg">
             Start free. Upgrade when you need more control.
           </p>
 
           {/* Positioning tagline */}
-          <p className="mt-4 text-sm text-gray-400 font-medium tracking-wide">
+          <p className="mt-4 text-sm text-slate-500 font-medium tracking-wide">
             Free&nbsp;→&nbsp;Visibility&nbsp;&nbsp;·&nbsp;&nbsp;
             Pro&nbsp;→&nbsp;Personal Control&nbsp;&nbsp;·&nbsp;&nbsp;
             Team&nbsp;→&nbsp;Shared Governance&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -210,11 +210,11 @@ export default function LandingPricing() {
           </p>
 
           {/* Billing toggle */}
-          <div className="inline-flex items-center gap-3 mt-8 bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm">
+          <div className="inline-flex items-center gap-3 mt-8 bg-slate-950 border border-white/15 rounded-full px-4 py-2 shadow-sm">
             <button
               onClick={() => setAnnual(false)}
               className={`text-sm font-semibold px-3 py-1 rounded-full transition-colors ${
-                !annual ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-800'
+                !annual ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Monthly
@@ -222,7 +222,7 @@ export default function LandingPricing() {
             <button
               onClick={() => setAnnual(true)}
               className={`text-sm font-semibold px-3 py-1 rounded-full transition-colors ${
-                annual ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-800'
+                annual ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Annual
@@ -240,8 +240,8 @@ export default function LandingPricing() {
               key={plan.key}
               className={`relative flex h-full flex-col rounded-2xl p-7 transition-shadow ${
                 plan.highlight
-                  ? 'border-2 border-blue-600 bg-white shadow-2xl shadow-blue-100 ring-1 ring-blue-600/10'
-                  : 'border border-gray-200 bg-white shadow-sm hover:shadow-md'
+                  ? 'border-2 border-blue-500 bg-slate-950/95 shadow-2xl shadow-blue-900/40 ring-1 ring-blue-400/30'
+                  : 'border border-white/15 bg-white/[0.03] shadow-sm hover:shadow-md hover:border-white/30'
               }`}
             >
               {/* Most Popular badge */}
@@ -255,45 +255,45 @@ export default function LandingPricing() {
 
               {/* Plan name + tagline */}
               <div className="mb-5 min-h-[128px]">
-                <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
+                <h3 className="text-xl font-bold text-slate-100">{plan.name}</h3>
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest mt-0.5">
                   {plan.tagline}
                 </p>
-                <p className="text-gray-500 text-sm mt-2 leading-relaxed">{plan.desc}</p>
+                <p className="text-slate-400 text-sm mt-2 leading-relaxed">{plan.desc}</p>
               </div>
 
               {/* Price */}
-              <div className="mb-6 pb-6 border-b border-gray-100">
+              <div className="mb-6 pb-6 border-b border-white/10">
                 {plan.contactSales ? (
                   <div>
-                    <div className="text-3xl font-bold text-gray-900">Contact Sales</div>
-                    <p className="text-xs text-gray-400 mt-1">Starting at $199 / month</p>
+                    <div className="text-3xl font-bold text-slate-100">Contact Sales</div>
+                    <p className="text-xs text-slate-400 mt-1">Starting at $199 / month</p>
                   </div>
                 ) : plan.monthlyPrice === 0 ? (
                   <div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold text-gray-900">$0</span>
-                      <span className="text-gray-400 text-sm">/ month</span>
+                      <span className="text-4xl font-bold text-slate-100">$0</span>
+                      <span className="text-slate-400 text-sm">/ month</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Free forever</p>
+                    <p className="text-xs text-slate-400 mt-1">Free forever</p>
                   </div>
                 ) : (
                   <div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold text-gray-900">
+                      <span className="text-4xl font-bold text-slate-100">
                         ${annual ? plan.annualMonthly : plan.monthlyPrice}
                       </span>
-                      <span className="text-gray-400 text-sm">/ mo</span>
+                      <span className="text-slate-400 text-sm">/ mo</span>
                     </div>
                     {annual && plan.annualTotal ? (
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         Billed ${plan.annualTotal} / year&nbsp;
                         <span className="text-green-600 font-semibold">
                           · Save ${plan.annualSaving}
                         </span>
                       </p>
                     ) : (
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-slate-400 mt-1">
                         Billed monthly
                       </p>
                     )}
@@ -304,7 +304,7 @@ export default function LandingPricing() {
               {/* Features */}
               <ul className="space-y-2.5 mb-8 min-h-[320px] flex-grow" aria-label={`${plan.name} plan features`}>
                 {plan.features.map((f) => (
-                  <li key={f.text} className="flex items-start gap-2 text-sm text-gray-600">
+                  <li key={f.text} className="flex items-start gap-2 text-sm text-slate-300">
                     <svg className="mt-0.5 shrink-0 h-4 w-4 text-blue-500" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -319,7 +319,7 @@ export default function LandingPricing() {
                   </li>
                 ))}
                 {plan.limit && (
-                  <li className="flex items-start gap-2 text-sm text-gray-400 mt-1 pt-2 border-t border-gray-100">
+                  <li className="flex items-start gap-2 text-sm text-slate-400 mt-1 pt-2 border-t border-white/10">
                     <svg className="mt-0.5 shrink-0 h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
                       <path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -334,7 +334,7 @@ export default function LandingPricing() {
                 {plan.contactSales ? (
                   <a
                     href={plan.to}
-                    className="block w-full rounded-xl py-3 text-center text-sm font-semibold border border-gray-200 text-gray-900 hover:bg-gray-50 transition-colors"
+                    className="block w-full rounded-xl py-3 text-center text-sm font-semibold border border-white/20 text-slate-100 hover:bg-white/5 transition-colors"
                   >
                     {plan.cta}
                   </a>
@@ -345,8 +345,8 @@ export default function LandingPricing() {
                       plan.highlight
                         ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
                         : plan.monthlyPrice === 0
-                        ? 'border border-gray-200 text-gray-900 hover:bg-gray-50'
-                        : 'border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                        ? 'border border-white/20 text-slate-100 hover:bg-white/5'
+                        : 'border border-blue-400/40 text-blue-200 bg-blue-500/10 hover:bg-blue-500/20'
                     }`}
                   >
                     {plan.cta}
@@ -358,50 +358,50 @@ export default function LandingPricing() {
         </div>
 
         {/* Comparison table */}
-        <div className="mt-14 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="border-b border-gray-100 px-6 py-5">
-            <h3 className="text-xl font-bold text-gray-900">Compare all plan features</h3>
-            <p className="mt-1 text-sm text-gray-500">Quickly scan what is included across Free, Pro, Team, and Business.</p>
+        <div className="mt-14 rounded-2xl border border-white/15 bg-slate-950/80 shadow-sm overflow-hidden">
+          <div className="border-b border-white/10 px-6 py-5">
+            <h3 className="text-xl font-bold text-slate-100">Compare all plan features</h3>
+            <p className="mt-1 text-sm text-slate-400">Quickly scan what is included across Free, Pro, Team, and Business.</p>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse">
-              <thead className="bg-gray-50">
+              <thead className="bg-white/[0.04]">
                 <tr>
-                  <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Feature</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Free</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Pro</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Team</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Business</th>
+                  <th className="sticky left-0 z-10 bg-white/[0.04] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Feature</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Free</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Pro</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Team</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Business</th>
                 </tr>
               </thead>
               <tbody>
                 {comparisonCategories.map((section) => (
                   <Fragment key={section.category}>
-                    <tr className="bg-blue-50/50">
-                      <th colSpan={5} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-blue-700">
+                    <tr className="bg-blue-500/10">
+                      <th colSpan={5} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-blue-300">
                         {section.category}
                       </th>
                     </tr>
                     {section.rows.map((row) => (
-                      <tr key={`${section.category}-${row.feature}`} className="border-t border-gray-100">
-                        <th className="sticky left-0 bg-white px-4 py-3 text-left text-sm font-medium text-gray-700">
+                      <tr key={`${section.category}-${row.feature}`} className="border-t border-white/10">
+                        <th className="sticky left-0 bg-slate-950 px-4 py-3 text-left text-sm font-medium text-slate-300">
                           {row.feature}
                         </th>
                         {(['free', 'pro', 'team', 'business'] as const).map((planKey) => {
                           const value = row.values[planKey]
                           return (
-                            <td key={`${row.feature}-${planKey}`} className="px-4 py-3 text-center text-sm text-gray-700">
+                            <td key={`${row.feature}-${planKey}`} className="px-4 py-3 text-center text-sm text-slate-300">
                               {typeof value === 'boolean' ? (
                                 value ? (
                                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600" aria-label="Included">
                                     ✓
                                   </span>
                                 ) : (
-                                  <span className="text-gray-300" aria-label="Not included">—</span>
+                                  <span className="text-slate-600" aria-label="Not included">—</span>
                                 )
                               ) : (
-                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                                <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200">
                                   {value}
                                 </span>
                               )}
@@ -418,7 +418,7 @@ export default function LandingPricing() {
         </div>
 
         {/* Footer note */}
-        <p className="text-center mt-10 text-sm text-gray-400">
+        <p className="text-center mt-10 text-sm text-slate-400">
           Free plan is free forever. No credit card required.{' '}
           <a href="mailto:sales@tokengate.to" className="text-blue-600 hover:underline">
             Questions? Talk to us.

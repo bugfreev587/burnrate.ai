@@ -4,7 +4,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
   {
     label: 'Visibility',
     tag: 'Everyone',
-    tagColor: 'bg-blue-50 text-blue-700',
+    tagColor: 'bg-blue-500/15 text-blue-200 border border-blue-400/20',
     items: [
       { text: 'Per-request token & cost tracking' },
       { text: 'Breakdown by model & API key' },
@@ -19,7 +19,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
   {
     label: 'Guardrails',
     tag: 'Pro+',
-    tagColor: 'bg-purple-50 text-purple-700',
+    tagColor: 'bg-violet-500/15 text-violet-200 border border-violet-400/20',
     items: [
       { text: 'Rate limiting (RPM / ITPM / OTPM)' },
       { text: 'Per-key & per-model rate limits' },
@@ -34,7 +34,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
   {
     label: 'Cost Control',
     tag: 'Pro+',
-    tagColor: 'bg-orange-50 text-orange-700',
+    tagColor: 'bg-orange-500/15 text-orange-200 border border-orange-400/20',
     items: [
       { text: 'Monthly, weekly & daily budget caps' },
       { text: 'Hard stop — auto-block at limit' },
@@ -49,7 +49,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
   {
     label: 'Efficiency Insights',
     tag: 'Pro+',
-    tagColor: 'bg-emerald-50 text-emerald-700',
+    tagColor: 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/20',
     items: [
       { text: 'Cache hit rate & savings', comingSoon: true },
       { text: 'Usage cap forecasting', comingSoon: true },
@@ -65,14 +65,14 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
 
 export default function LandingFeatures() {
   return (
-    <section id="features" aria-labelledby="features-heading" className="py-20 sm:py-24 bg-white">
+    <section id="features" aria-labelledby="features-heading" className="py-20 sm:py-24 bg-[#070d18]">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-widest mb-3">Features</p>
-          <h2 id="features-heading" className="text-3xl sm:text-4xl font-bold text-gray-900">
+          <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Features</p>
+          <h2 id="features-heading" className="text-3xl sm:text-4xl font-bold text-slate-100">
             Everything you need to stay in control
           </h2>
-          <p className="text-gray-500 mt-3 max-w-xl mx-auto">
+          <p className="text-slate-400 mt-3 max-w-xl mx-auto">
             From raw visibility to hard spending limits — all in one gateway.
           </p>
         </div>
@@ -81,18 +81,18 @@ export default function LandingFeatures() {
           {categories.map((cat) => (
             <div
               key={cat.label}
-              className="rounded-2xl border border-gray-200 p-7 hover:border-gray-300 transition-colors"
+              className="rounded-2xl border border-white/15 bg-white/[0.03] p-7 hover:border-white/30 transition-colors"
             >
               <div className="flex items-center gap-3 mb-5">
-                <h3 className="text-lg font-bold text-gray-900">{cat.label}</h3>
+                <h3 className="text-lg font-bold text-slate-100">{cat.label}</h3>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cat.tagColor}`}>
                   {cat.tag}
                 </span>
               </div>
               <ul className="space-y-2.5" aria-label={`${cat.label} features`}>
                 {cat.items.map((item) => (
-                  <li key={item.text} className="flex items-start gap-2.5 text-sm text-gray-600">
-                    <span aria-hidden="true" className="mt-0.5 shrink-0 text-blue-600">✓</span>
+                  <li key={item.text} className="flex items-start gap-2.5 text-sm text-slate-300">
+                    <span aria-hidden="true" className="mt-0.5 shrink-0 text-blue-400">✓</span>
                     <span>
                       {item.text}
                       {item.comingSoon && (

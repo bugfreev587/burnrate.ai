@@ -31,16 +31,16 @@ export default function LandingFAQ() {
   const [open, setOpen] = useState<number | null>(null)
 
   return (
-    <section id="faq" aria-labelledby="faq-heading" className="py-20 sm:py-24 bg-gray-50">
+    <section id="faq" aria-labelledby="faq-heading" className="py-20 sm:py-24 bg-[#070d18]">
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
         <div className="text-center mb-12">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-widest mb-3">FAQ</p>
-          <h2 id="faq-heading" className="text-3xl sm:text-4xl font-bold text-gray-900">
+          <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">FAQ</p>
+          <h2 id="faq-heading" className="text-3xl sm:text-4xl font-bold text-slate-100">
             Common questions
           </h2>
         </div>
 
-        <div className="divide-y divide-gray-200 rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <div className="divide-y divide-white/10 rounded-2xl border border-white/15 bg-white/[0.03] overflow-hidden">
           {faqs.map((faq, i) => (
             <div key={i}>
               <button
@@ -49,10 +49,10 @@ export default function LandingFAQ() {
                 aria-expanded={open === i}
                 aria-controls={`faq-answer-${i}`}
               >
-                <span className="text-sm font-semibold text-gray-900">{faq.q}</span>
+                <span className="text-sm font-semibold text-slate-100">{faq.q}</span>
                 <span
                   aria-hidden="true"
-                  className={`shrink-0 text-xl text-gray-400 transition-transform duration-200 ${
+                  className={`shrink-0 text-xl text-slate-400 transition-transform duration-200 ${
                     open === i ? 'rotate-45' : ''
                   }`}
                 >
@@ -61,7 +61,7 @@ export default function LandingFAQ() {
               </button>
               {open === i && (
                 <div id={`faq-answer-${i}`} className="px-6 pb-5">
-                  <p className="text-sm text-gray-600 leading-relaxed">{faq.a}</p>
+                  <p className="text-sm text-slate-300 leading-relaxed">{faq.a}</p>
                 </div>
               )}
             </div>

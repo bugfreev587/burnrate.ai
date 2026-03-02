@@ -14,7 +14,7 @@ import LandingFooter from '../components/landing/LandingFooter'
 
 export default function LandingPage() {
   return (
-    <main style={{ background: 'white' }}>
+    <main className="bg-[#06090f] text-slate-100">
       <LandingNav />
       <LandingHero />
       <LandingSocialProof />

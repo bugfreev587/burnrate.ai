@@ -7,22 +7,22 @@ export default function LandingNav() {
   const { user } = useUser()
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-md">
+    <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex h-14 items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <img src={logoLight} alt="TokenGate" className="h-8 w-8 shrink-0" />
-            <span className="font-bold text-gray-900 text-lg tracking-tight">TokenGate</span>
+            <span className="font-bold text-slate-100 text-lg tracking-tight">TokenGate</span>
             <span className="hidden sm:inline rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wide">
               Beta
             </span>
           </Link>
 
-          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-6 text-sm text-gray-600">
-            <a href="#problem" className="hover:text-gray-900 transition-colors">Why</a>
-            <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-gray-900 transition-colors">Setup</a>
-            <a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a>
+          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-6 text-sm text-slate-400">
+            <a href="#problem" className="hover:text-slate-100 transition-colors">Why</a>
+            <a href="#features" className="hover:text-slate-100 transition-colors">Features</a>
+            <a href="#how-it-works" className="hover:text-slate-100 transition-colors">Setup</a>
+            <a href="#pricing" className="hover:text-slate-100 transition-colors">Pricing</a>
           </nav>
 
           {/* Right-side actions — wait for Clerk to load before rendering */}
@@ -32,7 +32,7 @@ export default function LandingNav() {
                 <>
                   <Link
                     to="/dashboard"
-                    className="hidden md:inline-flex rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="hidden md:inline-flex rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 transition-colors"
                   >
                     Dashboard
                   </Link>
@@ -41,10 +41,10 @@ export default function LandingNav() {
                       <img
                         src={user.imageUrl}
                         alt={user.fullName ?? 'Profile'}
-                        className="h-8 w-8 rounded-full object-cover ring-2 ring-gray-200 hover:ring-blue-500 transition-all"
+                        className="h-8 w-8 rounded-full object-cover ring-2 ring-white/20 hover:ring-blue-500 transition-all"
                       />
                     ) : (
-                      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold ring-2 ring-gray-200 hover:ring-blue-500 transition-all">
+                      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white/20 hover:ring-blue-500 transition-all">
                         {(user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0] ?? '?').toUpperCase()}
                       </div>
                     )}
@@ -54,7 +54,7 @@ export default function LandingNav() {
                 <>
                   <Link
                     to="/sign-in"
-                    className="hidden md:inline-flex text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                    className="hidden md:inline-flex text-sm font-medium text-slate-400 hover:text-slate-100 transition-colors"
                   >
                     Sign In
                   </Link>
