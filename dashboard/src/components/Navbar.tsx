@@ -82,9 +82,11 @@ export default function Navbar() {
     return () => { cancelled = true }
   }, [isLoaded, isSignedIn, isSynced])
 
-  // Super admin check (cached in sessionStorage)
+  // Super admin check (cached in sessionStorage).
+  // Must wait for isSynced so that user_id is in localStorage before calling the API.
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
+    if (!isSynced) return
     const cached = sessionStorage.getItem('is_super_admin')
     if (cached === 'true') { setIsSuperAdmin(true); return }
     if (cached === 'false') return
@@ -100,7 +102,7 @@ export default function Navbar() {
       .catch(() => {
         sessionStorage.setItem('is_super_admin', 'false')
       })
-  }, [isLoaded, isSignedIn])
+  }, [isLoaded, isSignedIn, isSynced])
 
   const dismissHint = async (key: 'dismissed_integration_hint' | 'dismissed_avatar_hint') => {
     if (!hints || hints[key]) return
