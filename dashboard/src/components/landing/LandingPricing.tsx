@@ -390,6 +390,26 @@ export default function LandingPricing() {
                     ))}
                   </Fragment>
                 ))}
+                {/* CTA row */}
+                <tr>
+                  <td></td>
+                  {plans.map((plan) => (
+                    <td key={plan.key} className="text-center pt-5 pb-3 px-4">
+                      <Link
+                        to={plan.to}
+                        className={`inline-block rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                          plan.highlight
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : plan.monthlyPrice === 0
+                            ? 'border border-white/20 text-slate-100 hover:bg-white/5'
+                            : 'border border-blue-400/40 text-blue-200 bg-blue-500/10 hover:bg-blue-500/20'
+                        }`}
+                      >
+                        {plan.cta}
+                      </Link>
+                    </td>
+                  ))}
+                </tr>
               </tbody>
             </table>
           </div>

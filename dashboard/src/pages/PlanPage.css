@@ -228,6 +228,22 @@
   letter-spacing: 0;
 }
 
+/* Category group header row */
+.plan-category-row td {
+  border-bottom: none;
+}
+
+.plan-category-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-primary);
+  padding-top: 1.25rem !important;
+  padding-bottom: 0.5rem !important;
+  text-align: left !important;
+}
+
 /* Check / Dash cells */
 .check {
   color: var(--color-success);

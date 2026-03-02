@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { hasPermission, type UserRole } from '../hooks/useUserSync'
@@ -51,25 +51,64 @@ interface PlanData {
 
 // ─── Static plan comparison data ─────────────────────────────────────────
 
-const PLANS: Array<{
-  key: PlanKey
-  label: string
-  price: string
-  maxKeys: string
-  maxProviderKeys: string
-  maxMembers: string
-  perKey: boolean
-  retention: string
-  spendLimits: string
-  rateLimits: string
-  notifications: string
-  export: boolean
-  webhooks: boolean
-}> = [
-  { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',   maxProviderKeys: '1',  maxMembers: '1',  perKey: false, retention: '7 days',    spendLimits: '1',   rateLimits: '1',   notifications: '1',   export: false, webhooks: false },
-  { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',   maxProviderKeys: '3',  maxMembers: '1',  perKey: false, retention: '90 days',   spendLimits: '5',   rateLimits: '5',   notifications: '5',   export: true,  webhooks: false },
-  { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '20',  maxProviderKeys: '10', maxMembers: '10', perKey: true,  retention: '180 days',  spendLimits: '20',  rateLimits: '20',  notifications: '20',  export: true,  webhooks: true  },
-  { key: 'business', label: 'Business', price: '$199/mo', maxKeys: '200', maxProviderKeys: '50', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '100', rateLimits: '100', notifications: '100', export: true,  webhooks: true  },
+const PLANS: Array<{ key: PlanKey; label: string; price: string }> = [
+  { key: 'free',     label: 'Free',     price: 'Free'    },
+  { key: 'pro',      label: 'Pro',      price: '$15/mo'  },
+  { key: 'team',     label: 'Team',     price: '$39/mo'  },
+  { key: 'business', label: 'Business', price: '$199/mo' },
+]
+
+type ComparisonValue = boolean | string
+type ComparisonRow = { feature: string; values: Record<PlanKey, ComparisonValue> }
+type ComparisonCategory = { category: string; rows: ComparisonRow[] }
+
+const COMPARISON_CATEGORIES: ComparisonCategory[] = [
+  {
+    category: 'Core',
+    rows: [
+      { feature: 'API Gateway access', values: { free: false, pro: true, team: true, business: true } },
+      { feature: 'Claude Code support', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'VS Code extension support', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'OpenAI / Anthropic support', values: { free: false, pro: true, team: true, business: true } },
+    ],
+  },
+  {
+    category: 'Governance',
+    rows: [
+      { feature: 'Spend limits', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'Rate limits', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'Project-level isolation', values: { free: false, pro: false, team: true, business: true } },
+      { feature: 'Model allowlist', values: { free: false, pro: false, team: false, business: true } },
+      { feature: 'API key-level budgets', values: { free: false, pro: false, team: true, business: true } },
+    ],
+  },
+  {
+    category: 'Team & Security',
+    rows: [
+      { feature: 'Multi-user support', values: { free: false, pro: false, team: true, business: true } },
+      { feature: 'Role-based access control (RBAC)', values: { free: false, pro: false, team: true, business: true } },
+      { feature: 'Audit logs', values: { free: false, pro: false, team: true, business: true } },
+      { feature: 'Data retention period', values: { free: '7 days', pro: '90 days', team: '180 days', business: '1+ year' } },
+      { feature: 'SSO', values: { free: false, pro: false, team: false, business: true } },
+    ],
+  },
+  {
+    category: 'Billing',
+    rows: [
+      { feature: 'Monthly subscription', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'API usage-based billing', values: { free: true, pro: true, team: true, business: true } },
+      { feature: 'Invoice & statement download', values: { free: false, pro: true, team: true, business: true } },
+    ],
+  },
+  {
+    category: 'Limits',
+    rows: [
+      { feature: 'Max API keys', values: { free: '1', pro: '5', team: '20', business: 'Unlimited' } },
+      { feature: 'Max provider keys', values: { free: '1', pro: '3', team: '10', business: 'Unlimited' } },
+      { feature: 'Max projects', values: { free: '1', pro: '5', team: '10', business: 'Unlimited' } },
+      { feature: 'Max spend / rate limit rules', values: { free: '1', pro: '5', team: '20', business: 'Unlimited' } },
+    ],
+  },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -533,92 +572,32 @@ export default function PlanPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>API Keys</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.maxKeys}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Provider Keys</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.maxProviderKeys}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Members</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.maxMembers}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Per-key budget</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.perKey
-                            ? <span className="check">✓</span>
-                            : <span className="dash">—</span>}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Data retention</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.retention}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Spend limits</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.spendLimits}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Rate limits</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.rateLimits}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Notifications</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.notifications}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Audit export</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.export
-                            ? <span className="check">✓</span>
-                            : <span className="dash">—</span>}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td>Webhooks</td>
-                      {PLANS.map(p => (
-                        <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
-                          {p.webhooks
-                            ? <span className="check">✓</span>
-                            : <span className="dash">—</span>}
-                        </td>
-                      ))}
-                    </tr>
+                    {COMPARISON_CATEGORIES.map((section) => (
+                      <Fragment key={section.category}>
+                        <tr className="plan-category-row">
+                          <td colSpan={5} className="plan-category-label">{section.category}</td>
+                        </tr>
+                        {section.rows.map((row) => (
+                          <tr key={`${section.category}-${row.feature}`}>
+                            <td>{row.feature}</td>
+                            {PLANS.map(p => {
+                              const value = row.values[p.key]
+                              return (
+                                <td key={p.key} className={p.key === currentPlan ? 'plan-col-current' : ''}>
+                                  {typeof value === 'boolean' ? (
+                                    value
+                                      ? <span className="check">✓</span>
+                                      : <span className="dash">—</span>
+                                  ) : (
+                                    value
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
                     <tr>
                       <td></td>
                       {PLANS.map(p => (
