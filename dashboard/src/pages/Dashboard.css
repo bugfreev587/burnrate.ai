@@ -179,6 +179,12 @@
   opacity: 1;
 }
 
+.summary-footnote-sub {
+  border-top: none;
+  margin-top: 0.15rem;
+  padding-top: 0;
+}
+
 /* ─── Growth pill ────────────────────────────────────────────────────────── */
 
 .growth-pill {

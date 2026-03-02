@@ -500,6 +500,8 @@ func (s *Server) handleUsageSummary(c *gin.Context) {
 			"billed_output_total": tokens.OutputTotal,
 			"billed_total":        totalTokens,
 			"billed_avg":          avgTokensPerRequest,
+			"requests":            allTokens.Requests,
+			"billed_requests":     tokens.Requests,
 		},
 		"by_model":    byModelOut,
 		"by_api_key":  byAPIKeyOut,
