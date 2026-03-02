@@ -12,13 +12,15 @@ const (
 
 // AuditReportFilters holds optional filters applied when generating a report.
 type AuditReportFilters struct {
-	APIKeyIDs      []string `json:"api_key_ids,omitempty"`
-	Provider       string   `json:"provider,omitempty"`
-	Models         []string `json:"models,omitempty"`
-	APIUsageBilled *bool    `json:"api_usage_billed,omitempty"`
-	ProjectIDs     []uint   `json:"project_ids,omitempty"`
-	UserIDs        []string `json:"user_ids,omitempty"`
-	BillingMode    string   `json:"billing_mode,omitempty"` // "api_usage" | "subscription" | ""
+	APIKeyIDs              []string `json:"api_key_ids,omitempty"`
+	Provider               string   `json:"provider,omitempty"`
+	Models                 []string `json:"models,omitempty"`
+	APIUsageBilled         *bool    `json:"api_usage_billed,omitempty"`
+	ProjectIDs             []uint   `json:"project_ids,omitempty"`
+	UserIDs                []string `json:"user_ids,omitempty"`
+	BillingMode            string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
+	IncludeTopRequestsByCost bool   `json:"include_top_requests_by_cost,omitempty"`
+	TopRequestsLimit       int      `json:"top_requests_limit,omitempty"`       // default 10, max 100
 }
 
 // AuditReport tracks an async report generation job and its resulting artifact.
@@ -29,6 +31,7 @@ type AuditReport struct {
 	CreatedByEmail    string    `json:"created_by_email"`
 	PeriodStart       time.Time `json:"period_start"`
 	PeriodEnd         time.Time `json:"period_end"`
+	Timezone          string    `json:"timezone"`
 	FiltersJSON       string    `gorm:"type:jsonb" json:"filters"`
 	Format            string    `json:"format"`                              // "PDF" | "CSV"
 	Status            string    `gorm:"default:QUEUED" json:"status"`        // QUEUED | RUNNING | COMPLETED | FAILED

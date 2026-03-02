@@ -8,6 +8,7 @@ export interface AuditReport {
   created_by_email: string
   period_start: string
   period_end: string
+  timezone: string
   filters: string
   format: string
   status: string
@@ -19,15 +20,18 @@ export interface AuditReport {
 }
 
 export interface CreateReportRequest {
-  period_start: string   // YYYY-MM-DD
-  period_end: string     // YYYY-MM-DD
+  period_start: string   // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  period_end: string     // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   format: string         // "PDF" | "CSV"
+  timezone?: string      // IANA timezone e.g. "America/Los_Angeles"
   provider?: string
   api_key_ids?: string[]
   api_usage_billed?: boolean
   project_ids?: number[]
   user_ids?: string[]
   billing_mode?: string  // "api_usage" | "subscription" | ""
+  include_top_requests_by_cost?: boolean
+  top_requests_limit?: number
 }
 
 export function useAuditReports() {

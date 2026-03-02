@@ -183,8 +183,11 @@ export default function AuditPage() {
   defaultStart.setDate(defaultStart.getDate() - 29)
   const defaultStartStr = defaultStart.getFullYear() + '-' + String(defaultStart.getMonth() + 1).padStart(2, '0') + '-' + String(defaultStart.getDate()).padStart(2, '0')
 
-  const [startDate, setStartDate] = useState(defaultStartStr)
-  const [endDate, setEndDate] = useState(todayStr)
+  const [startDate, setStartDate] = useState(defaultStartStr + 'T00:00')
+  const [endDate, setEndDate] = useState(todayStr + 'T23:59')
+  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const [includeTopRequestsByCost, setIncludeTopRequestsByCost] = useState(false)
+  const [topRequestsLimit, setTopRequestsLimit] = useState(10)
   const [provider, setProvider] = useState('')
   const [generating, setGenerating] = useState(false)
   const [flashMsg, setFlashMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -214,11 +217,16 @@ export default function AuditPage() {
         period_start: startDate,
         period_end: endDate,
         format,
+        timezone,
       }
       if (provider) req.provider = provider
       if (selectedProjectIds.length > 0) req.project_ids = selectedProjectIds
       if (selectedUserIds.length > 0) req.user_ids = selectedUserIds
       if (billingMode) req.billing_mode = billingMode
+      if (includeTopRequestsByCost) {
+        req.include_top_requests_by_cost = true
+        req.top_requests_limit = topRequestsLimit
+      }
       await generate(req)
       setFlashMsg({ type: 'success', text: `${format} report queued successfully` })
     } catch (e: unknown) {
@@ -637,27 +645,54 @@ export default function AuditPage() {
             <div className="audit-filters">
               <div className="audit-filter-row">
                 <label className="audit-filter-label">
-                  Start Date
+                  Start Date/Time
                   <input
-                    type="date"
+                    type="datetime-local"
                     className="audit-date-input"
                     value={startDate}
-                    min={effectiveMin}
+                    min={effectiveMin + 'T00:00'}
                     max={endDate}
                     onChange={e => setStartDate(e.target.value)}
                   />
                 </label>
                 <label className="audit-filter-label">
-                  End Date
+                  End Date/Time
                   <input
-                    type="date"
+                    type="datetime-local"
                     className="audit-date-input"
                     value={endDate}
                     min={startDate}
-                    max={todayStr}
+                    max={todayStr + 'T23:59'}
                     onChange={e => setEndDate(e.target.value)}
                   />
                 </label>
+                <label className="audit-filter-label">
+                  Timezone
+                  <select
+                    className="audit-select"
+                    value={timezone}
+                    onChange={e => setTimezone(e.target.value)}
+                  >
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">US Eastern</option>
+                    <option value="America/Chicago">US Central</option>
+                    <option value="America/Denver">US Mountain</option>
+                    <option value="America/Los_Angeles">US Pacific</option>
+                    <option value="America/Anchorage">US Alaska</option>
+                    <option value="Pacific/Honolulu">US Hawaii</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="Europe/Berlin">Europe/Berlin</option>
+                    <option value="Europe/Paris">Europe/Paris</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    <option value="Asia/Shanghai">Asia/Shanghai</option>
+                    <option value="Asia/Kolkata">Asia/Kolkata</option>
+                    <option value="Asia/Singapore">Asia/Singapore</option>
+                    <option value="Australia/Sydney">Australia/Sydney</option>
+                    <option value="Australia/Melbourne">Australia/Melbourne</option>
+                  </select>
+                </label>
+              </div>
+              <div className="audit-filter-row">
                 <label className="audit-filter-label">
                   Provider
                   <select
@@ -716,6 +751,30 @@ export default function AuditPage() {
                     <option value="subscription">Monthly Subscription</option>
                   </select>
                 </label>
+              </div>
+              <div className="audit-filter-row">
+                <label className="audit-filter-label" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeTopRequestsByCost}
+                    onChange={e => setIncludeTopRequestsByCost(e.target.checked)}
+                  />
+                  Include Top Requests by Cost
+                </label>
+                {includeTopRequestsByCost && (
+                  <label className="audit-filter-label">
+                    Limit
+                    <input
+                      type="number"
+                      className="audit-date-input"
+                      value={topRequestsLimit}
+                      min={1}
+                      max={100}
+                      style={{ width: '5rem' }}
+                      onChange={e => setTopRequestsLimit(Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 10)))}
+                    />
+                  </label>
+                )}
               </div>
               <div className="audit-actions">
                 {canExport && isAdmin ? (
@@ -784,7 +843,7 @@ export default function AuditPage() {
                     {reports.map(r => (
                       <tr key={r.id}>
                         <td className="text-muted">{formatDateTime(r.created_at)}</td>
-                        <td>{formatDate(r.period_start)} &mdash; {formatDate(r.period_end)}</td>
+                        <td>{formatDate(r.period_start)} &mdash; {formatDate(r.period_end)}{r.timezone && r.timezone !== 'UTC' ? ` (${r.timezone})` : ''}</td>
                         <td><span className={`audit-format-badge audit-format-${r.format.toLowerCase()}`}>{r.format}</span></td>
                         <td className="text-muted">{formatScope(r.filters)}</td>
                         <td>

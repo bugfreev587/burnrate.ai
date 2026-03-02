@@ -16,15 +16,18 @@ import (
 // ── Request types ────────────────────────────────────────────────────────────
 
 type createAuditReportReq struct {
-	PeriodStart    string   `json:"period_start" binding:"required"`    // YYYY-MM-DD
-	PeriodEnd      string   `json:"period_end" binding:"required"`      // YYYY-MM-DD
-	Format         string   `json:"format" binding:"required"`          // "PDF" | "CSV"
-	Provider       string   `json:"provider,omitempty"`                 // optional filter
-	APIKeyIDs      []string `json:"api_key_ids,omitempty"`              // optional filter
-	APIUsageBilled *bool    `json:"api_usage_billed,omitempty"`         // optional filter
-	ProjectIDs     []uint   `json:"project_ids,omitempty"`              // optional filter
-	UserIDs        []string `json:"user_ids,omitempty"`                 // optional filter
-	BillingMode    string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
+	PeriodStart              string   `json:"period_start" binding:"required"`    // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+	PeriodEnd                string   `json:"period_end" binding:"required"`      // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+	Format                   string   `json:"format" binding:"required"`          // "PDF" | "CSV"
+	Timezone                 string   `json:"timezone,omitempty"`                 // IANA timezone e.g. "America/Los_Angeles"
+	Provider                 string   `json:"provider,omitempty"`                 // optional filter
+	APIKeyIDs                []string `json:"api_key_ids,omitempty"`              // optional filter
+	APIUsageBilled           *bool    `json:"api_usage_billed,omitempty"`         // optional filter
+	ProjectIDs               []uint   `json:"project_ids,omitempty"`              // optional filter
+	UserIDs                  []string `json:"user_ids,omitempty"`                 // optional filter
+	BillingMode              string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
+	IncludeTopRequestsByCost *bool    `json:"include_top_requests_by_cost,omitempty"`
+	TopRequestsLimit         *int     `json:"top_requests_limit,omitempty"`
 }
 
 // handleCreateAuditReport creates a new audit report generation job.
@@ -70,16 +73,44 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		return
 	}
 
-	// Parse and validate dates.
-	periodStart, err := time.Parse("2006-01-02", req.PeriodStart)
+	// Validate timezone.
+	tzName := req.Timezone
+	if tzName == "" {
+		tzName = "UTC"
+	}
+	loc, err := validateTimezone(tzName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid period_start (expected YYYY-MM-DD)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timezone: " + tzName})
 		return
 	}
-	periodEnd, err := time.Parse("2006-01-02", req.PeriodEnd)
+
+	// Parse and validate dates (flexible: YYYY-MM-DD or YYYY-MM-DDTHH:mm or RFC3339).
+	periodStartRaw, startHasTime, err := parseDatetimeFlexible(req.PeriodStart)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid period_end (expected YYYY-MM-DD)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid period_start (expected YYYY-MM-DD or YYYY-MM-DDTHH:mm)"})
 		return
+	}
+	periodEndRaw, endHasTime, err := parseDatetimeFlexible(req.PeriodEnd)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid period_end (expected YYYY-MM-DD or YYYY-MM-DDTHH:mm)"})
+		return
+	}
+
+	// Convert to UTC using timezone: if date-only, use start-of-day / end-of-day.
+	var periodStart, periodEnd time.Time
+	if startHasTime {
+		periodStart = time.Date(periodStartRaw.Year(), periodStartRaw.Month(), periodStartRaw.Day(),
+			periodStartRaw.Hour(), periodStartRaw.Minute(), periodStartRaw.Second(), 0, loc).UTC()
+	} else {
+		periodStart = time.Date(periodStartRaw.Year(), periodStartRaw.Month(), periodStartRaw.Day(),
+			0, 0, 0, 0, loc).UTC()
+	}
+	if endHasTime {
+		periodEnd = time.Date(periodEndRaw.Year(), periodEndRaw.Month(), periodEndRaw.Day(),
+			periodEndRaw.Hour(), periodEndRaw.Minute(), periodEndRaw.Second(), 0, loc).UTC()
+	} else {
+		periodEnd = time.Date(periodEndRaw.Year(), periodEndRaw.Month(), periodEndRaw.Day(),
+			23, 59, 59, 999999999, loc).UTC()
 	}
 
 	// period_start must be before period_end.
@@ -110,6 +141,22 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		return
 	}
 
+	// Validate TopRequestsLimit.
+	includeTopRequests := false
+	topRequestsLimit := 10
+	if req.IncludeTopRequestsByCost != nil && *req.IncludeTopRequestsByCost {
+		includeTopRequests = true
+	}
+	if req.TopRequestsLimit != nil {
+		topRequestsLimit = *req.TopRequestsLimit
+		if topRequestsLimit < 1 {
+			topRequestsLimit = 1
+		}
+		if topRequestsLimit > 100 {
+			topRequestsLimit = 100
+		}
+	}
+
 	// Check concurrent limit.
 	pending, err := s.auditSvc.CountPending(c.Request.Context(), tenantID)
 	if err != nil {
@@ -123,25 +170,24 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 
 	// Build filters JSON.
 	filters := models.AuditReportFilters{
-		APIKeyIDs:      req.APIKeyIDs,
-		Provider:       req.Provider,
-		APIUsageBilled: req.APIUsageBilled,
-		ProjectIDs:     req.ProjectIDs,
-		UserIDs:        req.UserIDs,
-		BillingMode:    req.BillingMode,
+		APIKeyIDs:                req.APIKeyIDs,
+		Provider:                 req.Provider,
+		APIUsageBilled:           req.APIUsageBilled,
+		ProjectIDs:               req.ProjectIDs,
+		UserIDs:                  req.UserIDs,
+		BillingMode:              req.BillingMode,
+		IncludeTopRequestsByCost: includeTopRequests,
+		TopRequestsLimit:         topRequestsLimit,
 	}
 	filtersJSON, _ := json.Marshal(filters)
-
-	// Create the report row.
-	startOfDay := time.Date(periodStart.Year(), periodStart.Month(), periodStart.Day(), 0, 0, 0, 0, time.UTC)
-	endOfDay := time.Date(periodEnd.Year(), periodEnd.Month(), periodEnd.Day(), 23, 59, 59, 999999999, time.UTC)
 
 	report := &models.AuditReport{
 		TenantID:        tenantID,
 		CreatedByUserID: user.ID,
 		CreatedByEmail:  user.Email,
-		PeriodStart:     startOfDay,
-		PeriodEnd:       endOfDay,
+		PeriodStart:     periodStart,
+		PeriodEnd:       periodEnd,
+		Timezone:        tzName,
 		FiltersJSON:     string(filtersJSON),
 		Format:          req.Format,
 		Status:          models.ReportStatusQueued,
@@ -284,4 +330,27 @@ func (s *Server) handleDeleteAuditReport(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+// parseDatetimeFlexible accepts YYYY-MM-DD, YYYY-MM-DDTHH:mm, or RFC3339.
+// Returns the parsed time and whether the input included a time component.
+func parseDatetimeFlexible(s string) (time.Time, bool, error) {
+	// Try RFC3339 first (e.g. 2026-03-01T09:30:00Z)
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, true, nil
+	}
+	// Try datetime-local format (e.g. 2026-03-01T09:30)
+	if t, err := time.Parse("2006-01-02T15:04", s); err == nil {
+		return t, true, nil
+	}
+	// Try date-only (e.g. 2026-03-01)
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t, false, nil
+	}
+	return time.Time{}, false, fmt.Errorf("unrecognized datetime format: %s", s)
+}
+
+// validateTimezone validates an IANA timezone string and returns the location.
+func validateTimezone(tz string) (*time.Location, error) {
+	return time.LoadLocation(tz)
 }
