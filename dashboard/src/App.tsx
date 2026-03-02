@@ -23,6 +23,7 @@ import PublicPricingPage from './pages/PublicPricingPage'
 import TermsPage from './pages/TermsPage'
 import PrivacyPage from './pages/PrivacyPage'
 import SuperAdminPage from './pages/SuperAdminPage'
+import SSOCallbackPage from './pages/SSOCallbackPage'
 
 // ─── Providers ──────────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/superadmin" element={<ProtectedRoute><SuperAdminPage /></ProtectedRoute>} />
+          <Route path="/sso-callback" element={<SSOCallbackPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
