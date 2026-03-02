@@ -1,0 +1,216 @@
+/* ── Stats grid ─────────────────────────────────────────────────────────── */
+
+.sa-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.sa-stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.sa-stat-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem 0;
+}
+
+.sa-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.sa-stat-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0.35rem 0 0 0;
+}
+
+/* ── Plan badges ────────────────────────────────────────────────────────── */
+
+.sa-plan-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.sa-plan-free     { background: rgba(148,163,184,.15); color: #94a3b8; }
+.sa-plan-pro      { background: rgba(59,130,246,.2);   color: #93c5fd; }
+.sa-plan-team     { background: rgba(139,92,246,.2);   color: #c4b5fd; }
+.sa-plan-business { background: rgba(251,191,36,.2);   color: #fbbf24; }
+
+/* ── Filters bar ────────────────────────────────────────────────────────── */
+
+.sa-filters {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sa-filters input,
+.sa-filters select {
+  padding: 0.5rem 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.sa-filters input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.sa-filters input:focus,
+.sa-filters select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(99,102,241,.25);
+}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+
+.sa-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.sa-pagination button {
+  padding: 0.35rem 0.9rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sa-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sa-pagination button:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+/* ── Detail modal sections ──────────────────────────────────────────────── */
+
+.sa-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.875rem;
+  margin-bottom: 1.25rem;
+}
+
+.sa-detail-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sa-detail-value {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.sa-detail-section {
+  margin-bottom: 1.25rem;
+}
+
+.sa-detail-section h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sa-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ── Plan selector (radio group) ────────────────────────────────────────── */
+
+.sa-plan-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.sa-plan-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.sa-plan-option:hover {
+  border-color: var(--color-primary);
+}
+
+.sa-plan-option.selected {
+  border-color: var(--color-primary);
+  background: rgba(99,102,241,.06);
+}
+
+.sa-plan-option input[type="radio"] {
+  accent-color: var(--color-primary);
+}
+
+.sa-plan-option-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: capitalize;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .sa-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .sa-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .sa-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

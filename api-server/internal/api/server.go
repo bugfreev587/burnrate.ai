@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,8 +42,9 @@ type Server struct {
 	rbac           *middleware.RBACMiddleware
 	router         *gin.Engine
 	httpServer     *http.Server
-	clerkSecretKey string
-	internalSecret string
+	clerkSecretKey   string
+	internalSecret   string
+	superAdminEmails map[string]bool
 }
 
 func NewServer(
@@ -84,8 +87,9 @@ func NewServer(
 		notifWorker:    notifWorker,
 		rbac:           rbac,
 		router:         router,
-		clerkSecretKey: os.Getenv("CLERK_SECRET_KEY"),
-		internalSecret: os.Getenv("INTERNAL_ADMIN_SECRET"),
+		clerkSecretKey:   os.Getenv("CLERK_SECRET_KEY"),
+		internalSecret:   os.Getenv("INTERNAL_ADMIN_SECRET"),
+		superAdminEmails: parseSuperAdminEmails(os.Getenv("SUPER_ADMIN_EMAILS")),
 	}
 
 	s.setupMiddleware()
@@ -315,6 +319,18 @@ func (s *Server) setupRoutes() {
 		internal.PATCH("/tenants/:tenant_id/plan", s.handleAdminChangeTenantPlan)
 	}
 
+	// ─── Super Admin (email-based allowlist) ─────────────────────────────────
+	superAdmin := s.router.Group("/v1/superadmin")
+	superAdmin.Use(s.superAdminMiddleware())
+	{
+		superAdmin.GET("/whoami", s.handleSuperAdminWhoami)
+		superAdmin.GET("/stats", s.handleSuperAdminStats)
+		superAdmin.GET("/tenants", s.handleListAllTenants)
+		superAdmin.GET("/tenants/:tenant_id", s.handleGetTenantDetail)
+		superAdmin.PATCH("/tenants/:tenant_id/plan", s.handleSuperAdminChangePlan)
+		superAdmin.PATCH("/tenants/:tenant_id/status", s.handleSuperAdminUpdateTenantStatus)
+	}
+
 	// ─── NoRoute: helpful error for bare /v1/… without tenant prefix ─────────
 	s.router.NoRoute(s.handleNoRoute)
 }
@@ -359,4 +375,53 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return s.httpServer.Shutdown(ctx)
 	}
 	return nil
+}
+
+// parseSuperAdminEmails splits a comma-separated list of emails into a set.
+func parseSuperAdminEmails(raw string) map[string]bool {
+	m := make(map[string]bool)
+	for _, e := range strings.Split(raw, ",") {
+		e = strings.TrimSpace(strings.ToLower(e))
+		if e != "" {
+			m[e] = true
+		}
+	}
+	return m
+}
+
+// superAdminMiddleware authenticates super-admin requests by checking the
+// caller's email (looked up via X-User-ID) against the SUPER_ADMIN_EMAILS
+// allowlist. Does NOT require X-Tenant-Id.
+func (s *Server) superAdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if len(s.superAdminEmails) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "super admin API not configured"})
+			c.Abort()
+			return
+		}
+
+		userID := c.GetHeader("X-User-ID")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			c.Abort()
+			return
+		}
+
+		var user models.User
+		if err := s.postgresDB.GetDB().Where("id = ?", userID).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			c.Abort()
+			return
+		}
+
+		if !s.superAdminEmails[strings.ToLower(user.Email)] {
+			slog.Warn("super_admin_denied", "user_id", userID, "email", user.Email)
+			c.JSON(http.StatusForbidden, gin.H{"error": "not a super admin"})
+			c.Abort()
+			return
+		}
+
+		c.Set("super_admin_user", &user)
+		c.Next()
+	}
 }

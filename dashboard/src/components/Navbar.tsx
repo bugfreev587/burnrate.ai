@@ -22,6 +22,7 @@ export default function Navbar() {
   const [selectedNotif, setSelectedNotif] = useState<UserNotification | null>(null)
   const [notifError, setNotifError] = useState<string | null>(null)
   const [hints, setHints] = useState<OnboardingHints | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
 
@@ -80,6 +81,26 @@ export default function Navbar() {
     loadHints()
     return () => { cancelled = true }
   }, [isLoaded, isSignedIn, isSynced])
+
+  // Super admin check (cached in sessionStorage)
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return
+    const cached = sessionStorage.getItem('is_super_admin')
+    if (cached === 'true') { setIsSuperAdmin(true); return }
+    if (cached === 'false') return
+    apiFetch('/v1/superadmin/whoami')
+      .then(res => {
+        if (res.ok) {
+          sessionStorage.setItem('is_super_admin', 'true')
+          setIsSuperAdmin(true)
+        } else {
+          sessionStorage.setItem('is_super_admin', 'false')
+        }
+      })
+      .catch(() => {
+        sessionStorage.setItem('is_super_admin', 'false')
+      })
+  }, [isLoaded, isSignedIn])
 
   const dismissHint = async (key: 'dismissed_integration_hint' | 'dismissed_avatar_hint') => {
     if (!hints || hints[key]) return
@@ -304,6 +325,11 @@ export default function Navbar() {
                     {canAccessAdmin && (
                       <Link to="/settings" className="dropdown-item" onClick={() => setShowMenu(false)}>
                         Settings
+                      </Link>
+                    )}
+                    {isSuperAdmin && (
+                      <Link to="/superadmin" className="dropdown-item" onClick={() => setShowMenu(false)}>
+                        Super Admin
                       </Link>
                     )}
                     <div className="dropdown-divider" />
