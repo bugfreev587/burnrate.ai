@@ -14,6 +14,7 @@ interface PlatformStats {
   total_api_keys: number
   usage_count_30d: number
   total_cost_30d: number
+  total_revenue: number
 }
 
 interface TenantRow {
@@ -24,6 +25,7 @@ interface TenantRow {
   billing_email: string
   member_count: number
   api_key_count: number
+  total_paid: number
   created_at: string
 }
 
@@ -55,6 +57,7 @@ interface TenantDetail {
   project_count: number
   usage_count_30d: number
   total_cost_30d: number
+  total_paid: number
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -304,10 +307,10 @@ export default function SuperAdminPage() {
               <p className="sa-stat-value">{stats ? fmtNum(stats.total_api_keys) : '...'}</p>
             </div>
             <div className="sa-stat-card">
-              <p className="sa-stat-label">30-Day Usage</p>
-              <p className="sa-stat-value">{stats ? fmtNum(stats.usage_count_30d) : '...'}</p>
+              <p className="sa-stat-label">TokenGate Revenue</p>
+              <p className="sa-stat-value">{stats ? fmtCost(stats.total_revenue) : '...'}</p>
               {stats && (
-                <p className="sa-stat-sub">{fmtCost(stats.total_cost_30d)} total cost</p>
+                <p className="sa-stat-sub">{fmtNum(stats.usage_count_30d)} requests (30d)</p>
               )}
             </div>
           </div>
@@ -350,13 +353,14 @@ export default function SuperAdminPage() {
                     <th>Status</th>
                     <th>Members</th>
                     <th>API Keys</th>
+                    <th>Revenue</th>
                     <th>Created</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tenants.length === 0 ? (
-                    <tr><td colSpan={8} className="empty-cell">No tenants found.</td></tr>
+                    <tr><td colSpan={9} className="empty-cell">No tenants found.</td></tr>
                   ) : tenants.map(t => (
                     <tr key={t.id}>
                       <td className="text-muted">{t.id}</td>
@@ -365,6 +369,7 @@ export default function SuperAdminPage() {
                       <td>{statusBadge(t.status)}</td>
                       <td>{t.member_count}</td>
                       <td>{t.api_key_count}</td>
+                      <td>{t.total_paid > 0 ? fmtCost(t.total_paid) : <span className="text-muted">—</span>}</td>
                       <td className="text-muted">{fmtDate(t.created_at)}</td>
                       <td>
                         <div className="actions-cell">
@@ -463,8 +468,12 @@ export default function SuperAdminPage() {
                           <div className="sa-detail-value">{detail.project_count}</div>
                         </div>
                         <div>
-                          <div className="sa-detail-label">30d Usage</div>
-                          <div className="sa-detail-value">{fmtNum(detail.usage_count_30d)} ({fmtCost(detail.total_cost_30d)})</div>
+                          <div className="sa-detail-label">30d Requests</div>
+                          <div className="sa-detail-value">{fmtNum(detail.usage_count_30d)}</div>
+                        </div>
+                        <div>
+                          <div className="sa-detail-label">TokenGate Revenue</div>
+                          <div className="sa-detail-value">{fmtCost(detail.total_paid)}</div>
                         </div>
                       </div>
                     </div>

@@ -62,6 +62,9 @@ func (s *Server) handleSuperAdminStats(c *gin.Context) {
 		Row()
 	_ = row.Scan(&usageCount30d, &totalCost30d)
 
+	// Revenue from Stripe (total paid to TokenGate)
+	totalRevenueCents, _, _ := s.stripeSvc.GetPlatformRevenue(c.Request.Context())
+
 	c.JSON(http.StatusOK, gin.H{
 		"total_tenants":    totalTenants,
 		"tenants_by_plan":  tenantsByPlan,
@@ -69,6 +72,7 @@ func (s *Server) handleSuperAdminStats(c *gin.Context) {
 		"total_api_keys":   totalAPIKeys,
 		"usage_count_30d":  usageCount30d,
 		"total_cost_30d":   totalCost30d,
+		"total_revenue":    float64(totalRevenueCents) / 100.0,
 	})
 }
 
@@ -82,6 +86,7 @@ type tenantListItem struct {
 	BillingEmail string    `json:"billing_email"`
 	MemberCount  int64     `json:"member_count"`
 	APIKeyCount  int64     `json:"api_key_count"`
+	TotalPaid    float64   `json:"total_paid"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -122,6 +127,9 @@ func (s *Server) handleListAllTenants(c *gin.Context) {
 		Limit(perPage).
 		Find(&tenants)
 
+	// Fetch per-customer revenue from Stripe (single paginated call)
+	_, perCustomerRevenue, _ := s.stripeSvc.GetPlatformRevenue(c.Request.Context())
+
 	items := make([]tenantListItem, 0, len(tenants))
 	for _, t := range tenants {
 		var memberCount int64
@@ -129,6 +137,11 @@ func (s *Server) handleListAllTenants(c *gin.Context) {
 
 		var apiKeyCount int64
 		db.Model(&models.APIKey{}).Where("tenant_id = ? AND revoked = false", t.ID).Count(&apiKeyCount)
+
+		var totalPaidCents int64
+		if t.StripeCustomerID != "" {
+			totalPaidCents = perCustomerRevenue[t.StripeCustomerID]
+		}
 
 		items = append(items, tenantListItem{
 			ID:           t.ID,
@@ -138,6 +151,7 @@ func (s *Server) handleListAllTenants(c *gin.Context) {
 			BillingEmail: t.BillingEmail,
 			MemberCount:  memberCount,
 			APIKeyCount:  apiKeyCount,
+			TotalPaid:    float64(totalPaidCents) / 100.0,
 			CreatedAt:    t.CreatedAt,
 		})
 	}
@@ -221,6 +235,19 @@ func (s *Server) handleGetTenantDetail(c *gin.Context) {
 		Row()
 	_ = row.Scan(&usageCount30d, &totalCost30d)
 
+	// Revenue paid to TokenGate (from Stripe invoices)
+	var totalPaidCents int64
+	if tenant.StripeCustomerID != "" {
+		invoices, err := s.stripeSvc.ListInvoices(c.Request.Context(), tenantID, 100)
+		if err == nil {
+			for _, inv := range invoices {
+				if inv.Status == "paid" {
+					totalPaidCents += inv.AmountPaid
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"tenant": gin.H{
 			"id":                     tenant.ID,
@@ -243,6 +270,7 @@ func (s *Server) handleGetTenantDetail(c *gin.Context) {
 		"project_count":      projectCount,
 		"usage_count_30d":    usageCount30d,
 		"total_cost_30d":     totalCost30d,
+		"total_paid":         float64(totalPaidCents) / 100.0,
 	})
 }
 

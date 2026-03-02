@@ -592,6 +592,35 @@ func (s *StripeService) ListInvoices(ctx context.Context, tenantID uint, limit i
 	return invoices, nil
 }
 
+// GetPlatformRevenue fetches all paid invoices from Stripe and returns
+// the platform total and per-customer totals (in cents).
+func (s *StripeService) GetPlatformRevenue(ctx context.Context) (totalCents int64, perCustomer map[string]int64, err error) {
+	perCustomer = make(map[string]int64)
+	if !s.IsConfigured() {
+		return 0, perCustomer, nil
+	}
+
+	params := &stripe.InvoiceListParams{
+		Status: stripe.String(string(stripe.InvoiceStatusPaid)),
+	}
+	params.Filters.AddFilter("limit", "", "100")
+	params.Context = ctx
+
+	iter := invoice.List(params)
+	for iter.Next() {
+		inv := iter.Invoice()
+		totalCents += inv.AmountPaid
+		if inv.Customer != nil {
+			perCustomer[inv.Customer.ID] += inv.AmountPaid
+		}
+	}
+	if err = iter.Err(); err != nil {
+		return 0, nil, fmt.Errorf("list all invoices: %w", err)
+	}
+
+	return totalCents, perCustomer, nil
+}
+
 // ── Webhook helpers ──────────────────────────────────────────────────────────
 
 // ConstructEvent verifies the webhook signature and parses the event.
