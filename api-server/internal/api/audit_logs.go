@@ -25,6 +25,7 @@ func (s *Server) handleListAuditLogs(c *gin.Context) {
 		Action:       c.Query("action"),
 		ResourceType: c.Query("resource_type"),
 		ActorUserID:  c.Query("actor_user_id"),
+		Category:     c.Query("category"),
 	}
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -48,11 +49,11 @@ func (s *Server) handleListAuditLogs(c *gin.Context) {
 		}
 	}
 
-	logs, err := s.auditLogSvc.List(c.Request.Context(), tenantID, filter)
+	logs, total, err := s.auditLogSvc.List(c.Request.Context(), tenantID, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list audit logs"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"audit_logs": logs, "count": len(logs)})
+	c.JSON(http.StatusOK, gin.H{"audit_logs": logs, "count": len(logs), "total": total})
 }

@@ -125,7 +125,15 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	s.recordAudit(c, "api_key:create", "api_key", kid)
+	s.recordAuditEvent(c, models.AuditAPIKeyCreated, "api_key", kid, AuditOpts{
+		Category: models.AuditCategoryAccess,
+		AfterState: map[string]interface{}{
+			"label":        req.Label,
+			"provider":     req.Provider,
+			"auth_method":  req.AuthMethod,
+			"billing_mode": req.BillingMode,
+		},
+	})
 
 	c.JSON(http.StatusCreated, gin.H{
 		"key_id":       kid,
@@ -241,7 +249,9 @@ func (s *Server) handleRevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	s.recordAudit(c, "api_key:revoke", "api_key", keyID)
+	s.recordAuditEvent(c, models.AuditAPIKeyRevoked, "api_key", keyID, AuditOpts{
+		Category: models.AuditCategoryAccess,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"revoked": keyID})
 }

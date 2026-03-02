@@ -295,10 +295,29 @@ func (s *Server) handleSuperAdminChangePlan(c *gin.Context) {
 		return
 	}
 
+	oldPlan := tenant.Plan
+
 	if status, body := s.applyPlanChange(tenantID, req.Plan); status != 0 {
 		c.JSON(status, body)
 		return
 	}
+
+	actor := c.MustGet("super_admin_user").(*models.User)
+	_ = s.auditLogSvc.Record(c.Request.Context(), models.AuditLog{
+		TenantID:     tenantID,
+		ActorUserID:  actor.ID,
+		Action:       models.AuditSuperAdminPlanChanged,
+		ResourceType: "tenant",
+		ResourceID:   fmt.Sprintf("%d", tenantID),
+		Category:     models.AuditCategoryAdmin,
+		ActorType:    models.AuditActorSuperAdmin,
+		UserAgent:    c.Request.UserAgent(),
+		Success:      true,
+		IPAddress:    c.ClientIP(),
+		BeforeJSON:   fmt.Sprintf(`{"plan":"%s"}`, oldPlan),
+		AfterJSON:    fmt.Sprintf(`{"plan":"%s"}`, req.Plan),
+		Metadata:     "{}",
+	})
 
 	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
@@ -346,10 +365,29 @@ func (s *Server) handleSuperAdminUpdateTenantStatus(c *gin.Context) {
 		return
 	}
 
+	oldStatus := tenant.Status
+
 	if err := db.Model(&tenant).Update("status", req.Status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tenant status"})
 		return
 	}
+
+	actor := c.MustGet("super_admin_user").(*models.User)
+	_ = s.auditLogSvc.Record(c.Request.Context(), models.AuditLog{
+		TenantID:     tenantID,
+		ActorUserID:  actor.ID,
+		Action:       models.AuditSuperAdminStatusChanged,
+		ResourceType: "tenant",
+		ResourceID:   fmt.Sprintf("%d", tenantID),
+		Category:     models.AuditCategoryAdmin,
+		ActorType:    models.AuditActorSuperAdmin,
+		UserAgent:    c.Request.UserAgent(),
+		Success:      true,
+		IPAddress:    c.ClientIP(),
+		BeforeJSON:   fmt.Sprintf(`{"status":"%s"}`, oldStatus),
+		AfterJSON:    fmt.Sprintf(`{"status":"%s"}`, req.Status),
+		Metadata:     "{}",
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"tenant": gin.H{

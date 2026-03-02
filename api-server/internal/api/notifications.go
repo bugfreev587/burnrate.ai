@@ -120,6 +120,14 @@ func (s *Server) handleCreateNotificationChannel(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditNotificationChannelCreated, "notification_channel", fmt.Sprintf("%d", channel.ID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+		AfterState: map[string]interface{}{
+			"type": channel.ChannelType,
+			"name": channel.Name,
+		},
+	})
+
 	c.JSON(http.StatusCreated, channel)
 }
 
@@ -205,6 +213,10 @@ func (s *Server) handleUpdateNotificationChannel(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditNotificationChannelUpdated, "notification_channel", fmt.Sprintf("%d", channel.ID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
+
 	c.JSON(http.StatusOK, channel)
 }
 
@@ -240,6 +252,10 @@ func (s *Server) handleDeleteNotificationChannel(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditNotificationChannelDeleted, "notification_channel", c.Param("id"), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }

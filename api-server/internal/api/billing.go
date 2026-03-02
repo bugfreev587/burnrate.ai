@@ -162,6 +162,13 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditBillingCheckout, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryBilling,
+		Metadata: map[string]interface{}{
+			"plan": req.Plan,
+		},
+	})
+
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
@@ -307,6 +314,14 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditBillingDowngraded, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryBilling,
+		Metadata: map[string]interface{}{
+			"from_plan": tenant.Plan,
+			"to_plan":   req.Plan,
+		},
+	})
+
 	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{
 		"plan":              tenant.Plan,
@@ -337,6 +352,10 @@ func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditBillingDowngradeCanceled, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryBilling,
+	})
 
 	var tenant models.Tenant
 	s.postgresDB.GetDB().First(&tenant, tenantID)
@@ -398,11 +417,23 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 		return
 	}
 
+	oldPlan := tenant.Plan
+
 	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), tenantID, req.Plan); err != nil {
 		slog.Error("billing_change_plan_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change plan"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditBillingPlanChanged, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryBilling,
+		BeforeState: map[string]interface{}{
+			"plan": oldPlan,
+		},
+		AfterState: map[string]interface{}{
+			"plan": req.Plan,
+		},
+	})
 
 	s.postgresDB.GetDB().First(&tenant, tenantID)
 	c.JSON(http.StatusOK, gin.H{

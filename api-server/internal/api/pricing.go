@@ -630,6 +630,20 @@ func (s *Server) handleUpsertBudget(c *gin.Context) {
 		s.pricingEngine.InvalidateBudgetCache(c.Request.Context(), tenantID)
 	}
 
+	auditAction := models.AuditBudgetCreated
+	if !isNewRecord {
+		auditAction = models.AuditBudgetUpdated
+	}
+	s.recordAuditEvent(c, auditAction, "budget_limit", fmt.Sprintf("%d", budgetLimit.ID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+		AfterState: map[string]interface{}{
+			"scope_type":   scopeType,
+			"period_type":  req.PeriodType,
+			"limit_amount": req.LimitAmount,
+			"action":       action,
+		},
+	})
+
 	c.JSON(http.StatusOK, budgetLimit)
 }
 
@@ -660,6 +674,10 @@ func (s *Server) handleDeleteBudget(c *gin.Context) {
 	if s.pricingEngine != nil {
 		s.pricingEngine.InvalidateBudgetCache(c.Request.Context(), tenantID)
 	}
+
+	s.recordAuditEvent(c, models.AuditBudgetDeleted, "budget_limit", c.Param("budget_id"), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
@@ -1004,6 +1022,14 @@ func (s *Server) handleCreatePricingConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditPricingConfigCreated, "pricing_config", fmt.Sprintf("%d", cfg.ID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+		AfterState: map[string]interface{}{
+			"name": cfg.Name,
+		},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"id": cfg.ID, "name": cfg.Name, "description": cfg.Description,
 		"rates": []configRateView{}, "assigned_key": nil, "created_at": cfg.CreatedAt,
@@ -1032,6 +1058,11 @@ func (s *Server) handleDeletePricingConfig(c *gin.Context) {
 	db.Where("config_id = ?", id).Delete(&models.PricingConfigRate{})
 	db.Where("config_id = ?", id).Delete(&models.APIKeyConfig{})
 	db.Delete(&cfg)
+
+	s.recordAuditEvent(c, models.AuditPricingConfigDeleted, "pricing_config", c.Param("config_id"), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
+
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -1195,6 +1226,14 @@ func (s *Server) handleAssignPricingConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditPricingConfigAssigned, "pricing_config", fmt.Sprintf("%d", configID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+		AfterState: map[string]interface{}{
+			"key_id": req.KeyID,
+		},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"config_id": configID,
 		"key_id":    req.KeyID,
@@ -1221,5 +1260,10 @@ func (s *Server) handleUnassignPricingConfig(c *gin.Context) {
 		return
 	}
 	db.Where("config_id = ?", configID).Delete(&models.APIKeyConfig{})
+
+	s.recordAuditEvent(c, models.AuditPricingConfigUnassigned, "pricing_config", fmt.Sprintf("%d", configID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
+
 	c.JSON(http.StatusOK, gin.H{"unassigned": true})
 }

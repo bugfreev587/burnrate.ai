@@ -157,7 +157,12 @@ func (s *Server) handleCreateProject(c *gin.Context) {
 	}
 	db.Create(&membership)
 
-	s.recordAudit(c, "project:create", "project", fmt.Sprintf("%d", project.ID))
+	s.recordAuditEvent(c, models.AuditProjectCreated, "project", fmt.Sprintf("%d", project.ID), AuditOpts{
+		Category: models.AuditCategoryProject,
+		AfterState: map[string]interface{}{
+			"name": project.Name,
+		},
+	})
 
 	c.JSON(http.StatusCreated, toProjectResponse(project, tenant.DefaultProjectID))
 }
@@ -224,6 +229,9 @@ func (s *Server) handleUpdateProject(c *gin.Context) {
 		return
 	}
 
+	beforeName := project.Name
+	beforeDesc := project.Description
+
 	updates := map[string]interface{}{}
 	if req.Name != nil {
 		// Check uniqueness.
@@ -244,7 +252,14 @@ func (s *Server) handleUpdateProject(c *gin.Context) {
 
 	db.Model(&project).Updates(updates)
 
-	s.recordAudit(c, "project:update", "project", fmt.Sprintf("%d", projectID))
+	s.recordAuditEvent(c, models.AuditProjectUpdated, "project", fmt.Sprintf("%d", projectID), AuditOpts{
+		Category: models.AuditCategoryProject,
+		BeforeState: map[string]interface{}{
+			"name":        beforeName,
+			"description": beforeDesc,
+		},
+		AfterState: updates,
+	})
 
 	var tenant models.Tenant
 	db.First(&tenant, tenantID)
@@ -302,7 +317,12 @@ func (s *Server) handleDeleteProject(c *gin.Context) {
 	// Clean up project memberships.
 	db.Where("project_id = ?", projectID).Delete(&models.ProjectMembership{})
 
-	s.recordAudit(c, "project:delete", "project", fmt.Sprintf("%d", projectID))
+	s.recordAuditEvent(c, models.AuditProjectDeleted, "project", fmt.Sprintf("%d", projectID), AuditOpts{
+		Category: models.AuditCategoryProject,
+		BeforeState: map[string]interface{}{
+			"name": project.Name,
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
@@ -436,6 +456,14 @@ func (s *Server) handleAddProjectMember(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditProjectMemberAdded, "project_membership", fmt.Sprintf("%d/%s", projectID, req.UserID), AuditOpts{
+		Category: models.AuditCategoryProject,
+		AfterState: map[string]interface{}{
+			"user_id":      req.UserID,
+			"project_role": role,
+		},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"user_id":      req.UserID,
 		"project_role": role,
@@ -485,6 +513,14 @@ func (s *Server) handleUpdateProjectMemberRole(c *gin.Context) {
 		return
 	}
 
+	// Fetch current role before updating.
+	var pm models.ProjectMembership
+	if err := db.Where("project_id = ? AND user_id = ?", projectID, targetUserID).First(&pm).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project member not found"})
+		return
+	}
+	oldRole := pm.ProjectRole
+
 	res := db.Model(&models.ProjectMembership{}).
 		Where("project_id = ? AND user_id = ?", projectID, targetUserID).
 		Update("project_role", req.ProjectRole)
@@ -492,6 +528,16 @@ func (s *Server) handleUpdateProjectMemberRole(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project member not found"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditProjectMemberRoleChanged, "project_membership", fmt.Sprintf("%d/%s", projectID, targetUserID), AuditOpts{
+		Category: models.AuditCategoryProject,
+		BeforeState: map[string]interface{}{
+			"project_role": oldRole,
+		},
+		AfterState: map[string]interface{}{
+			"project_role": req.ProjectRole,
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":      targetUserID,
@@ -530,6 +576,10 @@ func (s *Server) handleRemoveProjectMember(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project member not found"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditProjectMemberRemoved, "project_membership", fmt.Sprintf("%d/%s", projectID, targetUserID), AuditOpts{
+		Category: models.AuditCategoryProject,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"removed": true})
 }

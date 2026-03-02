@@ -32,6 +32,7 @@ type AuditFilter struct {
 	Action       string
 	ResourceType string
 	ActorUserID  string
+	Category     string
 	StartDate    *time.Time
 	EndDate      *time.Time
 	Limit        int
@@ -39,7 +40,8 @@ type AuditFilter struct {
 }
 
 // List returns audit log entries for a tenant with optional filters.
-func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditFilter) ([]models.AuditLog, error) {
+// Returns the matching logs, total count (before limit/offset), and any error.
+func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditFilter) ([]models.AuditLog, int64, error) {
 	q := s.db.WithContext(ctx).Where("tenant_id = ?", tenantID)
 	if filter.Action != "" {
 		q = q.Where("action = ?", filter.Action)
@@ -50,12 +52,21 @@ func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditF
 	if filter.ActorUserID != "" {
 		q = q.Where("actor_user_id = ?", filter.ActorUserID)
 	}
+	if filter.Category != "" {
+		q = q.Where("category = ?", filter.Category)
+	}
 	if filter.StartDate != nil {
 		q = q.Where("created_at >= ?", *filter.StartDate)
 	}
 	if filter.EndDate != nil {
 		q = q.Where("created_at <= ?", *filter.EndDate)
 	}
+
+	var total int64
+	if err := q.Model(&models.AuditLog{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
 	limit := filter.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -67,7 +78,7 @@ func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditF
 
 	var logs []models.AuditLog
 	if err := q.Find(&logs).Error; err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return logs, nil
+	return logs, total, nil
 }

@@ -80,9 +80,12 @@ type AuditLog struct {
 	TenantID      uint      `gorm:"index" json:"tenant_id"`
 	ActorUserID   string    `gorm:"size:255" json:"actor_user_id"`
 	ActorAPIKeyID string    `gorm:"size:64" json:"actor_api_key_id"`
-	Action        string    `gorm:"size:64;index" json:"action"`         // e.g. "api_key:create", "member:invite"
+	Action        string    `gorm:"size:64;index" json:"action"`         // e.g. "API_KEY.CREATED", "MEMBER.INVITED"
 	ResourceType  string    `gorm:"size:64;index" json:"resource_type"`  // e.g. "api_key", "project", "membership"
 	ResourceID    string    `gorm:"size:255" json:"resource_id"`
+	Category      string    `gorm:"size:32;index" json:"category"`
+	ActorType     string    `gorm:"size:16;default:user" json:"actor_type"`
+	UserAgent     string    `gorm:"size:512" json:"user_agent,omitempty"`
 	Success       bool      `gorm:"not null;default:true" json:"success"`
 	IPAddress     string    `gorm:"size:45" json:"ip_address"`
 	BeforeJSON    string    `gorm:"type:jsonb" json:"before_json,omitempty"`
@@ -117,6 +120,80 @@ const (
 const (
 	ProjectStatusActive   = "active"
 	ProjectStatusArchived = "archived"
+)
+
+// Audit action constants (DOMAIN.VERB format)
+const (
+	AuditAPIKeyCreated  = "API_KEY.CREATED"
+	AuditAPIKeyRevoked  = "API_KEY.REVOKED"
+
+	AuditProviderKeyCreated   = "PROVIDER_KEY.CREATED"
+	AuditProviderKeyRevoked   = "PROVIDER_KEY.REVOKED"
+	AuditProviderKeyActivated = "PROVIDER_KEY.ACTIVATED"
+	AuditProviderKeyRotated   = "PROVIDER_KEY.ROTATED"
+
+	AuditMemberInvited     = "MEMBER.INVITED"
+	AuditMemberRemoved     = "MEMBER.REMOVED"
+	AuditMemberRoleChanged = "MEMBER.ROLE_CHANGED"
+	AuditMemberSuspended   = "MEMBER.SUSPENDED"
+	AuditMemberUnsuspended = "MEMBER.UNSUSPENDED"
+	AuditMemberPromoted    = "MEMBER.PROMOTED"
+	AuditMemberDemoted     = "MEMBER.DEMOTED"
+
+	AuditProjectCreated           = "PROJECT.CREATED"
+	AuditProjectUpdated           = "PROJECT.UPDATED"
+	AuditProjectDeleted           = "PROJECT.DELETED"
+	AuditProjectMemberAdded       = "PROJECT_MEMBER.ADDED"
+	AuditProjectMemberRoleChanged = "PROJECT_MEMBER.ROLE_CHANGED"
+	AuditProjectMemberRemoved     = "PROJECT_MEMBER.REMOVED"
+
+	AuditBudgetCreated = "BUDGET.CREATED"
+	AuditBudgetUpdated = "BUDGET.UPDATED"
+	AuditBudgetDeleted = "BUDGET.DELETED"
+
+	AuditRateLimitCreated = "RATE_LIMIT.CREATED"
+	AuditRateLimitUpdated = "RATE_LIMIT.UPDATED"
+	AuditRateLimitDeleted = "RATE_LIMIT.DELETED"
+
+	AuditBillingCheckout         = "BILLING.CHECKOUT"
+	AuditBillingPlanChanged      = "BILLING.PLAN_CHANGED"
+	AuditBillingDowngraded       = "BILLING.DOWNGRADED"
+	AuditBillingDowngradeCanceled = "BILLING.DOWNGRADE_CANCELED"
+	AuditBillingWebhookProcessed = "BILLING.WEBHOOK_PROCESSED"
+
+	AuditOwnershipTransferred = "OWNERSHIP.TRANSFERRED"
+	AuditSettingsUpdated      = "SETTINGS.UPDATED"
+	AuditAccountDeleted       = "ACCOUNT.DELETED"
+
+	AuditNotificationChannelCreated = "NOTIFICATION_CHANNEL.CREATED"
+	AuditNotificationChannelUpdated = "NOTIFICATION_CHANNEL.UPDATED"
+	AuditNotificationChannelDeleted = "NOTIFICATION_CHANNEL.DELETED"
+
+	AuditPricingConfigCreated    = "PRICING_CONFIG.CREATED"
+	AuditPricingConfigDeleted    = "PRICING_CONFIG.DELETED"
+	AuditPricingConfigAssigned   = "PRICING_CONFIG.ASSIGNED"
+	AuditPricingConfigUnassigned = "PRICING_CONFIG.UNASSIGNED"
+
+	AuditSuperAdminPlanChanged   = "SUPERADMIN.PLAN_CHANGED"
+	AuditSuperAdminStatusChanged = "SUPERADMIN.STATUS_CHANGED"
+)
+
+// Audit log category constants
+const (
+	AuditCategoryAccess  = "ACCESS"
+	AuditCategoryTeam    = "TEAM"
+	AuditCategoryProject = "PROJECT"
+	AuditCategoryConfig  = "CONFIG"
+	AuditCategoryBilling = "BILLING"
+	AuditCategoryOwner   = "OWNER"
+	AuditCategoryAdmin   = "ADMIN"
+)
+
+// Audit actor type constants
+const (
+	AuditActorUser       = "user"
+	AuditActorSystem     = "system"
+	AuditActorSuperAdmin = "superadmin"
 )
 
 // PlanStatus constants (billing subscription status, independent from tenant Status).

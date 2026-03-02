@@ -71,7 +71,13 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 		return
 	}
 
-	s.recordAudit(c, "provider_key:create", "provider_key", fmt.Sprintf("%d", pk.ID))
+	s.recordAuditEvent(c, models.AuditProviderKeyCreated, "provider_key", fmt.Sprintf("%d", pk.ID), AuditOpts{
+		Category: models.AuditCategoryAccess,
+		AfterState: map[string]interface{}{
+			"provider": pk.Provider,
+			"label":    pk.Label,
+		},
+	})
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         pk.ID,
@@ -170,7 +176,9 @@ func (s *Server) handleRevokeProviderKey(c *gin.Context) {
 		return
 	}
 
-	s.recordAudit(c, "provider_key:revoke", "provider_key", keyIDStr)
+	s.recordAuditEvent(c, models.AuditProviderKeyRevoked, "provider_key", keyIDStr, AuditOpts{
+		Category: models.AuditCategoryAccess,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "provider key revoked"})
 }
@@ -210,6 +218,17 @@ func (s *Server) handleRotateProviderKey(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditProviderKeyRotated, "provider_key", fmt.Sprintf("%d", newKey.ID), AuditOpts{
+		Category: models.AuditCategoryAccess,
+		BeforeState: map[string]interface{}{
+			"old_key_id": oldKeyID,
+		},
+		AfterState: map[string]interface{}{
+			"new_key_id": newKey.ID,
+			"label":      newKey.Label,
+		},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":         newKey.ID,
 		"provider":   newKey.Provider,
@@ -239,6 +258,10 @@ func (s *Server) handleActivateProviderKey(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate provider key"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditProviderKeyActivated, "provider_key", keyIDStr, AuditOpts{
+		Category: models.AuditCategoryAccess,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "provider key activated"})
 }

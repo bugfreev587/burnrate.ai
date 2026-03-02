@@ -131,6 +131,10 @@
   background: rgba(99, 102, 241, 0.04);
 }
 
+.audit-table tbody tr[style*="cursor: pointer"]:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
 .audit-empty {
   color: var(--color-text-muted);
   font-size: 0.875rem;
@@ -220,6 +224,113 @@
   color: #22c55e;
 }
 
+/* ── Category badge ──────────────────────────────────────────────────────── */
+
+.audit-category-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary, #6366f1);
+}
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.audit-pagination-info {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Detail Drawer ───────────────────────────────────────────────────────── */
+
+.audit-detail-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.audit-detail-panel {
+  width: 480px;
+  max-width: 90vw;
+  background: var(--color-surface, #fff);
+  border-left: 1px solid var(--color-border);
+  padding: 1.5rem;
+  overflow-y: auto;
+  animation: audit-slide-in 0.2s ease-out;
+}
+
+@keyframes audit-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.audit-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.audit-detail-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.audit-detail-fields {
+  margin: 0;
+  padding: 0;
+}
+
+.audit-detail-fields dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.audit-detail-fields dt:first-child {
+  margin-top: 0;
+}
+
+.audit-detail-fields dd {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.audit-detail-fields pre {
+  margin: 0.25rem 0 0;
+  padding: 0.75rem;
+  background: var(--color-bg, #f9fafb);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Disabled button ──────────────────────────────────────────────────────── */
 
 .btn-disabled {
@@ -244,5 +355,10 @@
   .audit-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .audit-detail-panel {
+    width: 100%;
+    max-width: 100%;
   }
 }

@@ -114,6 +114,13 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 		"plan_status": models.PlanStatusCanceled,
 	})
 
+	s.recordAuditEvent(c, models.AuditAccountDeleted, "tenant", fmt.Sprintf("%d", tenant.ID), AuditOpts{
+		Category: models.AuditCategoryOwner,
+		Metadata: map[string]interface{}{
+			"tenant_name": tenant.Name,
+		},
+	})
+
 	slog.Info("account_deleted", "tenant_id", tenant.ID, "name", tenant.Name, "by", caller.Email)
 	c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
 }

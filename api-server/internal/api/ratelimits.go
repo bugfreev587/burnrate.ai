@@ -180,6 +180,20 @@ func (s *Server) handleUpsertRateLimit(c *gin.Context) {
 		s.rateLimiter.InvalidateCache(c.Request.Context(), tenantID)
 	}
 
+	auditAction := models.AuditRateLimitCreated
+	if err == nil { // existing record was updated
+		auditAction = models.AuditRateLimitUpdated
+	}
+	s.recordAuditEvent(c, auditAction, "rate_limit", fmt.Sprintf("%d", limit.ID), AuditOpts{
+		Category: models.AuditCategoryConfig,
+		AfterState: map[string]interface{}{
+			"metric":      req.Metric,
+			"limit_value": req.LimitValue,
+			"provider":    req.Provider,
+			"model":       req.Model,
+		},
+	})
+
 	c.JSON(http.StatusOK, limit)
 }
 
@@ -220,6 +234,10 @@ func (s *Server) handleDeleteRateLimit(c *gin.Context) {
 	if s.rateLimiter != nil {
 		s.rateLimiter.InvalidateCache(c.Request.Context(), tenantID)
 	}
+
+	s.recordAuditEvent(c, models.AuditRateLimitDeleted, "rate_limit", c.Param("id"), AuditOpts{
+		Category: models.AuditCategoryConfig,
+	})
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }

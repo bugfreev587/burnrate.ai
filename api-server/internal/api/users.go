@@ -353,7 +353,13 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 			}
 		}
 
-		s.recordAudit(c, "member:invite", "membership", existing.ID)
+		s.recordAuditEvent(c, models.AuditMemberInvited, "membership", existing.ID, AuditOpts{
+			Category: models.AuditCategoryTeam,
+			AfterState: map[string]interface{}{
+				"email": req.Email,
+				"role":  role,
+			},
+		})
 
 		slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", tenantID)
 		c.JSON(http.StatusCreated, gin.H{
@@ -390,7 +396,13 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 		return
 	}
 
-	s.recordAudit(c, "member:invite", "membership", invited.ID)
+	s.recordAuditEvent(c, models.AuditMemberInvited, "membership", invited.ID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+		AfterState: map[string]interface{}{
+			"email": req.Email,
+			"role":  role,
+		},
+	})
 
 	slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", tenantID)
 	c.JSON(http.StatusCreated, gin.H{
@@ -528,12 +540,24 @@ func (s *Server) handleUpdateUserRole(c *gin.Context) {
 		return
 	}
 
+	oldRole := targetMembership.OrgRole
+
 	if err := db.Model(&models.TenantMembership{}).
 		Where("tenant_id = ? AND user_id = ?", tenantID, targetID).
 		Update("org_role", req.Role).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update role"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditMemberRoleChanged, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+		BeforeState: map[string]interface{}{
+			"role": oldRole,
+		},
+		AfterState: map[string]interface{}{
+			"role": req.Role,
+		},
+	})
 
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
@@ -585,6 +609,10 @@ func (s *Server) handleSuspendUser(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditMemberSuspended, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+	})
+
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
 	c.JSON(http.StatusOK, gin.H{"message": "User suspended successfully", "user": toUserResponse(target, targetMembership.OrgRole, models.StatusSuspended)})
@@ -619,6 +647,10 @@ func (s *Server) handleUnsuspendUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unsuspend user"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditMemberUnsuspended, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+	})
 
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
@@ -707,7 +739,13 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 
 	tx.Commit()
 
-	s.recordAudit(c, "member:remove", "membership", targetID)
+	s.recordAuditEvent(c, models.AuditMemberRemoved, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+		BeforeState: map[string]interface{}{
+			"email": target.Email,
+			"role":  targetMembership.OrgRole,
+		},
+	})
 
 	slog.Info("user_removed", "email", target.Email, "by", caller.Email, "tenant_id", tenantID)
 	c.JSON(http.StatusOK, gin.H{"message": "User removed successfully"})
@@ -814,11 +852,22 @@ func (s *Server) handleUpdateTenantSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name must be 100 characters or fewer"})
 		return
 	}
+	oldName := tenant.Name
 	if err := s.postgresDB.GetDB().Model(&tenant).Update("name", trimmed).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update name"})
 		return
 	}
 	tenant.Name = trimmed
+
+	s.recordAuditEvent(c, models.AuditSettingsUpdated, "tenant", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryOwner,
+		BeforeState: map[string]interface{}{
+			"name": oldName,
+		},
+		AfterState: map[string]interface{}{
+			"name": trimmed,
+		},
+	})
 
 	c.JSON(http.StatusOK, tenantSettingsResponse{
 		TenantID:   tenant.ID,
@@ -872,6 +921,16 @@ func (s *Server) handlePromoteAdmin(c *gin.Context) {
 		return
 	}
 
+	s.recordAuditEvent(c, models.AuditMemberPromoted, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+		BeforeState: map[string]interface{}{
+			"role": targetMembership.OrgRole,
+		},
+		AfterState: map[string]interface{}{
+			"role": models.RoleAdmin,
+		},
+	})
+
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
 	slog.Info("user_promoted_to_admin", "email", target.Email, "by", caller.Email)
@@ -912,6 +971,16 @@ func (s *Server) handleDemoteAdmin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to demote admin"})
 		return
 	}
+
+	s.recordAuditEvent(c, models.AuditMemberDemoted, "membership", targetID, AuditOpts{
+		Category: models.AuditCategoryTeam,
+		BeforeState: map[string]interface{}{
+			"role": models.RoleAdmin,
+		},
+		AfterState: map[string]interface{}{
+			"role": models.RoleEditor,
+		},
+	})
 
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
@@ -981,6 +1050,14 @@ func (s *Server) handleTransferOwnership(c *gin.Context) {
 		return
 	}
 	tx.Commit()
+
+	s.recordAuditEvent(c, models.AuditOwnershipTransferred, "tenant", fmt.Sprintf("%d", tenantID), AuditOpts{
+		Category: models.AuditCategoryOwner,
+		Metadata: map[string]interface{}{
+			"from": caller.Email,
+			"to":   newOwner.Email,
+		},
+	})
 
 	slog.Info("ownership_transferred", "from", caller.Email, "to", newOwner.Email, "tenant_id", tenantID)
 	c.JSON(http.StatusOK, gin.H{

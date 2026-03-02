@@ -15,8 +15,14 @@ interface AuditLogEntry {
   action: string
   resource_type: string
   resource_id: string
+  category: string
+  actor_type: string
+  user_agent: string
   success: boolean
   ip_address: string
+  before_json: string
+  after_json: string
+  metadata: string
   created_at: string
 }
 
@@ -34,7 +40,13 @@ export default function AuditPage() {
   const [logsError, setLogsError] = useState<string | null>(null)
   const [logAction, setLogAction] = useState('')
   const [logResourceType, setLogResourceType] = useState('')
+  const [logCategory, setLogCategory] = useState('')
+  const [logStartDate, setLogStartDate] = useState('')
+  const [logEndDate, setLogEndDate] = useState('')
   const [logLimit, setLogLimit] = useState(50)
+  const [logOffset, setLogOffset] = useState(0)
+  const [logTotal, setLogTotal] = useState(0)
+  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null)
 
   const fetchAuditLogs = useCallback(async () => {
     setLogsLoading(true)
@@ -43,21 +55,30 @@ export default function AuditPage() {
       const params = new URLSearchParams()
       if (logAction) params.set('action', logAction)
       if (logResourceType) params.set('resource_type', logResourceType)
+      if (logCategory) params.set('category', logCategory)
+      if (logStartDate) params.set('start_date', logStartDate)
+      if (logEndDate) params.set('end_date', logEndDate)
       params.set('limit', String(logLimit))
+      params.set('offset', String(logOffset))
       const res = await apiFetch(`/v1/audit-logs?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch audit logs')
       const data = await res.json()
       setAuditLogs(data.audit_logs ?? [])
+      setLogTotal(data.total ?? 0)
     } catch (e) {
       setLogsError(e instanceof Error ? e.message : 'Failed to load audit logs')
     } finally {
       setLogsLoading(false)
     }
-  }, [logAction, logResourceType, logLimit])
+  }, [logAction, logResourceType, logCategory, logStartDate, logEndDate, logLimit, logOffset])
 
   useEffect(() => {
     if (isAdmin) fetchAuditLogs()
   }, [isAdmin, fetchAuditLogs])
+
+  // Reset offset when filters change
+  const resetOffset = () => setLogOffset(0)
+
   const plan = config?.plan || 'free'
   const canExport = plan !== 'free'
 
@@ -134,7 +155,7 @@ export default function AuditPage() {
 
   // ── Format helpers ───────────────────────────────────────────────────
   function formatSize(bytes: number): string {
-    if (bytes === 0) return '—'
+    if (bytes === 0) return '\u2014'
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
@@ -149,6 +170,23 @@ export default function AuditPage() {
     const d = new Date(iso)
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
+
+  function prettyJSON(raw: string | undefined): string | null {
+    if (!raw || raw === '{}' || raw === 'null') return null
+    try {
+      const obj = JSON.parse(raw)
+      if (Object.keys(obj).length === 0) return null
+      return JSON.stringify(obj, null, 2)
+    } catch {
+      return raw
+    }
+  }
+
+  // ── Pagination helpers ───────────────────────────────────────────────
+  const pageStart = logTotal === 0 ? 0 : logOffset + 1
+  const pageEnd = Math.min(logOffset + logLimit, logTotal)
+  const hasPrev = logOffset > 0
+  const hasNext = logOffset + logLimit < logTotal
 
   // ── Loading ──────────────────────────────────────────────────────────
   if (!isSynced) {
@@ -193,37 +231,120 @@ export default function AuditPage() {
               </div>
               <div className="audit-filter-row" style={{ marginBottom: '0.75rem' }}>
                 <label className="audit-filter-label">
+                  Category
+                  <select className="audit-select" value={logCategory} onChange={e => { setLogCategory(e.target.value); resetOffset() }}>
+                    <option value="">All Categories</option>
+                    <option value="ACCESS">ACCESS</option>
+                    <option value="TEAM">TEAM</option>
+                    <option value="PROJECT">PROJECT</option>
+                    <option value="CONFIG">CONFIG</option>
+                    <option value="BILLING">BILLING</option>
+                    <option value="OWNER">OWNER</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </label>
+                <label className="audit-filter-label">
                   Action
-                  <select className="audit-select" value={logAction} onChange={e => setLogAction(e.target.value)}>
+                  <select className="audit-select" value={logAction} onChange={e => { setLogAction(e.target.value); resetOffset() }}>
                     <option value="">All Actions</option>
-                    <option value="api_key:create">API Key Create</option>
-                    <option value="api_key:revoke">API Key Revoke</option>
-                    <option value="provider_key:create">Provider Key Create</option>
-                    <option value="provider_key:revoke">Provider Key Revoke</option>
-                    <option value="project:create">Project Create</option>
-                    <option value="project:update">Project Update</option>
-                    <option value="project:delete">Project Delete</option>
-                    <option value="member:invite">Member Invite</option>
-                    <option value="member:remove">Member Remove</option>
-                    <option value="billing:update_plan">Plan Change</option>
+                    <optgroup label="Access">
+                      <option value="API_KEY.CREATED">API Key Created</option>
+                      <option value="API_KEY.REVOKED">API Key Revoked</option>
+                      <option value="PROVIDER_KEY.CREATED">Provider Key Created</option>
+                      <option value="PROVIDER_KEY.REVOKED">Provider Key Revoked</option>
+                      <option value="PROVIDER_KEY.ACTIVATED">Provider Key Activated</option>
+                      <option value="PROVIDER_KEY.ROTATED">Provider Key Rotated</option>
+                    </optgroup>
+                    <optgroup label="Team">
+                      <option value="MEMBER.INVITED">Member Invited</option>
+                      <option value="MEMBER.REMOVED">Member Removed</option>
+                      <option value="MEMBER.ROLE_CHANGED">Member Role Changed</option>
+                      <option value="MEMBER.SUSPENDED">Member Suspended</option>
+                      <option value="MEMBER.UNSUSPENDED">Member Unsuspended</option>
+                      <option value="MEMBER.PROMOTED">Member Promoted</option>
+                      <option value="MEMBER.DEMOTED">Member Demoted</option>
+                    </optgroup>
+                    <optgroup label="Project">
+                      <option value="PROJECT.CREATED">Project Created</option>
+                      <option value="PROJECT.UPDATED">Project Updated</option>
+                      <option value="PROJECT.DELETED">Project Deleted</option>
+                      <option value="PROJECT_MEMBER.ADDED">Project Member Added</option>
+                      <option value="PROJECT_MEMBER.ROLE_CHANGED">Project Member Role Changed</option>
+                      <option value="PROJECT_MEMBER.REMOVED">Project Member Removed</option>
+                    </optgroup>
+                    <optgroup label="Config">
+                      <option value="BUDGET.CREATED">Budget Created</option>
+                      <option value="BUDGET.UPDATED">Budget Updated</option>
+                      <option value="BUDGET.DELETED">Budget Deleted</option>
+                      <option value="RATE_LIMIT.CREATED">Rate Limit Created</option>
+                      <option value="RATE_LIMIT.UPDATED">Rate Limit Updated</option>
+                      <option value="RATE_LIMIT.DELETED">Rate Limit Deleted</option>
+                      <option value="NOTIFICATION_CHANNEL.CREATED">Notification Created</option>
+                      <option value="NOTIFICATION_CHANNEL.UPDATED">Notification Updated</option>
+                      <option value="NOTIFICATION_CHANNEL.DELETED">Notification Deleted</option>
+                      <option value="PRICING_CONFIG.CREATED">Pricing Config Created</option>
+                      <option value="PRICING_CONFIG.DELETED">Pricing Config Deleted</option>
+                      <option value="PRICING_CONFIG.ASSIGNED">Pricing Config Assigned</option>
+                      <option value="PRICING_CONFIG.UNASSIGNED">Pricing Config Unassigned</option>
+                    </optgroup>
+                    <optgroup label="Billing">
+                      <option value="BILLING.CHECKOUT">Billing Checkout</option>
+                      <option value="BILLING.PLAN_CHANGED">Billing Plan Changed</option>
+                      <option value="BILLING.DOWNGRADED">Billing Downgraded</option>
+                      <option value="BILLING.DOWNGRADE_CANCELED">Billing Downgrade Canceled</option>
+                    </optgroup>
+                    <optgroup label="Owner">
+                      <option value="OWNERSHIP.TRANSFERRED">Ownership Transferred</option>
+                      <option value="SETTINGS.UPDATED">Settings Updated</option>
+                      <option value="ACCOUNT.DELETED">Account Deleted</option>
+                    </optgroup>
+                    <optgroup label="Admin">
+                      <option value="SUPERADMIN.PLAN_CHANGED">Super Admin Plan Changed</option>
+                      <option value="SUPERADMIN.STATUS_CHANGED">Super Admin Status Changed</option>
+                    </optgroup>
+                    <optgroup label="Legacy">
+                      <option value="api_key:create">api_key:create</option>
+                      <option value="api_key:revoke">api_key:revoke</option>
+                      <option value="provider_key:create">provider_key:create</option>
+                      <option value="provider_key:revoke">provider_key:revoke</option>
+                      <option value="project:create">project:create</option>
+                      <option value="project:update">project:update</option>
+                      <option value="project:delete">project:delete</option>
+                      <option value="member:invite">member:invite</option>
+                      <option value="member:remove">member:remove</option>
+                    </optgroup>
                   </select>
                 </label>
                 <label className="audit-filter-label">
                   Resource
-                  <select className="audit-select" value={logResourceType} onChange={e => setLogResourceType(e.target.value)}>
+                  <select className="audit-select" value={logResourceType} onChange={e => { setLogResourceType(e.target.value); resetOffset() }}>
                     <option value="">All Resources</option>
                     <option value="api_key">API Key</option>
                     <option value="provider_key">Provider Key</option>
                     <option value="project">Project</option>
                     <option value="membership">Membership</option>
+                    <option value="project_membership">Project Membership</option>
                     <option value="budget_limit">Budget Limit</option>
                     <option value="rate_limit">Rate Limit</option>
+                    <option value="notification_channel">Notification Channel</option>
+                    <option value="pricing_config">Pricing Config</option>
                     <option value="billing">Billing</option>
+                    <option value="tenant">Tenant</option>
                   </select>
+                </label>
+              </div>
+              <div className="audit-filter-row" style={{ marginBottom: '0.75rem' }}>
+                <label className="audit-filter-label">
+                  Start Date
+                  <input type="date" className="audit-date-input" value={logStartDate} onChange={e => { setLogStartDate(e.target.value); resetOffset() }} />
+                </label>
+                <label className="audit-filter-label">
+                  End Date
+                  <input type="date" className="audit-date-input" value={logEndDate} max={todayStr} onChange={e => { setLogEndDate(e.target.value); resetOffset() }} />
                 </label>
                 <label className="audit-filter-label">
                   Limit
-                  <select className="audit-select" value={logLimit} onChange={e => setLogLimit(parseInt(e.target.value, 10))}>
+                  <select className="audit-select" value={logLimit} onChange={e => { setLogLimit(parseInt(e.target.value, 10)); resetOffset() }}>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
@@ -240,6 +361,7 @@ export default function AuditPage() {
                       <tr>
                         <th>Time</th>
                         <th>Action</th>
+                        <th>Category</th>
                         <th>Resource</th>
                         <th>Resource ID</th>
                         <th>Result</th>
@@ -248,9 +370,10 @@ export default function AuditPage() {
                     </thead>
                     <tbody>
                       {auditLogs.map(log => (
-                        <tr key={log.id}>
+                        <tr key={log.id} onClick={() => setSelectedLog(log)} style={{ cursor: 'pointer' }}>
                           <td className="text-muted">{formatDateTime(log.created_at)}</td>
                           <td><span className="audit-format-badge">{log.action}</span></td>
+                          <td>{log.category ? <span className="audit-category-badge">{log.category}</span> : '\u2014'}</td>
                           <td>{log.resource_type}</td>
                           <td className="text-muted">{log.resource_id?.slice(0, 12) || '\u2014'}</td>
                           <td>
@@ -265,7 +388,81 @@ export default function AuditPage() {
                   </table>
                 </div>
               )}
+              {/* Pagination */}
+              {logTotal > 0 && (
+                <div className="audit-pagination">
+                  <button className="btn btn-secondary btn-small" disabled={!hasPrev} onClick={() => setLogOffset(Math.max(0, logOffset - logLimit))}>
+                    Previous
+                  </button>
+                  <span className="audit-pagination-info">{pageStart}&ndash;{pageEnd} of {logTotal}</span>
+                  <button className="btn btn-secondary btn-small" disabled={!hasNext} onClick={() => setLogOffset(logOffset + logLimit)}>
+                    Next
+                  </button>
+                </div>
+              )}
             </section>
+          )}
+
+          {/* ── Detail Drawer ─────────────────────────────────── */}
+          {selectedLog && (
+            <div className="audit-detail-drawer" onClick={() => setSelectedLog(null)}>
+              <div className="audit-detail-panel" onClick={e => e.stopPropagation()}>
+                <div className="audit-detail-header">
+                  <h3>Audit Log Detail</h3>
+                  <button className="btn btn-secondary btn-small" onClick={() => setSelectedLog(null)}>Close</button>
+                </div>
+                <dl className="audit-detail-fields">
+                  <dt>Action</dt>
+                  <dd><span className="audit-format-badge">{selectedLog.action}</span></dd>
+
+                  <dt>Category</dt>
+                  <dd>{selectedLog.category ? <span className="audit-category-badge">{selectedLog.category}</span> : '\u2014'}</dd>
+
+                  <dt>Actor</dt>
+                  <dd>{selectedLog.actor_user_id || '\u2014'}{selectedLog.actor_type && selectedLog.actor_type !== 'user' ? ` (${selectedLog.actor_type})` : ''}</dd>
+
+                  <dt>Resource</dt>
+                  <dd>{selectedLog.resource_type} / {selectedLog.resource_id || '\u2014'}</dd>
+
+                  <dt>Result</dt>
+                  <dd>
+                    <span className={`audit-status-badge audit-status-${selectedLog.success ? 'completed' : 'failed'}`}>
+                      {selectedLog.success ? 'Success' : 'Failed'}
+                    </span>
+                  </dd>
+
+                  <dt>IP Address</dt>
+                  <dd>{selectedLog.ip_address || '\u2014'}</dd>
+
+                  <dt>User Agent</dt>
+                  <dd className="text-muted" style={{ wordBreak: 'break-all' }}>{selectedLog.user_agent || '\u2014'}</dd>
+
+                  <dt>Time</dt>
+                  <dd>{new Date(selectedLog.created_at).toLocaleString()}</dd>
+
+                  {prettyJSON(selectedLog.before_json) && (
+                    <>
+                      <dt>Before</dt>
+                      <dd><pre>{prettyJSON(selectedLog.before_json)}</pre></dd>
+                    </>
+                  )}
+
+                  {prettyJSON(selectedLog.after_json) && (
+                    <>
+                      <dt>After</dt>
+                      <dd><pre>{prettyJSON(selectedLog.after_json)}</pre></dd>
+                    </>
+                  )}
+
+                  {prettyJSON(selectedLog.metadata) && (
+                    <>
+                      <dt>Metadata</dt>
+                      <dd><pre>{prettyJSON(selectedLog.metadata)}</pre></dd>
+                    </>
+                  )}
+                </dl>
+              </div>
+            </div>
           )}
 
           {/* Filters */}
@@ -384,7 +581,7 @@ export default function AuditPage() {
                     {reports.map(r => (
                       <tr key={r.id}>
                         <td className="text-muted">{formatDateTime(r.created_at)}</td>
-                        <td>{formatDate(r.period_start)} — {formatDate(r.period_end)}</td>
+                        <td>{formatDate(r.period_start)} &mdash; {formatDate(r.period_end)}</td>
                         <td><span className={`audit-format-badge audit-format-${r.format.toLowerCase()}`}>{r.format}</span></td>
                         <td>
                           <span className={`audit-status-badge audit-status-${r.status.toLowerCase()}`}>
@@ -395,8 +592,8 @@ export default function AuditPage() {
                             <span className="audit-error-hint" title={r.error_message}>!</span>
                           )}
                         </td>
-                        <td>{r.status === 'COMPLETED' ? r.row_count.toLocaleString() : '—'}</td>
-                        <td>{r.status === 'COMPLETED' ? formatSize(r.artifact_size_bytes) : '—'}</td>
+                        <td>{r.status === 'COMPLETED' ? r.row_count.toLocaleString() : '\u2014'}</td>
+                        <td>{r.status === 'COMPLETED' ? formatSize(r.artifact_size_bytes) : '\u2014'}</td>
                         <td className="actions-cell">
                           {r.status === 'COMPLETED' && (
                             <button
