@@ -344,52 +344,44 @@ export default function LandingPricing() {
         </div>
 
         {/* Comparison table */}
-        <div className="mt-14 rounded-2xl border border-white/15 bg-slate-950/80 shadow-sm overflow-hidden">
-          <div className="border-b border-white/10 px-6 py-5">
-            <h3 className="text-xl font-bold text-slate-100">Compare all plan features</h3>
-            <p className="mt-1 text-sm text-slate-400">Quickly scan what is included across Free, Pro, Team, and Business.</p>
-          </div>
-
+        <div className="mt-14 rounded-xl border border-white/10 bg-white/[0.02] p-6">
+          <p className="text-base font-semibold text-slate-100 mb-4">All Plans</p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse">
-              <thead className="bg-white/[0.04]">
-                <tr>
-                  <th className="sticky left-0 z-10 bg-white/[0.04] px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Feature</th>
-                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Free</th>
-                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Pro</th>
-                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Team</th>
-                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Business</th>
+            <table className="w-full min-w-[900px] border-collapse text-sm text-slate-300">
+              <thead>
+                <tr className="border-b-2 border-white/10">
+                  <th className="text-left text-xs font-semibold uppercase tracking-wide text-slate-400 pb-3 pr-4">Feature</th>
+                  <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 pb-3 px-4">Free</th>
+                  <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 pb-3 px-4">Pro</th>
+                  <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 pb-3 px-4">Team</th>
+                  <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 pb-3 px-4">Business</th>
                 </tr>
               </thead>
               <tbody>
                 {comparisonCategories.map((section) => (
                   <Fragment key={section.category}>
-                    <tr className="bg-blue-500/10 border-t-2 border-slate-600/40">
-                      <th colSpan={5} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-blue-300">
+                    <tr>
+                      <th colSpan={5} className="text-left text-xs font-semibold uppercase tracking-wide text-blue-300 pt-5 pb-2">
                         {section.category}
                       </th>
                     </tr>
                     {section.rows.map((row) => (
-                      <tr key={`${section.category}-${row.feature}`} className="border-t border-slate-700/50">
-                        <th className="sticky left-0 bg-slate-950 px-6 py-4 text-left text-sm font-medium text-slate-300">
+                      <tr key={`${section.category}-${row.feature}`} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                        <td className="text-left text-slate-400 font-medium py-3 pr-4">
                           {row.feature}
-                        </th>
+                        </td>
                         {(['free', 'pro', 'team', 'business'] as const).map((planKey) => {
                           const value = row.values[planKey]
                           return (
-                            <td key={`${row.feature}-${planKey}`} className="border-l border-white/10 px-6 py-4 text-center text-sm text-slate-300">
+                            <td key={`${row.feature}-${planKey}`} className="text-center py-3 px-4">
                               {typeof value === 'boolean' ? (
                                 value ? (
-                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600" aria-label="Included">
-                                    ✓
-                                  </span>
+                                  <span className="text-emerald-400 font-bold" aria-label="Included">✓</span>
                                 ) : (
-                                  <span className="text-slate-600" aria-label="Not included">—</span>
+                                  <span className="text-slate-600 opacity-50" aria-label="Not included">—</span>
                                 )
                               ) : (
-                                <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200">
-                                  {value}
-                                </span>
+                                <span>{value}</span>
                               )}
                             </td>
                           )
