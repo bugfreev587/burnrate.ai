@@ -157,6 +157,8 @@ func (s *Server) handleCreateProject(c *gin.Context) {
 	}
 	db.Create(&membership)
 
+	s.recordAudit(c, "project:create", "project", fmt.Sprintf("%d", project.ID))
+
 	c.JSON(http.StatusCreated, toProjectResponse(project, tenant.DefaultProjectID))
 }
 
@@ -242,6 +244,8 @@ func (s *Server) handleUpdateProject(c *gin.Context) {
 
 	db.Model(&project).Updates(updates)
 
+	s.recordAudit(c, "project:update", "project", fmt.Sprintf("%d", projectID))
+
 	var tenant models.Tenant
 	db.First(&tenant, tenantID)
 	db.First(&project, projectID)
@@ -297,6 +301,8 @@ func (s *Server) handleDeleteProject(c *gin.Context) {
 	db.Model(&project).Update("status", models.ProjectStatusArchived)
 	// Clean up project memberships.
 	db.Where("project_id = ?", projectID).Delete(&models.ProjectMembership{})
+
+	s.recordAudit(c, "project:delete", "project", fmt.Sprintf("%d", projectID))
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }

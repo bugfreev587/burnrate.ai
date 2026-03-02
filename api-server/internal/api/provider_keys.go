@@ -71,6 +71,8 @@ func (s *Server) handleCreateProviderKey(c *gin.Context) {
 		return
 	}
 
+	s.recordAudit(c, "provider_key:create", "provider_key", fmt.Sprintf("%d", pk.ID))
+
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         pk.ID,
 		"provider":   pk.Provider,
@@ -167,6 +169,8 @@ func (s *Server) handleRevokeProviderKey(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke provider key"})
 		return
 	}
+
+	s.recordAudit(c, "provider_key:revoke", "provider_key", keyIDStr)
 
 	c.JSON(http.StatusOK, gin.H{"message": "provider key revoked"})
 }

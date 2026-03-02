@@ -353,6 +353,8 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 			}
 		}
 
+		s.recordAudit(c, "member:invite", "membership", existing.ID)
+
 		slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", tenantID)
 		c.JSON(http.StatusCreated, gin.H{
 			"message":    "User invited. They will join your tenant when they accept.",
@@ -387,6 +389,8 @@ func (s *Server) handleInviteUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create membership"})
 		return
 	}
+
+	s.recordAudit(c, "member:invite", "membership", invited.ID)
 
 	slog.Info("user_invited", "email", req.Email, "role", role, "by", caller.Email, "tenant_id", tenantID)
 	c.JSON(http.StatusCreated, gin.H{
@@ -702,6 +706,8 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 	}
 
 	tx.Commit()
+
+	s.recordAudit(c, "member:remove", "membership", targetID)
 
 	slog.Info("user_removed", "email", target.Email, "by", caller.Email, "tenant_id", tenantID)
 	c.JSON(http.StatusOK, gin.H{"message": "User removed successfully"})

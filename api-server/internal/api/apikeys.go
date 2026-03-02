@@ -125,6 +125,8 @@ func (s *Server) handleCreateAPIKey(c *gin.Context) {
 		return
 	}
 
+	s.recordAudit(c, "api_key:create", "api_key", kid)
+
 	c.JSON(http.StatusCreated, gin.H{
 		"key_id":       kid,
 		"secret":       secret, // shown only once
@@ -238,6 +240,8 @@ func (s *Server) handleRevokeAPIKey(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+
+	s.recordAudit(c, "api_key:revoke", "api_key", keyID)
 
 	c.JSON(http.StatusOK, gin.H{"revoked": keyID})
 }
