@@ -35,6 +35,7 @@ func APIKeyMiddleware(svc *services.APIKeyService) gin.HandlerFunc {
 		slog.Debug("------------- tgKey in API key auth: ", "tgKey", token)
 
 		ak, err := svc.ValidateKey(c.Request.Context(), token)
+		slog.Info("-------- api key validation result: ", "error", err, "ak", ak)
 		if err != nil {
 			errStr := err.Error()
 			code := ErrCodeInvalidKey
