@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -40,6 +41,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 		}
 
 		tgKey := strings.TrimSpace(c.GetHeader("X-TokenGate-Key"))
+		slog.Info("X-TokenGate-Key in tenant auth middle", "key", tgKey)
 		// Fallback: accept Authorization: Bearer <key> (used by OpenAI-compatible clients like Codex CLI).
 		if tgKey == "" {
 			if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
@@ -54,7 +56,7 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 			c.Abort()
 			return
 		}
-
+		slog.Debug("------------- tgKey in tenant auth middle: ", "tgKey", tgKey)
 		ak, err := apiKeySvc.ValidateKey(c.Request.Context(), tgKey)
 		if err != nil {
 			errStr := err.Error()
