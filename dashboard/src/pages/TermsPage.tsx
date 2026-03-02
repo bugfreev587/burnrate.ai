@@ -17,7 +17,7 @@ export default function TermsPage() {
 
       {/* Content */}
       <main className="flex-1 mx-auto max-w-3xl px-4 sm:px-6 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">TokenGate Terms of Service</h1>
         <p className="text-sm text-gray-400 mb-10">Last updated: March 1, 2026</p>
         <TermsContent />
       </main>
