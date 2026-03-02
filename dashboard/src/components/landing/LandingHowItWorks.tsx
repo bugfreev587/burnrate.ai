@@ -1,7 +1,8 @@
 import { useState } from 'react'
 
 export default function LandingHowItWorks() {
-  const [tab, setTab] = useState<'claude' | 'vscode' | 'codex'>('claude')
+  const [tab, setTab] = useState<'claude' | 'codex'>('claude')
+  const [claudeSub, setClaudeSub] = useState<'cli' | 'vscode'>('cli')
 
   return (
     <section id="how-it-works" aria-labelledby="hiw-heading" className="py-20 sm:py-24 bg-gray-950 text-white">
@@ -9,7 +10,7 @@ export default function LandingHowItWorks() {
         <div className="text-center mb-14">
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-3">Setup</p>
           <h2 id="hiw-heading" className="text-3xl sm:text-4xl font-bold">How It Works</h2>
-          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute. Works with Claude Code, VS Code Extension, OpenAI Codex, and more.</p>
+          <p className="text-gray-400 mt-3">From zero to full visibility in under a minute. Works with Claude Code, OpenAI Codex, and more.</p>
         </div>
 
         <ol className="space-y-10">
@@ -24,6 +25,7 @@ export default function LandingHowItWorks() {
                 className="rounded-xl border border-white/10 bg-black overflow-hidden"
                 aria-label="Configuration to connect to TokenGate"
               >
+                {/* Top-level tabs */}
                 <div className="flex border-b border-white/10">
                   <button
                     className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'claude' ? 'text-blue-400 bg-white/5 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
@@ -32,66 +34,98 @@ export default function LandingHowItWorks() {
                     Claude Code
                   </button>
                   <button
-                    className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'vscode' ? 'text-blue-400 bg-white/5 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
-                    onClick={() => setTab('vscode')}
-                  >
-                    VS Code Extension
-                  </button>
-                  <button
                     className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'codex' ? 'text-blue-400 bg-white/5 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
                     onClick={() => setTab('codex')}
                   >
                     OpenAI Codex
                   </button>
                 </div>
-                <div className="p-5 font-mono text-sm overflow-x-auto">
-                  <div aria-hidden="true" className="flex gap-1.5 mb-4">
-                    <span className="h-3 w-3 rounded-full bg-red-500/60" />
-                    <span className="h-3 w-3 rounded-full bg-yellow-500/60" />
-                    <span className="h-3 w-3 rounded-full bg-green-500/60" />
-                  </div>
-                  {tab === 'claude' ? (
-                    <code className="whitespace-pre">
-                      <span className="text-purple-400">export </span>
-                      <span className="text-blue-300">ANTHROPIC_BASE_URL</span>
-                      <span className="text-gray-500">=</span>
-                      <span className="text-green-400">https://gateway.tokengate.to</span>
-                      {'\n'}
-                      <span className="text-purple-400">export </span>
-                      <span className="text-blue-300">ANTHROPIC_API_KEY</span>
-                      <span className="text-gray-500">=</span>
-                      <span className="text-green-400">tg_xxxxx</span>
-                    </code>
-                  ) : tab === 'vscode' ? (
-                    <code className="whitespace-pre">
-                      <span className="text-gray-500">// settings.json</span>
-                      {'\n'}
-                      <span className="text-blue-300">"claudeCode.environmentVariables"</span>
-                      <span className="text-gray-500">: [</span>
-                      {'\n'}
-                      <span className="text-gray-500">{'  { '}</span>
-                      <span className="text-blue-300">"name"</span>
-                      <span className="text-gray-500">: </span>
-                      <span className="text-green-400">"ANTHROPIC_BASE_URL"</span>
-                      <span className="text-gray-500">, </span>
-                      <span className="text-blue-300">"value"</span>
-                      <span className="text-gray-500">: </span>
-                      <span className="text-green-400">"https://gateway.tokengate.to"</span>
-                      <span className="text-gray-500">{' },'}</span>
-                      {'\n'}
-                      <span className="text-gray-500">{'  { '}</span>
-                      <span className="text-blue-300">"name"</span>
-                      <span className="text-gray-500">: </span>
-                      <span className="text-green-400">"ANTHROPIC_API_KEY"</span>
-                      <span className="text-gray-500">, </span>
-                      <span className="text-blue-300">"value"</span>
-                      <span className="text-gray-500">: </span>
-                      <span className="text-green-400">"tg_xxxxx"</span>
-                      <span className="text-gray-500">{' }'}</span>
-                      {'\n'}
-                      <span className="text-gray-500">]</span>
-                    </code>
-                  ) : (
+
+                {tab === 'claude' ? (
+                  <>
+                    {/* Sub-tabs for CLI / VS Code */}
+                    <div className="flex gap-1 px-4 pt-3">
+                      <button
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${claudeSub === 'cli' ? 'bg-white/10 text-blue-300' : 'text-gray-500 hover:text-gray-300'}`}
+                        onClick={() => setClaudeSub('cli')}
+                      >
+                        CLI
+                      </button>
+                      <button
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${claudeSub === 'vscode' ? 'bg-white/10 text-blue-300' : 'text-gray-500 hover:text-gray-300'}`}
+                        onClick={() => setClaudeSub('vscode')}
+                      >
+                        VS Code Extension
+                      </button>
+                    </div>
+
+                    <div className="p-5 pt-3 font-mono text-sm overflow-x-auto">
+                      <div aria-hidden="true" className="flex gap-1.5 mb-4">
+                        <span className="h-3 w-3 rounded-full bg-red-500/60" />
+                        <span className="h-3 w-3 rounded-full bg-yellow-500/60" />
+                        <span className="h-3 w-3 rounded-full bg-green-500/60" />
+                      </div>
+                      {claudeSub === 'cli' ? (
+                        <>
+                          <code className="whitespace-pre">
+                            <span className="text-purple-400">export </span>
+                            <span className="text-blue-300">ANTHROPIC_BASE_URL</span>
+                            <span className="text-gray-500">=</span>
+                            <span className="text-green-400">https://gateway.tokengate.to</span>
+                            {'\n'}
+                            <span className="text-purple-400">export </span>
+                            <span className="text-blue-300">ANTHROPIC_API_KEY</span>
+                            <span className="text-gray-500">=</span>
+                            <span className="text-green-400">tg_xxxxx</span>
+                          </code>
+                          <p className="mt-4 text-xs text-gray-500 font-sans">
+                            Routes Claude Code CLI through TokenGate. Usage appears in your dashboard automatically.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <code className="whitespace-pre">
+                            <span className="text-gray-500">// settings.json</span>
+                            {'\n'}
+                            <span className="text-blue-300">"claudeCode.environmentVariables"</span>
+                            <span className="text-gray-500">: [</span>
+                            {'\n'}
+                            <span className="text-gray-500">{'  { '}</span>
+                            <span className="text-blue-300">"name"</span>
+                            <span className="text-gray-500">: </span>
+                            <span className="text-green-400">"ANTHROPIC_BASE_URL"</span>
+                            <span className="text-gray-500">, </span>
+                            <span className="text-blue-300">"value"</span>
+                            <span className="text-gray-500">: </span>
+                            <span className="text-green-400">"https://gateway.tokengate.to"</span>
+                            <span className="text-gray-500">{' },'}</span>
+                            {'\n'}
+                            <span className="text-gray-500">{'  { '}</span>
+                            <span className="text-blue-300">"name"</span>
+                            <span className="text-gray-500">: </span>
+                            <span className="text-green-400">"ANTHROPIC_API_KEY"</span>
+                            <span className="text-gray-500">, </span>
+                            <span className="text-blue-300">"value"</span>
+                            <span className="text-gray-500">: </span>
+                            <span className="text-green-400">"tg_xxxxx"</span>
+                            <span className="text-gray-500">{' }'}</span>
+                            {'\n'}
+                            <span className="text-gray-500">]</span>
+                          </code>
+                          <p className="mt-4 text-xs text-gray-500 font-sans">
+                            For the Claude Code VS Code extension. Install it from the VS Code Marketplace, then add the above to your <span className="font-mono text-gray-400">settings.json</span>.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-5 font-mono text-sm overflow-x-auto">
+                    <div aria-hidden="true" className="flex gap-1.5 mb-4">
+                      <span className="h-3 w-3 rounded-full bg-red-500/60" />
+                      <span className="h-3 w-3 rounded-full bg-yellow-500/60" />
+                      <span className="h-3 w-3 rounded-full bg-green-500/60" />
+                    </div>
                     <code className="whitespace-pre">
                       <span className="text-gray-500"># ~/.codex/config.toml</span>
                       {'\n'}
@@ -125,8 +159,8 @@ export default function LandingHowItWorks() {
                       {'\n'}
                       <span className="text-gray-500">{'}'}</span>
                     </code>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </li>
