@@ -4,7 +4,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 
 ## What it does
 
-- **Multi-provider reverse proxy** – Supports Anthropic (`/v1/messages`), OpenAI (`/v1/responses`, `/v1/openai/*`), and other providers. Agents set their base URL to the gateway; the gateway authenticates the `tg_xxx` key, fetches the tenant's stored provider key, and forwards the request. Token usage is extracted from the response and logged automatically.
+- **Multi-provider reverse proxy** – Supports Anthropic (`/v1/messages`), OpenAI (`/v1/responses`, `/v1/openai/*`), Google Gemini (`/v1/gemini/*`), and other providers (Bedrock, Vertex). Agents set their base URL to the gateway; the gateway authenticates the `tg_xxx` key, fetches the tenant's stored provider key, and forwards the request. Token usage is extracted from the response and logged automatically.
 - **Provider key vault** – Anthropic and OpenAI keys are stored with AES-256-GCM envelope encryption (per-key DEK, master key in env). Admins add, activate, and rotate keys from the Management dashboard; developers never touch raw credentials.
 - **Usage tracking** – Agents can also call a simple HTTP endpoint to report token consumption after each LLM request (legacy path, still supported).
 - **Server-side cost computation** – Cost is computed authoritatively from token counts using versioned, per-provider pricing. Client-provided costs are ignored.
@@ -13,10 +13,16 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Budget enforcement** – Per-tenant spend limits (monthly / weekly / daily) can alert, block, or both (alert + hard block) requests when exceeded. Limits apply at the account scope or per API key, and can optionally be scoped to a specific provider (e.g. "$50/month for Anthropic", "$100/month for OpenAI"). Provider-scoped limits use separate Redis counters and DB queries. Blocking limits are checked **before** forwarding to the upstream provider (HTTP 402 if exceeded). Warning headers are set on responses when spend crosses the alert threshold.
 - **Rate limits** – Tenant-aware, model-scoped rate limits enforced via Redis sliding-window counters. Supported metrics: RPM (requests per minute), ITPM (input tokens per minute), OTPM (output tokens per minute). Limits can target all models or specific provider+model combinations and can be scoped to the account or individual API keys.
 - **Markup / monetization** – Admins configure percentage markups per provider, model, or globally to bill tenants above cost.
-- **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
-- **Team management** – Invite members by email, assign roles, suspend or remove users.
+- **Dashboard** – Owners and team members see total requests, tokens, and costs with date-range-aware trend charts, a collapsible per-request history table, and a cost overview section. Token usage panels show both "API usage billed" and "monthly subscription" breakdowns. Date range presets (1d–90d) and custom ranges are plan-gated by data retention.
+- **Metrics & latency tracking** – P50/P95/P99 latency percentiles, active API key counts, blocked request rates, and daily activity trends via `GET /v1/usage/metrics`.
+- **Team management** – Invite members by email, assign roles, suspend or remove users. In-app notifications for pending invitations with accept/deny actions.
+- **Project management** – Organize API keys and members into projects. Default project created per tenant; additional projects gated by plan tier.
 - **API key management** – Admins create and revoke agent API keys with provider, auth method (`BROWSER_OAUTH` / `BYOK`), and billing mode (`MONTHLY_SUBSCRIPTION` / `API_USAGE`). Secrets are stored hashed and shown only once. Key limits, team size, budget options, and data retention are gated by the tenant's plan tier.
-- **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, team member count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, and data retention window.
+- **Notifications** – Admin-configurable notification channels (email, Slack, webhook) for budget warnings, rate limit events, and team invitations. User-level in-app notifications with unread tracking.
+- **Stripe billing** – Self-serve plan upgrades via Stripe Checkout, customer portal for payment management, invoice history, and webhook-driven plan sync. Downgrades scheduled at period end.
+- **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, provider key count, team member count, project count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, notification channel count, data retention window, and export access.
+- **Audit logs** – Immutable audit trail for administrative actions (API key create/revoke, project create/update/delete, member invite/remove, provider key create/revoke). Logged with actor, action, resource type, and resource ID.
+- **Super admin** – Platform-wide dashboard for operators: tenant listing with search/filter, plan changes, tenant suspension, platform statistics, and per-customer revenue tracking. Access gated by `SUPER_ADMIN_EMAILS` env var.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
 ### Planned features
@@ -64,6 +70,16 @@ The following features are on the roadmap and marked "Coming Soon" on the landin
 
 ## Recent changes
 
+- **2026-03-02** – Token Usage panels now show both "API usage billed" and "monthly subscription" breakdown lines. Backend exposes `requests` and `billed_requests` in the tokens summary.
+- **2026-03-01** – Custom sign-up flow with integrated Terms of Service checkbox using Clerk's `useSignUp()` hook.
+- **2026-03-01** – Comprehensive Terms of Service and Privacy Policy content added at `/terms` and `/privacy`.
+- **2026-02-28** – Super Admin dashboard for platform-wide tenant management, statistics, and per-customer revenue tracking.
+- **2026-02-28** – VS Code extension setup instructions added to How It Works landing section (Claude Code tab).
+- **2026-02-27** – Dashboard billing mode filter dropdown (All Requests / API Usage Billed / Monthly Subscription) and date range converted to dropdown.
+- **2026-02-27** – In-app invite notifications with bell UI and accept/deny actions.
+- **2026-02-26** – Projects feature: per-tenant projects with role-based membership and plan-gated limits.
+- **2026-02-26** – Notification channels (email, Slack, webhook) for budget warnings and team invitations.
+- **2026-02-26** – Stripe billing integration: checkout, portal, plan upgrades/downgrades, invoice history, webhooks.
 - **2026-02-25** – Refactored `mode` column into separate `auth_method` + `billing_mode` fields for cleaner provider/auth/billing separation.
 - **2026-02-25** – Fixed Codex passthrough usage logs so every request creates a usage log entry.
 - **2026-02-25** – Codex passthrough now routes to the ChatGPT backend instead of `api.openai.com`.
@@ -275,12 +291,16 @@ api-server/
     ├── api/
     │   ├── server.go                 # Route registration
     │   ├── auth.go                   # POST /v1/auth/sync
-    │   ├── usage.go                  # Usage report & list
+    │   ├── usage.go                  # Usage report & list & metrics
     │   ├── pricing.go                # Pricing admin + cost ledger + forecast
     │   ├── apikeys.go                # API key CRUD
     │   ├── users.go                  # User management
     │   ├── provider_keys.go          # Provider key CRUD + activate + rotate
     │   ├── ratelimits.go             # Rate limit CRUD (RPM/ITPM/OTPM)
+    │   ├── projects.go               # Project CRUD + membership management
+    │   ├── notifications.go          # Notification channel CRUD + user notifications
+    │   ├── billing.go                # Stripe checkout, portal, plan changes, webhooks
+    │   ├── superadmin.go             # Platform-wide tenant management
     │   └── middleware.go             # CORS · logger (errors + slow only) · rate-limit
     ├── middleware/
     │   ├── auth.go                   # API key validation
@@ -339,6 +359,10 @@ api-server/
 | `BudgetLimit` | `id`, `tenant_id`, `scope_type` (account\|api_key), `scope_id` (key_id or ""), `period_type`, `provider` ("" = all, "anthropic", "openai"), `limit_amount`, `alert_threshold`, `action` (alert\|block\|alert_block) |
 | `RateLimit` | `id`, `tenant_id`, `provider` ("" = all), `model` ("" = all), `scope_type`, `scope_id`, `metric` (rpm\|itpm\|otpm), `limit_value`, `window_seconds`, `enabled` |
 | `APIKeyConfig` | `id`, `tenant_id`, `key_id` (varchar 64), `config_id` |
+| `Project` | `id`, `tenant_id`, `name`, `description`, `is_default`, `archived` |
+| `ProjectMembership` | `id`, `project_id`, `user_id`, `role` (project_admin\|project_editor\|project_viewer) |
+| `NotificationChannel` | `id`, `tenant_id`, `type` (email\|slack\|webhook), `config` (jsonb), `events` (jsonb), `enabled` |
+| `UserNotification` | `id`, `user_id`, `tenant_id`, `type`, `title`, `body`, `data` (jsonb), `read` |
 
 ### Provider key encryption
 
@@ -390,14 +414,19 @@ Every tenant has a `plan` field that gates feature access. New tenants start on 
 
 | | Free | Pro | Team | Business |
 |---|---|---|---|---|
-| **API keys** | 1 | 5 | Unlimited | Unlimited |
+| **API keys** | 1 | 5 | 20 | 200 |
+| **Provider keys** | 1 | 3 | 10 | 50 |
 | **Team members** | 1 | 1 | 10 | Unlimited |
+| **Projects** | 1 | 3 | 10 | Unlimited |
+| **Budget limits** | 1 | 5 | 20 | 100 |
 | **Budget periods** | Monthly only | Monthly · Weekly · Daily | Monthly · Weekly · Daily | Monthly · Weekly · Daily |
 | **Hard block** (`action: "block"`) | — | ✓ | ✓ | ✓ |
 | **Per-key budget scope** | — | — | ✓ | ✓ |
-| **Rate limits** (RPM / ITPM / OTPM) | — | ✓ | ✓ | ✓ |
+| **Rate limits** (RPM / ITPM / OTPM) | — | ✓ (5 max) | ✓ (20 max) | ✓ (100 max) |
 | **Per-key rate limits** | — | — | ✓ | ✓ |
+| **Notification channels** | 1 | 5 | 20 | 100 |
 | **Data retention** | 7 days | 90 days | 180 days | Unlimited |
+| **Export** | — | ✓ | ✓ | ✓ |
 
 Plan limits are defined in `internal/models/plans.go` and enforced at the API layer:
 
@@ -518,7 +547,8 @@ Returns HTTP **402** if a blocking budget limit is exceeded. Returns HTTP **200*
 | Method | Path | Description |
 |---|---|---|
 | GET | `/v1/usage` | List tenant usage logs |
-| GET | `/v1/usage/summary` | Aggregated stats: cost overview (today/yesterday/this_month/last_month/cumulative), token totals, by-model breakdown, daily trend. Cost overview cards, token totals, by-model breakdown, and daily trend filter by `api_usage_billed=true` (BYOK requests only). Supports `start_date`/`end_date` query params + `tz` timezone. |
+| GET | `/v1/usage/summary` | Aggregated stats: cost overview (today/yesterday/this_month/last_month/cumulative), token totals (with `requests`/`billed_requests` for subscription breakdown), by-model breakdown, daily trend. Supports `start_date`/`end_date` query params + `tz` timezone. |
+| GET | `/v1/usage/metrics` | Latency percentiles (P50/P95/P99), activity stats, daily activity, by-model and by-key breakdowns. Supports date range + timezone. |
 | GET | `/v1/cost-ledger` | Paginated cost ledger (`?page=1&limit=50&from=&to=`) |
 | GET | `/v1/usage/forecast` | Projected monthly spend based on daily average |
 | GET | `/v1/dashboard/config` | Dashboard config (plan-aware data retention window) |
@@ -579,6 +609,70 @@ Returns HTTP **403** with `"error": "plan_restriction"` if `period_type`, `actio
 | GET | `/v1/owner/settings` | View tenant settings: `name`, `plan`, `max_api_keys`, `plan_limits` object |
 | PATCH | `/v1/owner/settings` | Update `max_api_keys` (range: 1–1000, capped at plan ceiling; only meaningful for unlimited plans) |
 
+#### Projects (Viewer+)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/projects` | List projects (Owner/Admin see all; Editor/Viewer see only memberships) |
+| POST | `/v1/projects` | Create project (creator auto-added as project_admin) |
+| GET | `/v1/projects/:id` | Get single project |
+| PATCH | `/v1/projects/:id` | Update project name/description |
+| DELETE | `/v1/projects/:id` | Archive project (blocked for default project or project with active keys) |
+| GET | `/v1/projects/:id/members` | List project members |
+| POST | `/v1/projects/:id/members` | Add tenant member to project |
+| PATCH | `/v1/projects/:id/members/:user_id` | Change member's project role |
+| DELETE | `/v1/projects/:id/members/:user_id` | Remove member from project |
+
+#### Notifications (Admin+)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/admin/notifications` | List notification channels |
+| POST | `/v1/admin/notifications` | Create notification channel (email / slack / webhook) |
+| PUT | `/v1/admin/notifications/:id` | Update notification channel |
+| DELETE | `/v1/admin/notifications/:id` | Delete notification channel |
+
+#### User notifications
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/user/notifications` | List in-app notifications (with unread count) |
+| PATCH | `/v1/user/notifications/:id/read` | Mark notification as read |
+| PATCH | `/v1/user/notifications/read-all` | Mark all notifications as read |
+| POST | `/v1/user/invitations/:tenant_id/accept` | Accept a pending team invitation |
+| POST | `/v1/user/invitations/:tenant_id/deny` | Deny a pending team invitation |
+
+#### Billing (Owner)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/billing/status` | Current plan, subscription status, payment method info |
+| POST | `/v1/billing/checkout` | Create Stripe Checkout session for plan upgrade |
+| POST | `/v1/billing/checkout/verify` | Verify checkout session completed |
+| POST | `/v1/billing/portal` | Create Stripe customer portal session |
+| POST | `/v1/billing/change-plan` | Upgrade subscription plan (immediate) |
+| POST | `/v1/billing/downgrade` | Schedule downgrade at period end |
+| POST | `/v1/billing/downgrade/cancel` | Cancel scheduled downgrade |
+| GET | `/v1/billing/invoices` | List Stripe invoices |
+| POST | `/v1/billing/webhook` | Stripe webhook handler |
+
+#### Audit logs (Admin+)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/audit-logs` | List audit logs (paginated, filterable by action/resource type) |
+
+#### Super Admin (email allowlist)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/superadmin/whoami` | Verify super admin status |
+| GET | `/v1/superadmin/stats` | Platform-wide statistics (tenants, users, API keys, 30-day usage) |
+| GET | `/v1/superadmin/tenants` | List all tenants (pagination, search, plan/status filter) |
+| GET | `/v1/superadmin/tenants/:tenant_id` | Detailed tenant view (members, keys, projects, usage, revenue) |
+| PATCH | `/v1/superadmin/tenants/:tenant_id/plan` | Change tenant's plan |
+| PATCH | `/v1/superadmin/tenants/:tenant_id/status` | Suspend/activate tenant |
+
 ### RBAC roles
 
 | Role | Level | Permissions |
@@ -605,6 +699,13 @@ Production config is loaded from `conf/api-server-prod.yaml`. Sensitive values a
 | `CORS_ORIGINS` | Comma-separated allowed origins (or `*`) |
 | `PROVIDER_KEY_ENCRYPTION_KEY` | 64-char hex (32-byte) AES master key for provider key encryption. **Required** — server fails to start if unset. Generate with `openssl rand -hex 32`. |
 | `ENABLE_GW_VALIDATION` | When `false`, allows passthrough requests without gateway key validation (used for BROWSER_OAUTH passthrough). Default: `true`. |
+| `SUPER_ADMIN_EMAILS` | Comma-separated list of email addresses allowed to access the super admin dashboard. |
+| `STRIPE_SECRET_KEY` | Stripe API secret key for billing integration. |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for event verification. |
+| `STRIPE_PRICE_ID_PRO_MONTHLY` | Stripe Price ID for the Pro monthly plan. |
+| `STRIPE_PRICE_ID_PRO_ANNUAL` | Stripe Price ID for the Pro annual plan. |
+| `STRIPE_PRICE_ID_TEAM_MONTHLY` | Stripe Price ID for the Team monthly plan. |
+| `STRIPE_PRICE_ID_TEAM_ANNUAL` | Stripe Price ID for the Team annual plan. |
 
 ---
 
@@ -627,7 +728,7 @@ dashboard/
 │   ├── pages/
 │   │   ├── LandingPage.tsx      # Marketing landing page (/)
 │   │   ├── SignInPage.tsx       # Clerk sign-in embed
-│   │   ├── SignUpPage.tsx       # Clerk sign-up embed
+│   │   ├── SignUpPage.tsx       # Custom sign-up with ToS checkbox (useSignUp)
 │   │   ├── Dashboard.tsx        # Usage summary + trend charts + collapsible log table + date range
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
 │   │   ├── ManagementPage.tsx   # Team, API key (provider+auth_method+billing_mode), and provider key management
@@ -635,7 +736,11 @@ dashboard/
 │   │   ├── PricingConfigPage.tsx# Per-key pricing overrides
 │   │   ├── PublicPricingPage.tsx# Full pricing page at /pricing (monthly/annual toggle, 4-tier cards)
 │   │   ├── PublicPricingPage.css
-│   │   └── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
+│   │   ├── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
+│   │   ├── IntegrationPage.tsx  # Setup docs: provider scenarios, API reference, troubleshooting
+│   │   ├── SuperAdminPage.tsx   # Platform-wide tenant management (email-gated)
+│   │   ├── TermsPage.tsx        # Terms of Service (/terms)
+│   │   └── PrivacyPage.tsx      # Privacy Policy (/privacy)
 │   ├── components/
 │   │   ├── Navbar.tsx           # Dashboard top nav + user avatar dropdown (Profile, Plan [owner], Sign Out)
 │   │   ├── APIKeyModal.tsx      # One-time secret display
@@ -673,17 +778,21 @@ dashboard/
 
 - **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
-- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note (filters by BYOK billable requests only), budget status bars sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical) showing provider name and correct action labels (Alert only / Block only / Alert + Block), and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Non-billable (subscription) requests display $0.00 cost. Auto-refresh uses adaptive polling: 5-minute interval when the Recent Requests panel is collapsed, 5-second interval when expanded for near real-time monitoring. Refreshes update data silently in the background without showing a loading spinner (spinner only appears on initial page load or date range change). Recent Requests defaults to collapsed on page load.
+- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note (filters by BYOK billable requests only), budget status bars sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical) showing provider name and correct action labels (Alert only / Block only / Alert + Block), and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Token Usage panels show both "API usage billed" and "monthly subscription" lines that sum to the main total. Non-billable (subscription) requests display $0.00 cost. Auto-refresh uses adaptive polling: 5-minute interval when the Recent Requests panel is collapsed, 5-second interval when expanded for near real-time monitoring. Refreshes update data silently in the background without showing a loading spinner (spinner only appears on initial page load or date range change). Recent Requests defaults to collapsed on page load.
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + auth method + billing mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is shown for BYOK keys.
 - **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (All Providers / Anthropic / OpenAI) via dropdown selectors. Spend limits table is sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
+- **IntegrationPage** – Comprehensive setup documentation: Anthropic scenarios (Subscription / API Usage / BYOK), OpenAI scenarios (Codex / BYOK), API endpoints, budget headers, notification setup, troubleshooting, FAQ, and Roles & Permissions reference. Includes VS Code extension configuration with `claudeCode.environmentVariables` settings.json snippets.
+- **SuperAdminPage** – Platform-wide dashboard for operators. Tenant listing with search, plan filter, status filter. Drill-down into tenant details (members, keys, projects, usage, revenue). Plan change and tenant suspension controls.
+- **TermsPage / PrivacyPage** – Public legal pages at `/terms` and `/privacy` with last-updated dates.
+- **SignUpPage** – Custom sign-up flow with integrated Terms of Service checkbox using Clerk's `useSignUp()` hook. Users must accept ToS before account creation.
 - **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
 
 ### Key hooks
 
 - **`useUserSync`** – Runs once after Clerk sign-in. Calls `POST /v1/auth/sync`, stores `userId`, `tenantId`, `role`, and `status` in state and `localStorage`. Handles three cases: existing user, pending email invitation, and brand-new user (creates tenant).
-- **`useUsageData`** – Calls `GET /v1/usage`, `GET /v1/usage/summary`, `GET /v1/budget`, and `GET /v1/usage/forecast` in parallel with date range and timezone parameters. Returns logs, summary (cost periods, token totals, by-model breakdown, daily trend), budget statuses, forecast, and a refresh function. Accepts a configurable `pollIntervalMs` parameter (default 15 s) for adaptive auto-refresh; only the initial load (or date range change) shows the loading spinner — subsequent polls update silently.
+- **`useUsageData`** – Calls `GET /v1/usage`, `GET /v1/usage/summary`, `GET /v1/budget`, `GET /v1/usage/forecast`, and `GET /v1/usage/metrics` in parallel with date range and timezone parameters. Returns logs, summary (cost periods, token totals with `requests`/`billed_requests` for subscription breakdown, by-model breakdown, daily trend), budget statuses, forecast, metrics, and a refresh function. Accepts a configurable `pollIntervalMs` parameter (default 15 s) for adaptive auto-refresh; only the initial load (or date range change) shows the loading spinner — subsequent polls update silently.
 - **`useDashboardConfig`** – Fetches plan-aware dashboard config (`GET /v1/dashboard/config`) including data retention window for the tenant's plan tier.
 - **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend, percentage used, and optional provider scope.
 - **`useRateLimits`** – CRUD hook for rate limits (`GET/PUT/DELETE /v1/admin/rate-limits`). Includes current usage from Redis counters.
@@ -837,3 +946,14 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | SSE streaming proxy with token extraction | ✅ Live |
 | Async usage processing via Redis Streams | ✅ Live |
 | Usage summary / aggregation (`/v1/usage/summary`) | ✅ Live |
+| Metrics & latency tracking (`/v1/usage/metrics`) | ✅ Live |
+| Token usage subscription breakdown (API billed + monthly sub) | ✅ Live |
+| Project management (CRUD + membership) | ✅ Live |
+| Notification channels (email / Slack / webhook) | ✅ Live |
+| In-app user notifications + invite accept/deny | ✅ Live |
+| Stripe billing (checkout / portal / plan changes / webhooks) | ✅ Live |
+| Super admin dashboard (tenant management + revenue) | ✅ Live |
+| Terms of Service / Privacy Policy pages | ✅ Live |
+| Custom sign-up with ToS checkbox | ✅ Live |
+| Integration / How It Works documentation page | ✅ Live |
+| Audit logs (admin action trail) | ✅ Live |
