@@ -40,16 +40,16 @@ export default function LandingFAQ() {
           </h2>
         </div>
 
-        <div className="divide-y divide-white/10 rounded-2xl border border-white/15 bg-white/[0.03] overflow-hidden">
+        <div className="divide-y divide-white/10 rounded-2xl border border-white/15 bg-slate-950 overflow-hidden">
           {faqs.map((faq, i) => (
             <div key={i}>
               <button
-                className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+                className="flex w-full items-center justify-between gap-4 bg-slate-950 px-6 py-5 text-left hover:bg-slate-900 transition-colors"
                 onClick={() => setOpen(open === i ? null : i)}
                 aria-expanded={open === i}
                 aria-controls={`faq-answer-${i}`}
               >
-                <span className="text-sm font-semibold text-slate-100">{faq.q}</span>
+                <span className="text-sm font-semibold text-white">{faq.q}</span>
                 <span
                   aria-hidden="true"
                   className={`shrink-0 text-xl text-slate-400 transition-transform duration-200 ${
