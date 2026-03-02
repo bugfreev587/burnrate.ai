@@ -69,7 +69,7 @@ const PLANS: Array<{
   { key: 'free',     label: 'Free',     price: 'Free',    maxKeys: '1',   maxProviderKeys: '1',  maxMembers: '1',  perKey: false, retention: '7 days',    spendLimits: '1',   rateLimits: '1',   notifications: '1',   export: false, webhooks: false },
   { key: 'pro',      label: 'Pro',      price: '$15/mo',  maxKeys: '5',   maxProviderKeys: '3',  maxMembers: '1',  perKey: false, retention: '90 days',   spendLimits: '5',   rateLimits: '5',   notifications: '5',   export: true,  webhooks: false },
   { key: 'team',     label: 'Team',     price: '$39/mo',  maxKeys: '20',  maxProviderKeys: '10', maxMembers: '10', perKey: true,  retention: '180 days',  spendLimits: '20',  rateLimits: '20',  notifications: '20',  export: true,  webhooks: true  },
-  { key: 'business', label: 'Business', price: 'Contact', maxKeys: '200', maxProviderKeys: '50', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '100', rateLimits: '100', notifications: '100', export: true,  webhooks: true  },
+  { key: 'business', label: 'Business', price: '$199/mo', maxKeys: '200', maxProviderKeys: '50', maxMembers: '∞',  perKey: true,  retention: 'Unlimited', spendLimits: '100', rateLimits: '100', notifications: '100', export: true,  webhooks: true  },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -336,22 +336,11 @@ export default function PlanPage() {
   }, [isSynced, userId, refreshTrigger])
 
   const limits = data?.settings.plan_limits
-  const isNotBusiness = currentPlan !== 'business'
 
   // Button renderer for the comparison table
   function renderPlanButton(planKey: PlanKey) {
     if (planKey === currentPlan && !pendingPlan) {
       return <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Current</span>
-    }
-
-    if (planKey === 'business') {
-      return (
-        <a href="mailto:sales@tokengate.to"
-           className="btn btn-secondary"
-           style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'inline-block' }}>
-          Contact Sales
-        </a>
-      )
     }
 
     // If this plan is the pending downgrade target
@@ -644,21 +633,7 @@ export default function PlanPage() {
               </div>
             </div>
 
-            {/* ── Upgrade CTA ── */}
-            {isNotBusiness && (
-              <div className="upgrade-cta">
-                <div className="upgrade-cta-text">
-                  <p>Need more capacity?</p>
-                  <p>Upgrade your plan to unlock more API keys, team members, and advanced features.</p>
-                </div>
-                <a
-                  href="mailto:sales@tokengate.to"
-                  className="btn btn-primary"
-                >
-                  Contact Sales
-                </a>
-              </div>
-            )}
+
           </>
         )}
       </div>

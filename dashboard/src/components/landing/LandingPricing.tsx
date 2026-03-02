@@ -105,7 +105,7 @@ const plans: { key: PlanKey; name: string; tagline: string; monthlyPrice: number
     key: 'business',
     name: 'Business',
     tagline: 'Enterprise Policy & Compliance',
-    monthlyPrice: null,
+    monthlyPrice: 199,
     annualMonthly: null,
     annualTotal: null,
     annualSaving: null,
@@ -126,10 +126,10 @@ const plans: { key: PlanKey; name: string; tagline: string; monthlyPrice: number
       { text: 'Spend velocity alerts', comingSoon: true },
     ],
     limit: null,
-    cta: 'Contact Sales',
-    to: 'mailto:sales@tokengate.to',
+    cta: 'Get started',
+    to: '/sign-up?plan=business',
     highlight: false,
-    contactSales: true,
+    contactSales: false,
   },
 ]
 
@@ -264,12 +264,7 @@ export default function LandingPricing() {
 
               {/* Price */}
               <div className="mb-6 pb-6 border-b border-white/10">
-                {plan.contactSales ? (
-                  <div>
-                    <div className="text-3xl font-bold text-slate-100">Contact Sales</div>
-                    <p className="text-xs text-slate-400 mt-1">Starting at $199 / month</p>
-                  </div>
-                ) : plan.monthlyPrice === 0 ? (
+                {plan.monthlyPrice === 0 ? (
                   <div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-4xl font-bold text-slate-100">$0</span>
@@ -331,27 +326,18 @@ export default function LandingPricing() {
 
               {/* CTA */}
               <div className="mt-auto">
-                {plan.contactSales ? (
-                  <a
-                    href={plan.to}
-                    className="block w-full rounded-xl py-3 text-center text-sm font-semibold border border-white/20 text-slate-100 hover:bg-white/5 transition-colors"
-                  >
-                    {plan.cta}
-                  </a>
-                ) : (
-                  <Link
-                    to={plan.to}
-                    className={`block w-full rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
-                      plan.highlight
-                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                        : plan.monthlyPrice === 0
-                        ? 'border border-white/20 text-slate-100 hover:bg-white/5'
-                        : 'border border-blue-400/40 text-blue-200 bg-blue-500/10 hover:bg-blue-500/20'
-                    }`}
-                  >
-                    {plan.cta}
-                  </Link>
-                )}
+                <Link
+                  to={plan.to}
+                  className={`block w-full rounded-xl py-3 text-center text-sm font-semibold transition-colors ${
+                    plan.highlight
+                      ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+                      : plan.monthlyPrice === 0
+                      ? 'border border-white/20 text-slate-100 hover:bg-white/5'
+                      : 'border border-blue-400/40 text-blue-200 bg-blue-500/10 hover:bg-blue-500/20'
+                  }`}
+                >
+                  {plan.cta}
+                </Link>
               </div>
             </div>
           ))}
