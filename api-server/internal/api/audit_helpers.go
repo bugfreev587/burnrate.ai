@@ -27,6 +27,9 @@ func (s *Server) recordAudit(c *gin.Context, action, resourceType, resourceID st
 		ResourceID:   resourceID,
 		Success:      true,
 		IPAddress:    c.ClientIP(),
+		BeforeJSON:   "{}",
+		AfterJSON:    "{}",
+		Metadata:     "{}",
 	})
 	if err != nil {
 		slog.Warn("audit_log_record_failed",
