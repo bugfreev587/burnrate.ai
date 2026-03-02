@@ -76,19 +76,19 @@ type APIKeyProviderKeyBinding struct {
 
 // AuditLog records security-relevant mutations for compliance and debugging.
 type AuditLog struct {
-	ID            uint      `gorm:"primaryKey"`
-	TenantID      uint      `gorm:"index"`
-	ActorUserID   string    `gorm:"size:255"`
-	ActorAPIKeyID string    `gorm:"size:64"`
-	Action        string    `gorm:"size:64;index"` // e.g. "api_key:create", "member:invite"
-	ResourceType  string    `gorm:"size:64;index"` // e.g. "api_key", "project", "membership"
-	ResourceID    string    `gorm:"size:255"`
-	Success       bool      `gorm:"not null;default:true"`
-	IPAddress     string    `gorm:"size:45"`
-	BeforeJSON    string    `gorm:"type:jsonb"`
-	AfterJSON     string    `gorm:"type:jsonb"`
-	Metadata      string    `gorm:"type:jsonb"`
-	CreatedAt     time.Time `gorm:"index"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	TenantID      uint      `gorm:"index" json:"tenant_id"`
+	ActorUserID   string    `gorm:"size:255" json:"actor_user_id"`
+	ActorAPIKeyID string    `gorm:"size:64" json:"actor_api_key_id"`
+	Action        string    `gorm:"size:64;index" json:"action"`         // e.g. "api_key:create", "member:invite"
+	ResourceType  string    `gorm:"size:64;index" json:"resource_type"`  // e.g. "api_key", "project", "membership"
+	ResourceID    string    `gorm:"size:255" json:"resource_id"`
+	Success       bool      `gorm:"not null;default:true" json:"success"`
+	IPAddress     string    `gorm:"size:45" json:"ip_address"`
+	BeforeJSON    string    `gorm:"type:jsonb" json:"before_json,omitempty"`
+	AfterJSON     string    `gorm:"type:jsonb" json:"after_json,omitempty"`
+	Metadata      string    `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt     time.Time `gorm:"index" json:"created_at"`
 }
 
 // Role constants (org-level)
