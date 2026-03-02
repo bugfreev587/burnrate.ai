@@ -157,7 +157,7 @@ func DebugHeadersMiddleware() gin.HandlerFunc {
 			authSummary = fmt.Sprintf("present | len=%d | prefix=%q", len(auth), preview)
 		}
 
-		slog.Debug("debug_headers_request",
+		slog.Info("debug_headers_request",
 			"method", r.Method,
 			"url", r.URL.String(),
 			"host", r.Host,
