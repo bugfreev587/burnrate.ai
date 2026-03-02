@@ -121,6 +121,81 @@ button {
   background: var(--color-bg);
 }
 
+.signup-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 400px;
+  padding: 0 1rem;
+}
+
+.tos-consent {
+  width: 100%;
+  background: var(--color-surface, #1a1a2e);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 1rem 1.25rem;
+}
+
+.tos-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.tos-checkbox {
+  margin-top: 3px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+
+.tos-text {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-muted, #94a3b8);
+}
+
+.tos-link {
+  color: #818cf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tos-link:hover {
+  color: #a5b4fc;
+}
+
+.tos-reminder {
+  margin: 0.6rem 0 0 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+}
+
+.signup-clerk-container {
+  position: relative;
+  width: 100%;
+}
+
+.signup-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: not-allowed;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 0 0 12px 12px;
+}
+
 /* ── Tailwind utilities (landing page) ──────────────────────────────────────── */
 @tailwind components;
 @tailwind utilities;

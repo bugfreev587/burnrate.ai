@@ -349,6 +349,7 @@ export default function SuperAdminPage() {
                   <tr>
                     <th>ID</th>
                     <th>Name</th>
+                    <th>Email</th>
                     <th>Plan</th>
                     <th>Status</th>
                     <th>Members</th>
@@ -360,11 +361,12 @@ export default function SuperAdminPage() {
                 </thead>
                 <tbody>
                   {tenants.length === 0 ? (
-                    <tr><td colSpan={9} className="empty-cell">No tenants found.</td></tr>
+                    <tr><td colSpan={10} className="empty-cell">No tenants found.</td></tr>
                   ) : tenants.map(t => (
                     <tr key={t.id}>
                       <td className="text-muted">{t.id}</td>
                       <td>{t.name || <span className="text-muted">—</span>}</td>
+                      <td>{t.billing_email || <span className="text-muted">—</span>}</td>
                       <td>{planBadge(t.plan)}</td>
                       <td>{statusBadge(t.status)}</td>
                       <td>{t.member_count}</td>
