@@ -345,7 +345,7 @@ export default function LandingPricing() {
 
         {/* Comparison table */}
         <div className="mt-14 rounded-xl border border-white/10 bg-white/[0.02] p-6">
-          <p className="text-base font-semibold text-slate-100 mb-4">All Plans</p>
+          <p className="text-base font-semibold text-slate-100 mb-4">Compare All Plan Features</p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] border-collapse text-sm text-slate-300">
               <thead>
