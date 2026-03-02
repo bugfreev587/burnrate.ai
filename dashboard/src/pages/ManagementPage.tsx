@@ -711,6 +711,10 @@ export default function ManagementPage() {
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td>
+                        <button className="btn btn-small btn-secondary"
+                          onClick={() => navigate(`/audit?scope_type=api_key&scope_entity_id=${encodeURIComponent(k.key_id)}`)}>
+                          Activity
+                        </button>
                         <button className="btn btn-small btn-danger"
                           onClick={() => handleRevokeAPIKey(k.key_id)}>
                           Revoke
@@ -794,6 +798,10 @@ export default function ManagementPage() {
                             Activate
                           </button>
                         )}
+                        <button className="btn btn-small btn-secondary"
+                          onClick={() => navigate(`/audit?scope_type=provider_key&scope_entity_id=${k.id}`)}>
+                          Activity
+                        </button>
                         <button className="btn btn-small btn-danger"
                           onClick={() => setRevokeTarget(k)}>
                           Revoke
@@ -858,6 +866,9 @@ export default function ManagementPage() {
                           <td className="actions-cell">
                             <button className="btn btn-small btn-secondary" onClick={() => handleViewProjectMembers(p.id)}>
                               {showProjectMembers === p.id ? 'Hide Members' : 'Members'}
+                            </button>
+                            <button className="btn btn-small btn-secondary" onClick={() => navigate(`/audit?scope_type=project&scope_entity_id=${p.id}`)}>
+                              Activity
                             </button>
                             <button className="btn btn-small btn-secondary" onClick={() => {
                               setEditingProject(p)

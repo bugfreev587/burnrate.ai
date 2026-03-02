@@ -26,6 +26,23 @@ interface AuditLogEntry {
   created_at: string
 }
 
+type ScopeType = '' | 'api_key' | 'provider_key' | 'project'
+
+interface ScopeAPIKey {
+  key_id: string
+  label: string
+}
+
+interface ScopeProviderKey {
+  id: number
+  label: string
+}
+
+interface ScopeProject {
+  id: number
+  name: string
+}
+
 export default function AuditPage() {
   const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
@@ -48,13 +65,75 @@ export default function AuditPage() {
   const [logTotal, setLogTotal] = useState(0)
   const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null)
 
+  // ── Entity scope state ──────────────────────────────────────────
+  const [scopeType, setScopeType] = useState<ScopeType>('')
+  const [scopeEntityId, setScopeEntityId] = useState('')
+  const [apiKeys, setApiKeys] = useState<ScopeAPIKey[]>([])
+  const [providerKeys, setProviderKeys] = useState<ScopeProviderKey[]>([])
+  const [projects, setProjects] = useState<ScopeProject[]>([])
+
+  // Read URL params on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const st = params.get('scope_type') as ScopeType
+    const sei = params.get('scope_entity_id') ?? ''
+    const cat = params.get('category') ?? ''
+    const act = params.get('action') ?? ''
+    if (st && ['api_key', 'provider_key', 'project'].includes(st)) {
+      setScopeType(st)
+      setScopeEntityId(sei)
+    }
+    if (cat) setLogCategory(cat)
+    if (act) setLogAction(act)
+  }, [])
+
+  // Fetch entity lists for scope dropdowns
+  useEffect(() => {
+    if (!isAdmin) return
+    Promise.all([
+      apiFetch('/v1/admin/api_keys').then(r => r.ok ? r.json() : null),
+      apiFetch('/v1/admin/provider_keys').then(r => r.ok ? r.json() : null),
+      apiFetch('/v1/projects').then(r => r.ok ? r.json() : null),
+    ]).then(([akData, pkData, projData]) => {
+      if (akData?.keys) setApiKeys(akData.keys.map((k: { key_id: string; label: string }) => ({ key_id: k.key_id, label: k.label })))
+      if (pkData?.provider_keys) setProviderKeys(pkData.provider_keys.map((k: { id: number; label: string }) => ({ id: k.id, label: k.label })))
+      if (projData?.projects) setProjects(projData.projects.map((p: { id: number; name: string }) => ({ id: p.id, name: p.name })))
+    })
+  }, [isAdmin])
+
+  // Update URL when scope filters change
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (scopeType) {
+      params.set('scope_type', scopeType)
+      params.set('scope_entity_id', scopeEntityId)
+    } else {
+      params.delete('scope_type')
+      params.delete('scope_entity_id')
+    }
+    if (logCategory) params.set('category', logCategory)
+    else params.delete('category')
+    if (logAction) params.set('action', logAction)
+    else params.delete('action')
+    const qs = params.toString()
+    const newUrl = window.location.pathname + (qs ? '?' + qs : '')
+    window.history.replaceState(null, '', newUrl)
+  }, [scopeType, scopeEntityId, logCategory, logAction])
+
   const fetchAuditLogs = useCallback(async () => {
     setLogsLoading(true)
     setLogsError(null)
     try {
       const params = new URLSearchParams()
+      if (scopeType === 'project' && scopeEntityId) {
+        params.set('scope_project_id', scopeEntityId)
+      } else if (scopeType && scopeEntityId) {
+        params.set('resource_type', scopeType)
+        params.set('resource_id', scopeEntityId)
+      } else {
+        if (logResourceType) params.set('resource_type', logResourceType)
+      }
       if (logAction) params.set('action', logAction)
-      if (logResourceType) params.set('resource_type', logResourceType)
       if (logCategory) params.set('category', logCategory)
       if (logStartDate) params.set('start_date', logStartDate)
       if (logEndDate) params.set('end_date', logEndDate)
@@ -70,7 +149,7 @@ export default function AuditPage() {
     } finally {
       setLogsLoading(false)
     }
-  }, [logAction, logResourceType, logCategory, logStartDate, logEndDate, logLimit, logOffset])
+  }, [scopeType, scopeEntityId, logAction, logResourceType, logCategory, logStartDate, logEndDate, logLimit, logOffset])
 
   useEffect(() => {
     if (isAdmin) fetchAuditLogs()
@@ -229,6 +308,66 @@ export default function AuditPage() {
                   {logsLoading ? 'Loading...' : 'Refresh'}
                 </button>
               </div>
+              <div className="audit-scope-row" style={{ marginBottom: '0.75rem' }}>
+                <label className="audit-filter-label">
+                  Scope
+                  <select className="audit-select" value={scopeType} onChange={e => {
+                    const v = e.target.value as ScopeType
+                    setScopeType(v)
+                    setScopeEntityId('')
+                    if (!v) setLogResourceType('')
+                    resetOffset()
+                  }}>
+                    <option value="">All</option>
+                    <option value="api_key">API Key</option>
+                    <option value="provider_key">Provider Key</option>
+                    <option value="project">Project</option>
+                  </select>
+                </label>
+                {scopeType === 'api_key' && (
+                  <label className="audit-filter-label">
+                    API Key
+                    <select className="audit-select" value={scopeEntityId} onChange={e => { setScopeEntityId(e.target.value); resetOffset() }}>
+                      <option value="">Select API Key...</option>
+                      {apiKeys.map(k => (
+                        <option key={k.key_id} value={k.key_id}>{k.label || k.key_id}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scopeType === 'provider_key' && (
+                  <label className="audit-filter-label">
+                    Provider Key
+                    <select className="audit-select" value={scopeEntityId} onChange={e => { setScopeEntityId(e.target.value); resetOffset() }}>
+                      <option value="">Select Provider Key...</option>
+                      {providerKeys.map(k => (
+                        <option key={k.id} value={String(k.id)}>{k.label || `Key #${k.id}`}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scopeType === 'project' && (
+                  <label className="audit-filter-label">
+                    Project
+                    <select className="audit-select" value={scopeEntityId} onChange={e => { setScopeEntityId(e.target.value); resetOffset() }}>
+                      <option value="">Select Project...</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={String(p.id)}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scopeType && scopeEntityId && (
+                  <button className="btn btn-secondary btn-small" style={{ alignSelf: 'flex-end' }} onClick={() => {
+                    setScopeType('')
+                    setScopeEntityId('')
+                    setLogResourceType('')
+                    resetOffset()
+                  }}>
+                    Clear Scope
+                  </button>
+                )}
+              </div>
               <div className="audit-filter-row" style={{ marginBottom: '0.75rem' }}>
                 <label className="audit-filter-label">
                   Category
@@ -317,8 +456,8 @@ export default function AuditPage() {
                 </label>
                 <label className="audit-filter-label">
                   Resource
-                  <select className="audit-select" value={logResourceType} onChange={e => { setLogResourceType(e.target.value); resetOffset() }}>
-                    <option value="">All Resources</option>
+                  <select className="audit-select" value={scopeType ? '' : logResourceType} disabled={!!scopeType} onChange={e => { setLogResourceType(e.target.value); resetOffset() }}>
+                    <option value="">{scopeType ? '(Set by scope)' : 'All Resources'}</option>
                     <option value="api_key">API Key</option>
                     <option value="provider_key">Provider Key</option>
                     <option value="project">Project</option>

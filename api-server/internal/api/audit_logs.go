@@ -22,10 +22,12 @@ func (s *Server) handleListAuditLogs(c *gin.Context) {
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
 	filter := services.AuditFilter{
-		Action:       c.Query("action"),
-		ResourceType: c.Query("resource_type"),
-		ActorUserID:  c.Query("actor_user_id"),
-		Category:     c.Query("category"),
+		Action:         c.Query("action"),
+		ResourceType:   c.Query("resource_type"),
+		ResourceID:     c.Query("resource_id"),
+		ActorUserID:    c.Query("actor_user_id"),
+		Category:       c.Query("category"),
+		ScopeProjectID: c.Query("scope_project_id"),
 	}
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {

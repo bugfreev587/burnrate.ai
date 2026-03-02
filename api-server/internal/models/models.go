@@ -77,12 +77,12 @@ type APIKeyProviderKeyBinding struct {
 // AuditLog records security-relevant mutations for compliance and debugging.
 type AuditLog struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	TenantID      uint      `gorm:"index" json:"tenant_id"`
+	TenantID      uint      `gorm:"index;index:idx_audit_tenant_created" json:"tenant_id"`
 	ActorUserID   string    `gorm:"size:255" json:"actor_user_id"`
 	ActorAPIKeyID string    `gorm:"size:64" json:"actor_api_key_id"`
 	Action        string    `gorm:"size:64;index" json:"action"`         // e.g. "API_KEY.CREATED", "MEMBER.INVITED"
-	ResourceType  string    `gorm:"size:64;index" json:"resource_type"`  // e.g. "api_key", "project", "membership"
-	ResourceID    string    `gorm:"size:255" json:"resource_id"`
+	ResourceType  string    `gorm:"size:64;index;index:idx_audit_resource" json:"resource_type"`  // e.g. "api_key", "project", "membership"
+	ResourceID    string    `gorm:"size:255;index:idx_audit_resource" json:"resource_id"`
 	Category      string    `gorm:"size:32;index" json:"category"`
 	ActorType     string    `gorm:"size:16;default:user" json:"actor_type"`
 	UserAgent     string    `gorm:"size:512" json:"user_agent,omitempty"`
@@ -91,7 +91,7 @@ type AuditLog struct {
 	BeforeJSON    string    `gorm:"type:jsonb" json:"before_json,omitempty"`
 	AfterJSON     string    `gorm:"type:jsonb" json:"after_json,omitempty"`
 	Metadata      string    `gorm:"type:jsonb" json:"metadata,omitempty"`
-	CreatedAt     time.Time `gorm:"index" json:"created_at"`
+	CreatedAt     time.Time `gorm:"index;index:idx_audit_tenant_created" json:"created_at"`
 }
 
 // Role constants (org-level)

@@ -47,6 +47,15 @@
   flex-wrap: wrap;
 }
 
+.audit-scope-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .audit-filter-label {
   display: flex;
   flex-direction: column;
@@ -67,6 +76,11 @@
   font-family: inherit;
   min-width: 160px;
   transition: border-color 0.15s;
+}
+
+.audit-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .audit-date-input:focus,
