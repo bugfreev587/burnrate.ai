@@ -711,14 +711,16 @@ export default function ManagementPage() {
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td className="text-muted">{k.last_seen_at ? new Date(k.last_seen_at).toLocaleString() : 'Never'}</td>
                       <td>
-                        <button className="btn btn-small btn-secondary"
-                          onClick={() => navigate(`/audit?scope_type=api_key&scope_entity_id=${encodeURIComponent(k.key_id)}`)}>
-                          Activity
-                        </button>
-                        <button className="btn btn-small btn-danger"
-                          onClick={() => handleRevokeAPIKey(k.key_id)}>
-                          Revoke
-                        </button>
+                        <div className="actions-cell">
+                          <button className="btn btn-small btn-secondary"
+                            onClick={() => navigate(`/audit?scope_type=api_key&scope_entity_id=${encodeURIComponent(k.key_id)}`)}>
+                            Activity
+                          </button>
+                          <button className="btn btn-small btn-danger"
+                            onClick={() => handleRevokeAPIKey(k.key_id)}>
+                            Revoke
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -792,20 +794,22 @@ export default function ManagementPage() {
                       </td>
                       <td className="text-muted">{new Date(k.created_at).toLocaleDateString()}</td>
                       <td>
-                        {!k.is_active && (
+                        <div className="actions-cell">
+                          {!k.is_active && (
+                            <button className="btn btn-small btn-secondary"
+                              onClick={() => handleActivateKey(k.id)}>
+                              Activate
+                            </button>
+                          )}
                           <button className="btn btn-small btn-secondary"
-                            onClick={() => handleActivateKey(k.id)}>
-                            Activate
+                            onClick={() => navigate(`/audit?scope_type=provider_key&scope_entity_id=${k.id}`)}>
+                            Activity
                           </button>
-                        )}
-                        <button className="btn btn-small btn-secondary"
-                          onClick={() => navigate(`/audit?scope_type=provider_key&scope_entity_id=${k.id}`)}>
-                          Activity
-                        </button>
-                        <button className="btn btn-small btn-danger"
-                          onClick={() => setRevokeTarget(k)}>
-                          Revoke
-                        </button>
+                          <button className="btn btn-small btn-danger"
+                            onClick={() => setRevokeTarget(k)}>
+                            Revoke
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

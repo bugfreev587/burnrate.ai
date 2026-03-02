@@ -153,6 +153,7 @@
   flex-wrap: nowrap;
   align-items: center;
   white-space: nowrap;
+  overflow-x: auto;
 }
 
 .empty-cell {
@@ -587,5 +588,4 @@
   .mgmt-table th,
   .mgmt-table td { padding: 0.5rem; font-size: 0.8rem; }
 
-  .actions-cell { flex-direction: column; }
 }
