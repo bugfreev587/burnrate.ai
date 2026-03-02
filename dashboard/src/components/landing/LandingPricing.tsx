@@ -174,9 +174,9 @@ const comparisonCategories: ComparisonCategory[] = [
   {
     category: 'Limits',
     rows: [
-      { feature: 'Max API keys', values: { free: '1', pro: '5', team: '50', business: 'Unlimited' } },
+      { feature: 'Max API keys', values: { free: '1', pro: '5', team: '20', business: 'Unlimited' } },
       { feature: 'Max provider keys', values: { free: '1', pro: '3', team: '10', business: 'Unlimited' } },
-      { feature: 'Max projects', values: { free: '1', pro: '5', team: '20', business: 'Unlimited' } },
+      { feature: 'Max projects', values: { free: '1', pro: '5', team: '10', business: 'Unlimited' } },
       { feature: 'Max spend / rate limit rules', values: { free: '1', pro: '5', team: '20', business: 'Unlimited' } },
     ],
   },

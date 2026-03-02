@@ -82,10 +82,10 @@ var planLimitsMap = map[string]PlanLimits{
 		MaxNotificationChannels: 5,
 	},
 	PlanTeam: {
-		MaxAPIKeys:              50,
+		MaxAPIKeys:              20,
 		MaxProviderKeys:         10,
 		MaxMembers:              10,
-		MaxProjects:             20,
+		MaxProjects:             10,
 		AllowedPeriods:          []string{"monthly", "weekly", "daily"},
 		AllowBlockAction:        true,
 		AllowPerKeyBudget:       true,
