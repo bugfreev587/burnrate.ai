@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSignUp } from '@clerk/clerk-react'
-import type { OAuthStrategy } from '@clerk/types'
 import './SignUpPage.css'
 
 export default function SignUpPage() {
@@ -31,7 +30,7 @@ export default function SignUpPage() {
   }
 
   // ── OAuth ────────────────────────────────────────────────────────────────────
-  async function handleOAuth(strategy: OAuthStrategy) {
+  async function handleOAuth(strategy: 'oauth_google' | 'oauth_github') {
     if (!agreed) {
       setTosError(true)
       return
@@ -39,7 +38,7 @@ export default function SignUpPage() {
     setTosError(false)
     setError('')
     try {
-      await signUp.authenticateWithRedirect({
+      await signUp!.authenticateWithRedirect({
         strategy,
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/dashboard',
@@ -61,14 +60,14 @@ export default function SignUpPage() {
     setError('')
     setLoading(true)
     try {
-      await signUp.create({
+      await signUp!.create({
         firstName,
         lastName,
         emailAddress: email,
         password,
         legalAccepted: true,
       })
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
+      await signUp!.prepareEmailAddressVerification({ strategy: 'email_code' })
       setStep('verify')
     } catch (err: unknown) {
       setError(clerkErrorMessage(err))
@@ -83,9 +82,9 @@ export default function SignUpPage() {
     setError('')
     setLoading(true)
     try {
-      const result = await signUp.attemptEmailAddressVerification({ code })
+      const result = await signUp!.attemptEmailAddressVerification({ code })
       if (result.status === 'complete' && result.createdSessionId) {
-        await setActive({ session: result.createdSessionId })
+        await setActive!({ session: result.createdSessionId })
         navigate('/dashboard')
       } else {
         setError('Verification incomplete. Please try again.')
