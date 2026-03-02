@@ -302,9 +302,9 @@ export default function LandingPricing() {
               </div>
 
               {/* Features */}
-              <ul className="space-y-2.5 mb-8 min-h-[320px] flex-grow" aria-label={`${plan.name} plan features`}>
+              <ul className="mb-8 min-h-[320px] flex-grow divide-y divide-white/10" aria-label={`${plan.name} plan features`}>
                 {plan.features.map((f) => (
-                  <li key={f.text} className="flex items-start gap-2 text-sm text-slate-300">
+                  <li key={f.text} className="flex items-start gap-3 py-3 text-sm text-slate-300 leading-relaxed">
                     <svg className="mt-0.5 shrink-0 h-4 w-4 text-blue-500" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -319,7 +319,7 @@ export default function LandingPricing() {
                   </li>
                 ))}
                 {plan.limit && (
-                  <li className="flex items-start gap-2 text-sm text-slate-400 mt-1 pt-2 border-t border-white/10">
+                  <li className="flex items-start gap-3 py-3 text-sm text-slate-400">
                     <svg className="mt-0.5 shrink-0 h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
                       <path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -365,14 +365,14 @@ export default function LandingPricing() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
+            <table className="w-full min-w-[900px] border-collapse">
               <thead className="bg-white/[0.04]">
                 <tr>
-                  <th className="sticky left-0 z-10 bg-white/[0.04] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Feature</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Free</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Pro</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Team</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Business</th>
+                  <th className="sticky left-0 z-10 bg-white/[0.04] px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Feature</th>
+                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Free</th>
+                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Pro</th>
+                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Team</th>
+                  <th className="border-l border-white/10 px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-slate-400">Business</th>
                 </tr>
               </thead>
               <tbody>
@@ -384,14 +384,14 @@ export default function LandingPricing() {
                       </th>
                     </tr>
                     {section.rows.map((row) => (
-                      <tr key={`${section.category}-${row.feature}`} className="border-t border-white/10">
-                        <th className="sticky left-0 bg-slate-950 px-4 py-3 text-left text-sm font-medium text-slate-300">
+                      <tr key={`${section.category}-${row.feature}`} className="border-t border-white/20">
+                        <th className="sticky left-0 bg-slate-950 px-6 py-4 text-left text-sm font-medium text-slate-300">
                           {row.feature}
                         </th>
                         {(['free', 'pro', 'team', 'business'] as const).map((planKey) => {
                           const value = row.values[planKey]
                           return (
-                            <td key={`${row.feature}-${planKey}`} className="px-4 py-3 text-center text-sm text-slate-300">
+                            <td key={`${row.feature}-${planKey}`} className="border-l border-white/10 px-6 py-4 text-center text-sm text-slate-300">
                               {typeof value === 'boolean' ? (
                                 value ? (
                                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600" aria-label="Included">
