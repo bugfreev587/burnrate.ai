@@ -447,7 +447,6 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
 
               <div className="ig-step">
                 <h3><StepNumber n={2} /> Developer Setup (each machine)</h3>
-                <p>On MacOS:</p>
                 <p>Edit (or create) <code>~/.codex/config.toml</code> and paste the following at the top:</p>
                 <CodeBlock lang="toml">{`model_provider = "tokengate"
 
