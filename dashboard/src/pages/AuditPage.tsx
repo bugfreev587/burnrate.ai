@@ -109,7 +109,7 @@ export default function AuditPage() {
       apiFetch('/v1/projects').then(r => r.ok ? r.json() : null),
       apiFetch('/v1/admin/users').then(r => r.ok ? r.json() : null),
     ]).then(([akData, pkData, projData, usersData]) => {
-      if (akData?.keys) setApiKeys(akData.keys.map((k: { key_id: string; label: string }) => ({ key_id: k.key_id, label: k.label })))
+      if (akData?.api_keys) setApiKeys(akData.api_keys.map((k: { key_id: string; label: string }) => ({ key_id: k.key_id, label: k.label })))
       if (pkData?.provider_keys) setProviderKeys(pkData.provider_keys.map((k: { id: number; label: string }) => ({ id: k.id, label: k.label })))
       if (projData?.projects) setProjects(projData.projects.map((p: { id: number; name: string }) => ({ id: p.id, name: p.name })))
       if (usersData?.users) setUsers(usersData.users.map((u: { id: string; email: string; name: string }) => ({ id: u.id, email: u.email, name: u.name })))
