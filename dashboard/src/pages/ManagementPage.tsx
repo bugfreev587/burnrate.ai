@@ -1627,26 +1627,58 @@ export default function ManagementPage() {
                       <h4>2. Run <code>codex</code> command in a code repo</h4>
                     </div>
                   </>
-                ) : (
+                ) : createdProvider === 'openai' ? (
                   <div className="install-step">
                     <h4>Set environment variables</h4>
                     <div className="cmd-box">
-                      {createdProvider === 'openai' ? (
-                        <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdBillingMode === 'API_USAGE' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
-                      ) : (
-                        <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${'\n# Claude Code will add its own auth automatically'}`}</pre>
-                      )}
+                      <pre>{`export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"${createdBillingMode === 'API_USAGE' ? '\n# No separate OpenAI key needed — the gateway uses your stored provider key' : '\n# Codex CLI will add its own auth automatically'}`}</pre>
                       <button className="btn btn-small btn-secondary"
                         onClick={() => copy(
-                          createdProvider === 'openai'
-                            ? `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`
-                            : `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
+                          `export OPENAI_BASE_URL=https://gateway.tokengate.to/v1/openai\nexport OPENAI_API_KEY="${newKeySecret}"`,
                           'env'
                         )}>
                         {copiedID === 'env' ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                   </div>
+                ) : (
+                  <>
+                    <div className="install-step">
+                      <h4>Option A: CLI — Set environment variables</h4>
+                      <div className="cmd-box">
+                        <pre>{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"${'\n# Claude Code will add its own auth automatically'}`}</pre>
+                        <button className="btn btn-small btn-secondary"
+                          onClick={() => copy(
+                            `export ANTHROPIC_BASE_URL=https://gateway.tokengate.to\nexport ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:${newKeySecret}"`,
+                            'env'
+                          )}>
+                          {copiedID === 'env' ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="install-step">
+                      <h4>Option B: VS Code Extension</h4>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                        Open VS Code Settings &rarr; search <strong>Claude Code</strong> &rarr; edit <code>settings.json</code> and add:
+                      </p>
+                      <div className="cmd-box">
+                        <pre>{`"claudeCode.environmentVariables": [
+  { "name": "ANTHROPIC_BASE_URL", "value": "https://gateway.tokengate.to" },
+  { "name": "ANTHROPIC_CUSTOM_HEADERS", "value": "X-TokenGate-Key:${newKeySecret}" }
+]`}</pre>
+                        <button className="btn btn-small btn-secondary"
+                          onClick={() => copy(
+                            `"claudeCode.environmentVariables": [\n  { "name": "ANTHROPIC_BASE_URL", "value": "https://gateway.tokengate.to" },\n  { "name": "ANTHROPIC_CUSTOM_HEADERS", "value": "X-TokenGate-Key:${newKeySecret}" }\n]`,
+                            'vscode-config'
+                          )}>
+                          {copiedID === 'vscode-config' ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                        When prompted, select the login option matching your billing mode{createdBillingMode === 'MONTHLY_SUBSCRIPTION' ? ' ("Claude account with subscription")' : ' ("Anthropic Console account")'}.
+                      </p>
+                    </div>
+                  </>
                 )}
                 {createdAuthMethod === 'BYOK' && !(createdProvider === 'openai' && createdBillingMode === 'API_USAGE') && (
                   <div className="install-step">

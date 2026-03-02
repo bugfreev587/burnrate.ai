@@ -208,10 +208,10 @@ export default function IntegrationPage() {
                   </thead>
                   <tbody>
                     <tr onClick={() => scrollTo('scenario-1')} className="ig-table-link">
-                      <td>1</td><td>Anthropic</td><td>Browser OAuth</td><td>Monthly Subscription</td><td>Claude Code</td>
+                      <td>1</td><td>Anthropic</td><td>Browser OAuth</td><td>Monthly Subscription</td><td>Claude Code CLI / VS Code Extension</td>
                     </tr>
                     <tr onClick={() => scrollTo('scenario-2')} className="ig-table-link">
-                      <td>2</td><td>Anthropic</td><td>Browser OAuth</td><td>API Usage</td><td>Claude Code</td>
+                      <td>2</td><td>Anthropic</td><td>Browser OAuth</td><td>API Usage</td><td>Claude Code CLI / VS Code Extension</td>
                     </tr>
                     <tr onClick={() => scrollTo('scenario-3')} className="ig-table-link">
                       <td>3</td><td>Anthropic</td><td>BYOK</td><td>API Usage</td><td>curl / SDK</td>
@@ -261,6 +261,8 @@ export default function IntegrationPage() {
 
               <div className="ig-step">
                 <h3><StepNumber n={2} /> Developer Setup (each machine)</h3>
+
+                <h4>Option A: CLI</h4>
                 <p>Set the following environment variables:</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
 export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlock>
@@ -268,15 +270,25 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
                 <Callout type="warn">
                   Do <strong>NOT</strong> include <code>/v1</code> in <code>ANTHROPIC_BASE_URL</code>. The Anthropic SDK appends <code>/v1/messages</code> automatically.
                 </Callout>
+
+                <h4>Option B: VS Code Extension</h4>
+                <p>Open VS Code Settings &rarr; search <strong>Claude Code</strong> &rarr; edit <code>settings.json</code> and add:</p>
+                <CodeBlock lang="json">{`"claudeCode.environmentVariables": [
+  { "name": "ANTHROPIC_BASE_URL", "value": "https://gateway.tokengate.to" },
+  { "name": "ANTHROPIC_CUSTOM_HEADERS", "value": "X-TokenGate-Key:<tokengate-api-key>" }
+]`}</CodeBlock>
               </div>
 
               <div className="ig-step">
                 <h3><StepNumber n={3} /> Run Claude Code</h3>
-                <p>Run <code>claude</code> in your terminal. When prompted to choose an authentication method, select:</p>
+                <p>Run <code>claude</code> in your terminal (CLI) or open the Claude Code panel in VS Code (Extension). When prompted to choose an authentication method, select:</p>
                 <div className="ig-select-option">
                   1. Claude account with subscription &middot; Pro, Max
                 </div>
                 <p>A browser window will automatically open to complete the Anthropic login. Once authenticated, all requests are routed through the gateway and usage is recorded in your TokenGate dashboard.</p>
+                <Callout type="info">
+                  In the VS Code Extension, you can run <code>/login</code> in the chat panel to trigger the authentication flow.
+                </Callout>
               </div>
             </div>
           </section>
@@ -313,6 +325,8 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
 
               <div className="ig-step">
                 <h3><StepNumber n={2} /> Developer Setup (each machine)</h3>
+
+                <h4>Option A: CLI</h4>
                 <p>Set the following environment variables:</p>
                 <CodeBlock lang="bash">{`export ANTHROPIC_BASE_URL=https://gateway.tokengate.to
 export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlock>
@@ -320,15 +334,25 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
                 <Callout type="warn">
                   Do <strong>NOT</strong> include <code>/v1</code> in <code>ANTHROPIC_BASE_URL</code>. The Anthropic SDK appends <code>/v1/messages</code> automatically.
                 </Callout>
+
+                <h4>Option B: VS Code Extension</h4>
+                <p>Open VS Code Settings &rarr; search <strong>Claude Code</strong> &rarr; edit <code>settings.json</code> and add:</p>
+                <CodeBlock lang="json">{`"claudeCode.environmentVariables": [
+  { "name": "ANTHROPIC_BASE_URL", "value": "https://gateway.tokengate.to" },
+  { "name": "ANTHROPIC_CUSTOM_HEADERS", "value": "X-TokenGate-Key:<tokengate-api-key>" }
+]`}</CodeBlock>
               </div>
 
               <div className="ig-step">
                 <h3><StepNumber n={3} /> Run Claude Code</h3>
-                <p>Run <code>claude</code> in your terminal. When prompted to choose an authentication method, select:</p>
+                <p>Run <code>claude</code> in your terminal (CLI) or open the Claude Code panel in VS Code (Extension). When prompted to choose an authentication method, select:</p>
                 <div className="ig-select-option">
                   2. Anthropic Console account &middot; API usage billing
                 </div>
                 <p>Claude Code will add its own Anthropic auth automatically. All requests are routed through the gateway with per-token billing.</p>
+                <Callout type="info">
+                  In the VS Code Extension, you can run <code>/login</code> in the chat panel to trigger the authentication flow.
+                </Callout>
               </div>
             </div>
           </section>
