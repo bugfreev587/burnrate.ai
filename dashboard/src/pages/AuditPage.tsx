@@ -56,6 +56,7 @@ export default function AuditPage() {
   const { reports, loading, error, refresh, generate, deleteReport, downloadReport } = useAuditReports()
 
   const isAdmin = isSynced && hasPermission(role, 'admin')
+  const isSuperAdmin = sessionStorage.getItem('is_super_admin') === 'true'
 
   // ── Audit Logs state ──────────────────────────────────────────────
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
@@ -414,7 +415,7 @@ export default function AuditPage() {
                     <option value="CONFIG">CONFIG</option>
                     <option value="BILLING">BILLING</option>
                     <option value="OWNER">OWNER</option>
-                    <option value="ADMIN">ADMIN</option>
+                    {isSuperAdmin && <option value="ADMIN">ADMIN</option>}
                   </select>
                 </label>
                 <label className="audit-filter-label">
@@ -472,10 +473,12 @@ export default function AuditPage() {
                       <option value="SETTINGS.UPDATED">Settings Updated</option>
                       <option value="ACCOUNT.DELETED">Account Deleted</option>
                     </optgroup>
+                    {isSuperAdmin && (
                     <optgroup label="Admin">
                       <option value="SUPERADMIN.PLAN_CHANGED">Super Admin Plan Changed</option>
                       <option value="SUPERADMIN.STATUS_CHANGED">Super Admin Status Changed</option>
                     </optgroup>
+                    )}
                   </select>
                 </label>
                 <label className="audit-filter-label">

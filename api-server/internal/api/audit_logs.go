@@ -3,23 +3,28 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
+	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 // handleListAuditLogs returns audit log entries for the tenant.
 // GET /v1/audit-logs
 func (s *Server) handleListAuditLogs(c *gin.Context) {
-	_, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
+
+	// Hide super-admin audit events from non-super-admin users.
+	isSuperAdmin := s.superAdminEmails[strings.ToLower(user.Email)]
 
 	filter := services.AuditFilter{
 		Action:         c.Query("action"),
@@ -49,6 +54,10 @@ func (s *Server) handleListAuditLogs(c *gin.Context) {
 			end := t.Add(24*time.Hour - time.Nanosecond)
 			filter.EndDate = &end
 		}
+	}
+
+	if !isSuperAdmin {
+		filter.ExcludeCategory = models.AuditCategoryAdmin
 	}
 
 	logs, total, err := s.auditLogSvc.List(c.Request.Context(), tenantID, filter)

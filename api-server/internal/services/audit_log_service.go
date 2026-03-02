@@ -29,16 +29,17 @@ func (s *AuditLogService) Record(ctx context.Context, entry models.AuditLog) err
 
 // AuditFilter specifies optional filters for listing audit logs.
 type AuditFilter struct {
-	Action         string
-	ResourceType   string
-	ResourceID     string
-	ActorUserID    string
-	Category       string
-	ScopeProjectID string
-	StartDate      *time.Time
-	EndDate        *time.Time
-	Limit          int
-	Offset         int
+	Action          string
+	ResourceType    string
+	ResourceID      string
+	ActorUserID     string
+	Category        string
+	ExcludeCategory string
+	ScopeProjectID  string
+	StartDate       *time.Time
+	EndDate         *time.Time
+	Limit           int
+	Offset          int
 }
 
 // List returns audit log entries for a tenant with optional filters.
@@ -62,6 +63,9 @@ func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditF
 	}
 	if filter.Category != "" {
 		q = q.Where("category = ?", filter.Category)
+	}
+	if filter.ExcludeCategory != "" {
+		q = q.Where("category != ? OR category IS NULL", filter.ExcludeCategory)
 	}
 	if filter.StartDate != nil {
 		q = q.Where("created_at >= ?", *filter.StartDate)
