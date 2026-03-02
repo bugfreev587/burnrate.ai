@@ -22,6 +22,9 @@ type createAuditReportReq struct {
 	Provider       string   `json:"provider,omitempty"`                 // optional filter
 	APIKeyIDs      []string `json:"api_key_ids,omitempty"`              // optional filter
 	APIUsageBilled *bool    `json:"api_usage_billed,omitempty"`         // optional filter
+	ProjectIDs     []uint   `json:"project_ids,omitempty"`              // optional filter
+	UserIDs        []string `json:"user_ids,omitempty"`                 // optional filter
+	BillingMode    string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
 }
 
 // handleCreateAuditReport creates a new audit report generation job.
@@ -58,6 +61,12 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 	// Validate format.
 	if req.Format != "PDF" && req.Format != "CSV" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "format must be PDF or CSV"})
+		return
+	}
+
+	// Validate billing_mode.
+	if req.BillingMode != "" && req.BillingMode != "api_usage" && req.BillingMode != "subscription" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "billing_mode must be api_usage, subscription, or empty"})
 		return
 	}
 
@@ -117,6 +126,9 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		APIKeyIDs:      req.APIKeyIDs,
 		Provider:       req.Provider,
 		APIUsageBilled: req.APIUsageBilled,
+		ProjectIDs:     req.ProjectIDs,
+		UserIDs:        req.UserIDs,
+		BillingMode:    req.BillingMode,
 	}
 	filtersJSON, _ := json.Marshal(filters)
 

@@ -27,7 +27,7 @@ func (s *AuditReportService) Create(ctx context.Context, report *models.AuditRep
 func (s *AuditReportService) GetByID(ctx context.Context, tenantID, reportID uint) (*models.AuditReport, error) {
 	var report models.AuditReport
 	err := s.db.WithContext(ctx).
-		Select("id, tenant_id, created_by_user_id, created_by_email, period_start, period_end, filters_json, format, status, error_message, artifact_size_bytes, row_count, created_at, updated_at").
+		Select("id, tenant_id, created_by_user_id, created_by_email, period_start, period_end, filters_json, format, status, error_message, artifact_size_bytes, row_count, generated_checksum, created_at, updated_at").
 		Where("id = ? AND tenant_id = ?", reportID, tenantID).
 		First(&report).Error
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *AuditReportService) GetWithArtifact(ctx context.Context, tenantID, repo
 func (s *AuditReportService) ListByTenant(ctx context.Context, tenantID uint, limit int) ([]models.AuditReport, error) {
 	var reports []models.AuditReport
 	q := s.db.WithContext(ctx).
-		Select("id, tenant_id, created_by_user_id, created_by_email, period_start, period_end, filters_json, format, status, error_message, artifact_size_bytes, row_count, created_at, updated_at").
+		Select("id, tenant_id, created_by_user_id, created_by_email, period_start, period_end, filters_json, format, status, error_message, artifact_size_bytes, row_count, generated_checksum, created_at, updated_at").
 		Where("tenant_id = ?", tenantID).
 		Order("created_at DESC")
 	if limit > 0 {
@@ -76,7 +76,7 @@ func (s *AuditReportService) UpdateStatus(ctx context.Context, reportID uint, st
 }
 
 // StoreArtifact saves the generated report artifact data.
-func (s *AuditReportService) StoreArtifact(ctx context.Context, reportID uint, data []byte, size int64, rowCount int64) error {
+func (s *AuditReportService) StoreArtifact(ctx context.Context, reportID uint, data []byte, size int64, rowCount int64, checksum string) error {
 	return s.db.WithContext(ctx).
 		Model(&models.AuditReport{}).
 		Where("id = ?", reportID).
@@ -84,6 +84,7 @@ func (s *AuditReportService) StoreArtifact(ctx context.Context, reportID uint, d
 			"artifact_data":       data,
 			"artifact_size_bytes": size,
 			"row_count":           rowCount,
+			"generated_checksum":  checksum,
 		}).Error
 }
 

@@ -3,7 +3,9 @@ package events
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -147,8 +149,12 @@ func (w *ReportWorker) processReport(ctx context.Context, reportID uint) error {
 		return nil
 	}
 
+	// Compute SHA-256 checksum.
+	hash := sha256.Sum256(data)
+	checksum := hex.EncodeToString(hash[:])
+
 	// Store artifact.
-	if err := w.auditSvc.StoreArtifact(ctx, reportID, data, int64(len(data)), rowCount); err != nil {
+	if err := w.auditSvc.StoreArtifact(ctx, reportID, data, int64(len(data)), rowCount, checksum); err != nil {
 		_ = w.auditSvc.UpdateStatus(ctx, reportID, models.ReportStatusFailed, "store artifact: "+err.Error())
 		return nil
 	}
@@ -170,6 +176,8 @@ type usageRow struct {
 	Model               string
 	KeyID               string
 	KeyLabel            string
+	ProjectID           uint
+	UserID              string
 	PromptTokens        int64
 	CompletionTokens    int64
 	CacheCreationTokens int64
@@ -181,27 +189,13 @@ type usageRow struct {
 
 // buildQuery constructs the base GORM query for usage_logs with filters applied.
 func (w *ReportWorker) buildQuery(ctx context.Context, report *models.AuditReport, filters *models.AuditReportFilters) *gorm.DB {
-	q := w.db.WithContext(ctx).
+	return w.db.WithContext(ctx).
 		Table("usage_logs").
-		Select("usage_logs.request_id, usage_logs.created_at, usage_logs.provider, usage_logs.model, usage_logs.key_id, COALESCE(api_keys.label, '') as key_label, usage_logs.prompt_tokens, usage_logs.completion_tokens, usage_logs.cache_creation_tokens, usage_logs.cache_read_tokens, usage_logs.reasoning_tokens, usage_logs.cost, usage_logs.api_usage_billed").
+		Select("usage_logs.request_id, usage_logs.created_at, usage_logs.provider, usage_logs.model, usage_logs.key_id, COALESCE(api_keys.label, '') as key_label, usage_logs.project_id, usage_logs.user_id, usage_logs.prompt_tokens, usage_logs.completion_tokens, usage_logs.cache_creation_tokens, usage_logs.cache_read_tokens, usage_logs.reasoning_tokens, usage_logs.cost, usage_logs.api_usage_billed").
 		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
 		Where("usage_logs.tenant_id = ?", report.TenantID).
-		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd)
-
-	if len(filters.APIKeyIDs) > 0 {
-		q = q.Where("usage_logs.key_id IN ?", filters.APIKeyIDs)
-	}
-	if filters.Provider != "" {
-		q = q.Where("usage_logs.provider = ?", filters.Provider)
-	}
-	if len(filters.Models) > 0 {
-		q = q.Where("usage_logs.model IN ?", filters.Models)
-	}
-	if filters.APIUsageBilled != nil {
-		q = q.Where("usage_logs.api_usage_billed = ?", *filters.APIUsageBilled)
-	}
-
-	return q
+		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
+		Scopes(w.applyFilters(filters))
 }
 
 func (w *ReportWorker) generateCSV(ctx context.Context, report *models.AuditReport, filters *models.AuditReportFilters) ([]byte, int64, error) {
@@ -217,6 +211,7 @@ func (w *ReportWorker) generateCSV(ctx context.Context, report *models.AuditRepo
 	// Header
 	_ = writer.Write([]string{
 		"request_id", "created_at", "provider", "model", "key_id", "key_label",
+		"project_id", "user_id",
 		"prompt_tokens", "completion_tokens", "cache_creation_tokens", "cache_read_tokens",
 		"reasoning_tokens", "cost", "api_usage_billed",
 	})
@@ -229,6 +224,8 @@ func (w *ReportWorker) generateCSV(ctx context.Context, report *models.AuditRepo
 			r.Model,
 			r.KeyID,
 			r.KeyLabel,
+			strconv.FormatUint(uint64(r.ProjectID), 10),
+			r.UserID,
 			strconv.FormatInt(r.PromptTokens, 10),
 			strconv.FormatInt(r.CompletionTokens, 10),
 			strconv.FormatInt(r.CacheCreationTokens, 10),
@@ -266,8 +263,49 @@ type keyAgg struct {
 	Requests     int64
 }
 
+type billingModeAgg struct {
+	BillingMode string
+	TotalCost   decimal.Decimal
+	Requests    int64
+}
+
+type projectAgg struct {
+	ProjectID   uint
+	ProjectName string
+	TotalCost   decimal.Decimal
+	Requests    int64
+}
+
+type dailyAgg struct {
+	Day       string
+	TotalCost decimal.Decimal
+	Requests  int64
+}
+
+type auditEventRow struct {
+	ID          uint
+	CreatedAt   time.Time
+	Action      string
+	Category    string
+	ResourceType string
+	ResourceID  string
+	ActorUserID string
+	Success     bool
+	IPAddress   string
+}
+
 func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditReport, filters *models.AuditReportFilters) ([]byte, int64, error) {
 	// ── Aggregation queries ──────────────────────────────────────────────
+
+	// Helper: base query with filters for usage_logs
+	baseQuery := func() *gorm.DB {
+		return w.db.WithContext(ctx).
+			Table("usage_logs").
+			Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
+			Where("usage_logs.tenant_id = ?", report.TenantID).
+			Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
+			Scopes(w.applyFilters(filters))
+	}
 
 	// Summary totals (api_usage_billed only for cost)
 	type summaryRow struct {
@@ -277,12 +315,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		TotalCost     decimal.Decimal
 	}
 	var summary summaryRow
-	if err := w.db.WithContext(ctx).
-		Table("usage_logs").
-		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
-		Where("usage_logs.tenant_id = ?", report.TenantID).
-		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Scopes(w.applyFilters(filters)).
+	if err := baseQuery().
 		Select("COUNT(*) as total_requests, COALESCE(SUM(usage_logs.prompt_tokens),0) as total_input, COALESCE(SUM(usage_logs.completion_tokens),0) as total_output, COALESCE(SUM(CASE WHEN usage_logs.api_usage_billed THEN usage_logs.cost ELSE 0 END),0) as total_cost").
 		Scan(&summary).Error; err != nil {
 		return nil, 0, fmt.Errorf("summary query: %w", err)
@@ -290,12 +323,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 
 	// By model
 	var byModel []modelAgg
-	if err := w.db.WithContext(ctx).
-		Table("usage_logs").
-		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
-		Where("usage_logs.tenant_id = ?", report.TenantID).
-		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Scopes(w.applyFilters(filters)).
+	if err := baseQuery().
 		Select("usage_logs.model, usage_logs.provider, COALESCE(SUM(usage_logs.cost),0) as total_cost, COALESCE(SUM(usage_logs.prompt_tokens),0) as input_tokens, COALESCE(SUM(usage_logs.completion_tokens),0) as output_tokens, COUNT(*) as requests").
 		Group("usage_logs.model, usage_logs.provider").
 		Order("total_cost DESC").
@@ -305,12 +333,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 
 	// By API key
 	var byKey []keyAgg
-	if err := w.db.WithContext(ctx).
-		Table("usage_logs").
-		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
-		Where("usage_logs.tenant_id = ?", report.TenantID).
-		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
-		Scopes(w.applyFilters(filters)).
+	if err := baseQuery().
 		Select("usage_logs.key_id, COALESCE(api_keys.label, '') as key_label, COALESCE(SUM(usage_logs.cost),0) as total_cost, COALESCE(SUM(usage_logs.prompt_tokens),0) as input_tokens, COALESCE(SUM(usage_logs.completion_tokens),0) as output_tokens, COUNT(*) as requests").
 		Group("usage_logs.key_id, api_keys.label").
 		Order("total_cost DESC").
@@ -318,13 +341,77 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		return nil, 0, fmt.Errorf("by key query: %w", err)
 	}
 
-	// Recent requests (top 100)
-	var recent []usageRow
+	// Cost by Billing Mode
+	var byBilling []billingModeAgg
+	if err := baseQuery().
+		Select("CASE WHEN usage_logs.api_usage_billed THEN 'API Usage' ELSE 'Subscription' END as billing_mode, COALESCE(SUM(usage_logs.cost),0) as total_cost, COUNT(*) as requests").
+		Group("usage_logs.api_usage_billed").
+		Order("total_cost DESC").
+		Scan(&byBilling).Error; err != nil {
+		return nil, 0, fmt.Errorf("by billing mode query: %w", err)
+	}
+
+	// Cost by Project
+	var byProject []projectAgg
+	if err := w.db.WithContext(ctx).
+		Table("usage_logs").
+		Joins("LEFT JOIN api_keys ON api_keys.key_id = usage_logs.key_id").
+		Joins("LEFT JOIN projects ON projects.id = usage_logs.project_id").
+		Where("usage_logs.tenant_id = ?", report.TenantID).
+		Where("usage_logs.created_at >= ? AND usage_logs.created_at <= ?", report.PeriodStart, report.PeriodEnd).
+		Scopes(w.applyFilters(filters)).
+		Select("usage_logs.project_id, COALESCE(projects.name, 'Unassigned') as project_name, COALESCE(SUM(usage_logs.cost),0) as total_cost, COUNT(*) as requests").
+		Group("usage_logs.project_id, projects.name").
+		Order("total_cost DESC").
+		Scan(&byProject).Error; err != nil {
+		return nil, 0, fmt.Errorf("by project query: %w", err)
+	}
+
+	// Daily Cost Rollup
+	var daily []dailyAgg
+	if err := baseQuery().
+		Select("TO_CHAR(usage_logs.created_at, 'YYYY-MM-DD') as day, COALESCE(SUM(usage_logs.cost),0) as total_cost, COUNT(*) as requests").
+		Group("TO_CHAR(usage_logs.created_at, 'YYYY-MM-DD')").
+		Order("day ASC").
+		Scan(&daily).Error; err != nil {
+		return nil, 0, fmt.Errorf("daily rollup query: %w", err)
+	}
+
+	// Security Events (from audit_logs, only tenant_id + date range, no usage filters)
+	var securityEvents []auditEventRow
+	if err := w.db.WithContext(ctx).
+		Table("audit_logs").
+		Where("tenant_id = ?", report.TenantID).
+		Where("created_at >= ? AND created_at <= ?", report.PeriodStart, report.PeriodEnd).
+		Where("category = ?", "ACCESS").
+		Select("id, created_at, action, category, resource_type, resource_id, actor_user_id, success, ip_address").
+		Order("created_at DESC").
+		Limit(50).
+		Scan(&securityEvents).Error; err != nil {
+		return nil, 0, fmt.Errorf("security events query: %w", err)
+	}
+
+	// Admin & Configuration Actions (from audit_logs)
+	var adminActions []auditEventRow
+	if err := w.db.WithContext(ctx).
+		Table("audit_logs").
+		Where("tenant_id = ?", report.TenantID).
+		Where("created_at >= ? AND created_at <= ?", report.PeriodStart, report.PeriodEnd).
+		Where("category IN ?", []string{"ADMIN", "OWNER", "CONFIG", "TEAM"}).
+		Select("id, created_at, action, category, resource_type, resource_id, actor_user_id, success, ip_address").
+		Order("created_at DESC").
+		Limit(50).
+		Scan(&adminActions).Error; err != nil {
+		return nil, 0, fmt.Errorf("admin actions query: %w", err)
+	}
+
+	// Top Requests by Cost (replaces "Recent Requests")
+	var topByCost []usageRow
 	if err := w.buildQuery(ctx, report, filters).
-		Order("usage_logs.created_at DESC").
+		Order("usage_logs.cost DESC").
 		Limit(100).
-		Find(&recent).Error; err != nil {
-		return nil, 0, fmt.Errorf("recent query: %w", err)
+		Find(&topByCost).Error; err != nil {
+		return nil, 0, fmt.Errorf("top by cost query: %w", err)
 	}
 
 	// ── Build PDF ────────────────────────────────────────────────────────
@@ -337,7 +424,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 
 	m := maroto.New(cfg)
 
-	// Cover page
+	// 1. Cover page
 	m.AddRows(
 		row.New(30).Add(
 			col.New(12).Add(
@@ -377,7 +464,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		),
 	)
 
-	// Summary section
+	// 2. Summary section
 	addSectionHeader(m, "Summary")
 	m.AddRows(
 		row.New(7).Add(
@@ -398,7 +485,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		),
 	)
 
-	// By Model table
+	// 3. By Model table
 	if len(byModel) > 0 {
 		addSectionHeader(m, "Usage by Model")
 		m.AddRows(tableHeaderRow("Model", "Provider", "Cost", "Input Tokens", "Output Tokens", "Requests"))
@@ -413,7 +500,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		}
 	}
 
-	// By API Key table
+	// 4. By API Key table
 	if len(byKey) > 0 {
 		addSectionHeader(m, "Usage by API Key")
 		m.AddRows(tableHeaderRow("Key Label", "Key ID", "Cost", "Input Tokens", "Output Tokens", "Requests"))
@@ -432,10 +519,114 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		}
 	}
 
-	// Recent Requests (top 100)
-	if len(recent) > 0 {
-		addSectionHeader(m, fmt.Sprintf("Recent Requests (top %d)", len(recent)))
-		// Narrower columns for recent requests
+	// 5. Cost by Billing Mode
+	if len(byBilling) > 0 {
+		addSectionHeader(m, "Cost by Billing Mode")
+		m.AddRows(tableHeaderRow("Billing Mode", "Cost", "Requests"))
+		for _, r := range byBilling {
+			m.AddRows(tableDataRow(
+				r.BillingMode,
+				"$"+r.TotalCost.StringFixed(4),
+				fmt.Sprintf("%d", r.Requests),
+			))
+		}
+	}
+
+	// 6. Cost by Project
+	if len(byProject) > 0 {
+		addSectionHeader(m, "Cost by Project")
+		m.AddRows(tableHeaderRow("Project", "Cost", "Requests"))
+		for _, r := range byProject {
+			name := r.ProjectName
+			if name == "" {
+				name = "Unassigned"
+			}
+			m.AddRows(tableDataRow(
+				truncate(name, 30),
+				"$"+r.TotalCost.StringFixed(4),
+				fmt.Sprintf("%d", r.Requests),
+			))
+		}
+	}
+
+	// 7. Daily Cost Rollup
+	if len(daily) > 0 {
+		addSectionHeader(m, "Daily Cost Rollup")
+		m.AddRows(tableHeaderRow("Date", "Cost", "Requests"))
+		for _, r := range daily {
+			m.AddRows(tableDataRow(
+				r.Day,
+				"$"+r.TotalCost.StringFixed(4),
+				fmt.Sprintf("%d", r.Requests),
+			))
+		}
+	}
+
+	// 8. Security Events
+	if len(securityEvents) > 0 {
+		addSectionHeader(m, fmt.Sprintf("Security Events (latest %d)", len(securityEvents)))
+		m.AddRows(
+			row.New(7).Add(
+				col.New(2).Add(text.New("Time", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(3).Add(text.New("Action", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("Resource", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("Actor", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(1).Add(text.New("Result", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("IP", props.Text{Size: 7, Style: fontstyle.Bold})),
+			),
+		)
+		for _, e := range securityEvents {
+			result := "OK"
+			if !e.Success {
+				result = "FAIL"
+			}
+			m.AddRows(
+				row.New(6).Add(
+					col.New(2).Add(text.New(e.CreatedAt.UTC().Format("01-02 15:04"), props.Text{Size: 6})),
+					col.New(3).Add(text.New(truncate(e.Action, 28), props.Text{Size: 6})),
+					col.New(2).Add(text.New(truncate(e.ResourceType, 16), props.Text{Size: 6})),
+					col.New(2).Add(text.New(truncate(e.ActorUserID, 16), props.Text{Size: 6})),
+					col.New(1).Add(text.New(result, props.Text{Size: 6})),
+					col.New(2).Add(text.New(e.IPAddress, props.Text{Size: 6})),
+				),
+			)
+		}
+	}
+
+	// 9. Admin & Configuration Actions
+	if len(adminActions) > 0 {
+		addSectionHeader(m, fmt.Sprintf("Admin & Configuration Actions (latest %d)", len(adminActions)))
+		m.AddRows(
+			row.New(7).Add(
+				col.New(2).Add(text.New("Time", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(3).Add(text.New("Action", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("Category", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("Resource", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(1).Add(text.New("Result", props.Text{Size: 7, Style: fontstyle.Bold})),
+				col.New(2).Add(text.New("Actor", props.Text{Size: 7, Style: fontstyle.Bold})),
+			),
+		)
+		for _, e := range adminActions {
+			result := "OK"
+			if !e.Success {
+				result = "FAIL"
+			}
+			m.AddRows(
+				row.New(6).Add(
+					col.New(2).Add(text.New(e.CreatedAt.UTC().Format("01-02 15:04"), props.Text{Size: 6})),
+					col.New(3).Add(text.New(truncate(e.Action, 28), props.Text{Size: 6})),
+					col.New(2).Add(text.New(e.Category, props.Text{Size: 6})),
+					col.New(2).Add(text.New(truncate(e.ResourceType, 16), props.Text{Size: 6})),
+					col.New(1).Add(text.New(result, props.Text{Size: 6})),
+					col.New(2).Add(text.New(truncate(e.ActorUserID, 16), props.Text{Size: 6})),
+				),
+			)
+		}
+	}
+
+	// 10. Top Requests by Cost (replaces "Recent Requests")
+	if len(topByCost) > 0 {
+		addSectionHeader(m, fmt.Sprintf("Top Requests by Cost (top %d)", len(topByCost)))
 		m.AddRows(
 			row.New(7).Add(
 				col.New(2).Add(text.New("Timestamp", props.Text{Size: 7, Style: fontstyle.Bold})),
@@ -447,7 +638,7 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 				col.New(2).Add(text.New("Cost", props.Text{Size: 7, Style: fontstyle.Bold})),
 			),
 		)
-		for _, r := range recent {
+		for _, r := range topByCost {
 			label := r.KeyLabel
 			if label == "" {
 				label = truncate(r.KeyID, 12)
@@ -465,6 +656,18 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 			)
 		}
 	}
+
+	// 11. Definitions & Methodology
+	addSectionHeader(m, "Definitions & Methodology")
+	addDefinitionRow(m, "API Usage Billed", "Requests billed directly via API usage metering (pay-per-token).")
+	addDefinitionRow(m, "Subscription", "Requests covered under a monthly subscription plan allocation.")
+	addDefinitionRow(m, "Input Tokens", "Tokens sent in the prompt (including system messages and context).")
+	addDefinitionRow(m, "Output Tokens", "Tokens generated in the model's response (completion tokens).")
+	addDefinitionRow(m, "Cost", "Computed cost in USD based on provider pricing at the time of the request.")
+	m.AddRows(row.New(4)) // spacer
+	addDefinitionRow(m, "Data Integrity", "This report includes a SHA-256 checksum for tamper detection. Cost figures are computed from provider-reported token counts and pricing at request time.")
+	addDefinitionRow(m, "Security Events", "ACCESS-category audit log entries (API key/provider key creation, revocation, rotation).")
+	addDefinitionRow(m, "Admin Actions", "ADMIN, OWNER, CONFIG, and TEAM-category audit log entries (role changes, settings, billing, team management).")
 
 	doc, err := m.Generate()
 	if err != nil {
@@ -489,6 +692,17 @@ func (w *ReportWorker) applyFilters(filters *models.AuditReportFilters) func(db 
 		}
 		if filters.APIUsageBilled != nil {
 			db = db.Where("usage_logs.api_usage_billed = ?", *filters.APIUsageBilled)
+		}
+		if len(filters.ProjectIDs) > 0 {
+			db = db.Where("usage_logs.project_id IN ?", filters.ProjectIDs)
+		}
+		if len(filters.UserIDs) > 0 {
+			db = db.Where("usage_logs.user_id IN ?", filters.UserIDs)
+		}
+		if filters.BillingMode == "api_usage" {
+			db = db.Where("usage_logs.api_usage_billed = ?", true)
+		} else if filters.BillingMode == "subscription" {
+			db = db.Where("usage_logs.api_usage_billed = ?", false)
 		}
 		return db
 	}
@@ -540,4 +754,13 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-1] + "\u2026"
+}
+
+func addDefinitionRow(m core.Maroto, term, definition string) {
+	m.AddRows(
+		row.New(7).Add(
+			col.New(3).Add(text.New(term, props.Text{Size: 8, Style: fontstyle.Bold})),
+			col.New(9).Add(text.New(definition, props.Text{Size: 8})),
+		),
+	)
 }

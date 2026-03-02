@@ -43,6 +43,12 @@ interface ScopeProject {
   name: string
 }
 
+interface UserOption {
+  id: string
+  email: string
+  name: string
+}
+
 export default function AuditPage() {
   const { orgRole, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
@@ -71,6 +77,12 @@ export default function AuditPage() {
   const [apiKeys, setApiKeys] = useState<ScopeAPIKey[]>([])
   const [providerKeys, setProviderKeys] = useState<ScopeProviderKey[]>([])
   const [projects, setProjects] = useState<ScopeProject[]>([])
+  const [users, setUsers] = useState<UserOption[]>([])
+
+  // ── Report generation filter state ────────────────────────────────
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([])
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
+  const [billingMode, setBillingMode] = useState('')
 
   // Read URL params on mount
   useEffect(() => {
@@ -87,17 +99,19 @@ export default function AuditPage() {
     if (act) setLogAction(act)
   }, [])
 
-  // Fetch entity lists for scope dropdowns
+  // Fetch entity lists for scope dropdowns + report filters
   useEffect(() => {
     if (!isAdmin) return
     Promise.all([
       apiFetch('/v1/admin/api_keys').then(r => r.ok ? r.json() : null),
       apiFetch('/v1/admin/provider_keys').then(r => r.ok ? r.json() : null),
       apiFetch('/v1/projects').then(r => r.ok ? r.json() : null),
-    ]).then(([akData, pkData, projData]) => {
+      apiFetch('/v1/admin/users').then(r => r.ok ? r.json() : null),
+    ]).then(([akData, pkData, projData, usersData]) => {
       if (akData?.keys) setApiKeys(akData.keys.map((k: { key_id: string; label: string }) => ({ key_id: k.key_id, label: k.label })))
       if (pkData?.provider_keys) setProviderKeys(pkData.provider_keys.map((k: { id: number; label: string }) => ({ id: k.id, label: k.label })))
       if (projData?.projects) setProjects(projData.projects.map((p: { id: number; name: string }) => ({ id: p.id, name: p.name })))
+      if (usersData?.users) setUsers(usersData.users.map((u: { id: string; email: string; name: string }) => ({ id: u.id, email: u.email, name: u.name })))
     })
   }, [isAdmin])
 
@@ -171,7 +185,6 @@ export default function AuditPage() {
   const [startDate, setStartDate] = useState(defaultStartStr)
   const [endDate, setEndDate] = useState(todayStr)
   const [provider, setProvider] = useState('')
-  const [billedOnly, setBilledOnly] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [flashMsg, setFlashMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -202,7 +215,9 @@ export default function AuditPage() {
         format,
       }
       if (provider) req.provider = provider
-      if (billedOnly) req.api_usage_billed = true
+      if (selectedProjectIds.length > 0) req.project_ids = selectedProjectIds
+      if (selectedUserIds.length > 0) req.user_ids = selectedUserIds
+      if (billingMode) req.billing_mode = billingMode
       await generate(req)
       setFlashMsg({ type: 'success', text: `${format} report queued successfully` })
     } catch (e: unknown) {
@@ -258,6 +273,26 @@ export default function AuditPage() {
       return JSON.stringify(obj, null, 2)
     } catch {
       return raw
+    }
+  }
+
+  // ── Scope summary helper ────────────────────────────────────────────
+  function formatScope(filtersJson: string): string {
+    if (!filtersJson || filtersJson === '{}' || filtersJson === 'null') return 'All'
+    try {
+      const f = JSON.parse(filtersJson)
+      const parts: string[] = []
+      if (f.provider) parts.push(f.provider)
+      if (f.project_ids?.length) parts.push(`${f.project_ids.length} project(s)`)
+      if (f.user_ids?.length) parts.push(`${f.user_ids.length} user(s)`)
+      if (f.api_key_ids?.length) parts.push(`${f.api_key_ids.length} key(s)`)
+      if (f.billing_mode === 'api_usage') parts.push('API Usage')
+      else if (f.billing_mode === 'subscription') parts.push('Subscription')
+      else if (f.api_usage_billed === true) parts.push('Billed Only')
+      else if (f.api_usage_billed === false) parts.push('Unbilled Only')
+      return parts.length > 0 ? parts.join(', ') : 'All'
+    } catch {
+      return 'All'
     }
   }
 
@@ -634,13 +669,49 @@ export default function AuditPage() {
                 </label>
               </div>
               <div className="audit-filter-row">
-                <label className="audit-toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={billedOnly}
-                    onChange={e => setBilledOnly(e.target.checked)}
-                  />
-                  API Usage Billed Only
+                <label className="audit-filter-label">
+                  Project
+                  <select
+                    className="audit-select"
+                    value={selectedProjectIds.length === 1 ? String(selectedProjectIds[0]) : ''}
+                    onChange={e => {
+                      const v = e.target.value
+                      setSelectedProjectIds(v ? [Number(v)] : [])
+                    }}
+                  >
+                    <option value="">All Projects</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="audit-filter-label">
+                  User
+                  <select
+                    className="audit-select"
+                    value={selectedUserIds.length === 1 ? selectedUserIds[0] : ''}
+                    onChange={e => {
+                      const v = e.target.value
+                      setSelectedUserIds(v ? [v] : [])
+                    }}
+                  >
+                    <option value="">All Users</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="audit-filter-label">
+                  Billing Mode
+                  <select
+                    className="audit-select"
+                    value={billingMode}
+                    onChange={e => setBillingMode(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option value="api_usage">API Usage</option>
+                    <option value="subscription">Monthly Subscription</option>
+                  </select>
                 </label>
               </div>
               <div className="audit-actions">
@@ -699,6 +770,7 @@ export default function AuditPage() {
                       <th>Created</th>
                       <th>Period</th>
                       <th>Format</th>
+                      <th>Scope</th>
                       <th>Status</th>
                       <th>Rows</th>
                       <th>Size</th>
@@ -711,6 +783,7 @@ export default function AuditPage() {
                         <td className="text-muted">{formatDateTime(r.created_at)}</td>
                         <td>{formatDate(r.period_start)} &mdash; {formatDate(r.period_end)}</td>
                         <td><span className={`audit-format-badge audit-format-${r.format.toLowerCase()}`}>{r.format}</span></td>
+                        <td className="text-muted">{formatScope(r.filters)}</td>
                         <td>
                           <span className={`audit-status-badge audit-status-${r.status.toLowerCase()}`}>
                             {r.status === 'RUNNING' && <span className="audit-spinner" />}

@@ -14,6 +14,7 @@ export interface AuditReport {
   error_message: string
   artifact_size_bytes: number
   row_count: number
+  generated_checksum: string
   created_at: string
 }
 
@@ -24,6 +25,9 @@ export interface CreateReportRequest {
   provider?: string
   api_key_ids?: string[]
   api_usage_billed?: boolean
+  project_ids?: number[]
+  user_ids?: string[]
+  billing_mode?: string  // "api_usage" | "subscription" | ""
 }
 
 export function useAuditReports() {

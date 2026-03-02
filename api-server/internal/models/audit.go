@@ -16,6 +16,9 @@ type AuditReportFilters struct {
 	Provider       string   `json:"provider,omitempty"`
 	Models         []string `json:"models,omitempty"`
 	APIUsageBilled *bool    `json:"api_usage_billed,omitempty"`
+	ProjectIDs     []uint   `json:"project_ids,omitempty"`
+	UserIDs        []string `json:"user_ids,omitempty"`
+	BillingMode    string   `json:"billing_mode,omitempty"` // "api_usage" | "subscription" | ""
 }
 
 // AuditReport tracks an async report generation job and its resulting artifact.
@@ -33,6 +36,7 @@ type AuditReport struct {
 	ArtifactData      []byte    `gorm:"type:bytea" json:"-"`                 // never serialized in JSON responses
 	ArtifactSizeBytes int64     `json:"artifact_size_bytes"`
 	RowCount          int64     `json:"row_count"`
+	GeneratedChecksum string    `json:"generated_checksum,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
