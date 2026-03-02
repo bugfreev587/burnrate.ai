@@ -84,8 +84,3 @@ func (s *Server) recordAuditEvent(c *gin.Context, action, resourceType, resource
 		)
 	}
 }
-
-// recordAudit is a thin wrapper that writes a simple audit log entry (backward compat).
-func (s *Server) recordAudit(c *gin.Context, action, resourceType, resourceID string) {
-	s.recordAuditEvent(c, action, resourceType, resourceID, AuditOpts{})
-}

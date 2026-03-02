@@ -441,17 +441,6 @@ export default function AuditPage() {
                       <option value="SUPERADMIN.PLAN_CHANGED">Super Admin Plan Changed</option>
                       <option value="SUPERADMIN.STATUS_CHANGED">Super Admin Status Changed</option>
                     </optgroup>
-                    <optgroup label="Legacy">
-                      <option value="api_key:create">api_key:create</option>
-                      <option value="api_key:revoke">api_key:revoke</option>
-                      <option value="provider_key:create">provider_key:create</option>
-                      <option value="provider_key:revoke">provider_key:revoke</option>
-                      <option value="project:create">project:create</option>
-                      <option value="project:update">project:update</option>
-                      <option value="project:delete">project:delete</option>
-                      <option value="member:invite">member:invite</option>
-                      <option value="member:remove">member:remove</option>
-                    </optgroup>
                   </select>
                 </label>
                 <label className="audit-filter-label">

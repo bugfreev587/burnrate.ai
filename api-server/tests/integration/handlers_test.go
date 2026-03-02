@@ -1021,18 +1021,22 @@ func TestAuditLogs_WithData(t *testing.T) {
 	testDB.Create(&models.AuditLog{
 		TenantID:     tenant.ID,
 		ActorUserID:  "user_ald",
-		Action:       "api_key:create",
+		Action:       models.AuditAPIKeyCreated,
 		ResourceType: "api_key",
 		ResourceID:   "key_123",
+		Category:     models.AuditCategoryAccess,
+		ActorType:    models.AuditActorUser,
 		Success:      true,
 		CreatedAt:    time.Now(),
 	})
 	testDB.Create(&models.AuditLog{
 		TenantID:     tenant.ID,
 		ActorUserID:  "user_ald",
-		Action:       "project:create",
+		Action:       models.AuditProjectCreated,
 		ResourceType: "project",
 		ResourceID:   "proj_1",
+		Category:     models.AuditCategoryProject,
+		ActorType:    models.AuditActorUser,
 		Success:      true,
 		CreatedAt:    time.Now(),
 	})
@@ -1052,7 +1056,7 @@ func TestAuditLogs_WithData(t *testing.T) {
 	}
 
 	// Filter by action.
-	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?action=api_key:create", "", headers)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?action=API_KEY.CREATED", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("filtered audit logs = %d; body: %s", w.Code, w.Body.String())
 	}

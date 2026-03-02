@@ -1106,17 +1106,20 @@ func TestFlow_AuditLogTracking(t *testing.T) {
 	// Seed audit log entries directly
 	testDB.Create(&models.AuditLog{
 		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
-		Action: "api_key:create", ResourceType: "api_key", ResourceID: "key_1",
+		Action: models.AuditAPIKeyCreated, ResourceType: "api_key", ResourceID: "key_1",
+		Category: models.AuditCategoryAccess, ActorType: models.AuditActorUser,
 		Success: true, CreatedAt: time.Now(),
 	})
 	testDB.Create(&models.AuditLog{
 		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
-		Action: "project:create", ResourceType: "project", ResourceID: "proj_1",
+		Action: models.AuditProjectCreated, ResourceType: "project", ResourceID: "proj_1",
+		Category: models.AuditCategoryProject, ActorType: models.AuditActorUser,
 		Success: true, CreatedAt: time.Now().Add(-1 * time.Hour),
 	})
 	testDB.Create(&models.AuditLog{
 		TenantID: tenantID, ActorUserID: "e2e_audit_owner",
-		Action: "api_key:revoke", ResourceType: "api_key", ResourceID: "key_1",
+		Action: models.AuditAPIKeyRevoked, ResourceType: "api_key", ResourceID: "key_1",
+		Category: models.AuditCategoryAccess, ActorType: models.AuditActorUser,
 		Success: true, CreatedAt: time.Now().Add(-2 * time.Hour),
 	})
 
@@ -1135,14 +1138,14 @@ func TestFlow_AuditLogTracking(t *testing.T) {
 	}
 
 	// Filter by action
-	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?action=api_key:create", "", headers)
+	w = testutil.DoRequest(testRouter, "GET", "/v1/audit-logs?action=API_KEY.CREATED", "", headers)
 	if w.Code != 200 {
 		t.Fatalf("filtered audit = %d; body: %s", w.Code, w.Body.String())
 	}
 	resp = testutil.ParseJSON(t, w)
 	logs = resp["audit_logs"].([]interface{})
 	if len(logs) != 1 {
-		t.Errorf("filtered api_key:create count = %d, want 1", len(logs))
+		t.Errorf("filtered API_KEY.CREATED count = %d, want 1", len(logs))
 	}
 
 	// Filter by resource_type
