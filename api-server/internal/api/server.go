@@ -178,6 +178,8 @@ func (s *Server) setupRoutes() {
 		viewer.GET("/usage/forecast", s.handleUsageForecast)
 		viewer.GET("/usage/metrics", s.handleUsageMetrics)
 		viewer.GET("/dashboard/config", s.handleDashboardConfig)
+		viewer.GET("/dashboard/summary", s.handleDashboardSummary)
+		viewer.GET("/dashboard/recent-requests", s.handleDashboardRecentRequests)
 		viewer.GET("/budget", s.handleGetBudget)
 		viewer.GET("/rate-limits", s.handleListRateLimits)
 		viewer.GET("/audit/reports", s.handleListAuditReports)

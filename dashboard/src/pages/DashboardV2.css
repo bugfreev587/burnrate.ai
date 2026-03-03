@@ -1,0 +1,715 @@
+/* ─── Dashboard V2 ──────────────────────────────────────────────────────────── */
+
+.dv2-page .page-content {
+  max-width: 1200px;
+  padding: 2rem;
+}
+
+/* ─── Sticky Toolbar ────────────────────────────────────────────────────────── */
+
+.dv2-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.75rem 0;
+  margin: -0.5rem 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dv2-toolbar select,
+.dv2-toolbar input {
+  font-size: 0.78rem;
+  background: var(--color-card);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  min-width: 0;
+}
+
+.dv2-toolbar select:focus,
+.dv2-toolbar input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.dv2-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dv2-toolbar-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.dv2-toolbar-sep {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.dv2-toolbar-retention {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.dv2-toolbar .btn {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.75rem;
+}
+
+/* ─── Custom date row ───────────────────────────────────────────────────────── */
+
+.dv2-custom-dates {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.dv2-custom-dates input[type="date"] {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.4rem;
+}
+
+/* ─── Collapsible Section ───────────────────────────────────────────────────── */
+
+.dv2-section {
+  margin-bottom: 1.5rem;
+}
+
+.dv2-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.25rem 0;
+  margin-bottom: 0.75rem;
+}
+
+.dv2-section-header:hover .dv2-section-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
+}
+
+.dv2-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dv2-section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.dv2-section-tag {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.dv2-tag-all {
+  color: #a5b4fc;
+  background: rgba(165, 180, 252, 0.12);
+  border: 1px solid rgba(165, 180, 252, 0.2);
+}
+
+.dv2-tag-api {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.dv2-tag-team {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.dv2-tag-business {
+  color: #f472b6;
+  background: rgba(244, 114, 182, 0.12);
+  border: 1px solid rgba(244, 114, 182, 0.2);
+}
+
+.dv2-section-toggle {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dv2-section-body {
+  animation: dv2FadeIn 0.15s ease-out;
+}
+
+@keyframes dv2FadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── KPI Grid ──────────────────────────────────────────────────────────────── */
+
+.dv2-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .dv2-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .dv2-kpi-grid { grid-template-columns: 1fr; }
+}
+
+.dv2-kpi-card {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dv2-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.6;
+}
+
+.dv2-kpi-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.dv2-kpi-value-sm {
+  font-size: 1.4rem;
+}
+
+.dv2-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 0.1rem;
+}
+
+/* ─── Delta Badge ───────────────────────────────────────────────────────────── */
+
+.dv2-delta {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  margin-top: 0.15rem;
+  align-self: flex-start;
+}
+
+.dv2-delta-up {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.dv2-delta-down {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.dv2-delta-neutral {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+/* Inverted (for success rate, where up is good) */
+.dv2-delta-up-good {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.dv2-delta-down-bad {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* ─── Mini Insight Strip (3 cols) ──────────────────────────────────────────── */
+
+.dv2-insight-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 700px) {
+  .dv2-insight-strip { grid-template-columns: 1fr; }
+}
+
+.dv2-insight-card {
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.dv2-insight-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dv2-insight-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.dv2-insight-sub {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+/* ─── Spend & Forecast Cards ───────────────────────────────────────────────── */
+
+.dv2-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .dv2-forecast-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ─── Chart Container ──────────────────────────────────────────────────────── */
+
+.dv2-chart-card {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.dv2-chart-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+
+.dv2-chart-svg {
+  width: 100%;
+  height: 140px;
+  display: block;
+  overflow: visible;
+}
+
+.dv2-chart-empty {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.dv2-chart-note {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  margin-top: 0.5rem;
+}
+
+/* ─── Tabs ──────────────────────────────────────────────────────────────────── */
+
+.dv2-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1rem;
+}
+
+.dv2-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.dv2-tab:hover {
+  color: var(--color-text);
+}
+
+.dv2-tab-active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+/* ─── Cost Drivers Panel ───────────────────────────────────────────────────── */
+
+.dv2-drivers {
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+  border-left: 3px solid var(--color-primary);
+}
+
+.dv2-drivers-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+
+.dv2-drivers ul {
+  list-style: disc;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.dv2-drivers li {
+  font-size: 0.82rem;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+/* ─── Breakdown Table ──────────────────────────────────────────────────────── */
+
+.dv2-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.dv2-breakdown-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dv2-breakdown-table th:not(:first-child) {
+  text-align: right;
+}
+
+.dv2-breakdown-table td {
+  padding: 0.5rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.dv2-breakdown-table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dv2-breakdown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dv2-breakdown-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dv2-pct-bar {
+  display: inline-block;
+  height: 3px;
+  background: var(--color-primary);
+  border-radius: 999px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+/* ─── Limits Panel ─────────────────────────────────────────────────────────── */
+
+.dv2-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .dv2-risk-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.dv2-limits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.dv2-limit-card {
+  padding: 0.8rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dv2-limit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.dv2-limit-scope {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.dv2-limit-details {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.dv2-limit-bar {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.dv2-limit-track {
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.2rem;
+}
+
+.dv2-limit-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.dv2-limit-pct {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.dv2-status-chip {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dv2-status-ok { color: #22c55e; background: rgba(34, 197, 94, 0.12); }
+.dv2-status-warning { color: #f59e0b; background: rgba(245, 158, 11, 0.12); }
+.dv2-status-blocking { color: #ef4444; background: rgba(239, 68, 68, 0.12); }
+
+/* ─── Performance Cards ────────────────────────────────────────────────────── */
+
+.dv2-perf-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .dv2-perf-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 500px) {
+  .dv2-perf-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ─── Governance Panel ─────────────────────────────────────────────────────── */
+
+.dv2-gov-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .dv2-gov-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.dv2-quick-links {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.dv2-quick-links .btn {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.85rem;
+}
+
+/* ─── Recent Requests Table ────────────────────────────────────────────────── */
+
+.dv2-requests-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.dv2-requests-table th {
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dv2-requests-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.dv2-requests-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dv2-requests-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dv2-result-success { color: #22c55e; }
+.dv2-result-blocked { color: #f59e0b; }
+.dv2-result-error { color: #ef4444; }
+
+.dv2-requests-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.6rem 0;
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.25rem;
+}
+
+.dv2-requests-count {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+/* ─── Upgrade CTA ──────────────────────────────────────────────────────────── */
+
+.dv2-upgrade-cta {
+  padding: 1.5rem;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  opacity: 0.7;
+}
+
+.dv2-upgrade-cta p {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0 0 0.75rem;
+}
+
+.dv2-upgrade-cta .btn {
+  font-size: 0.8rem;
+}
+
+/* ─── Skeleton ─────────────────────────────────────────────────────────────── */
+
+.dv2-skeleton {
+  background: linear-gradient(90deg, var(--color-border) 25%, rgba(255, 255, 255, 0.05) 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: dv2Shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+.dv2-skeleton-lg { height: 2rem; width: 60%; }
+.dv2-skeleton-md { height: 1.2rem; width: 40%; }
+.dv2-skeleton-sm { height: 0.8rem; width: 30%; }
+
+@keyframes dv2Shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Empty state ──────────────────────────────────────────────────────────── */
+
+.dv2-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+/* ─── Concentration Panel (Business) ───────────────────────────────────────── */
+
+.dv2-conc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 700px) {
+  .dv2-conc-grid { grid-template-columns: 1fr; }
+}
+
+.dv2-conc-indicator {
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.dv2-conc-high { color: #f59e0b; }
+.dv2-conc-ok { color: #22c55e; }
+
+/* ─── Responsive table wrapper ─────────────────────────────────────────────── */
+
+.dv2-table-wrap {
+  overflow-x: auto;
+}
