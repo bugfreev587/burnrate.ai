@@ -598,7 +598,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		db.Raw(`SELECT COUNT(*) FROM projects WHERE tenant_id = ? AND status = ?`, tenantID, "active").Scan(&gov.ActiveProjects)
 		week := now.AddDate(0, 0, -7)
 		db.Raw(`SELECT COUNT(*) FROM audit_logs WHERE tenant_id = ? AND created_at >= ?`, tenantID, week).Scan(&gov.AuditEvents7d)
-		db.Raw(`SELECT COUNT(*) FROM api_keys WHERE tenant_id = ? AND revoked = ? AND updated_at >= ? AND updated_at <= ?`, tenantID, true, rangeStart, rangeEnd).Scan(&gov.RevokedKeysPeriod)
+		db.Raw(`SELECT COUNT(*) FROM api_keys WHERE tenant_id = ? AND revoked = ? AND created_at >= ? AND created_at <= ?`, tenantID, true, rangeStart, rangeEnd).Scan(&gov.RevokedKeysPeriod)
 	}()
 
 	// Wait for all parallel queries
