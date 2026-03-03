@@ -268,7 +268,7 @@ export default function DashboardV2() {
   const [recentExpanded, setRecentExpanded] = useState(false)
   const [recentLoading, setRecentLoading] = useState(false)
 
-  const pollInterval = recentExpanded ? 5_000 : 300_000
+  const pollInterval = 5_000
   const {
     summary, recentRequests, loading, error,
     filters, setFilters, applyPreset, refresh, fetchRecentRequests,
@@ -645,39 +645,51 @@ export default function DashboardV2() {
                         const atAlert = l.pct_used >= parseFloat(l.alert_threshold)
                         const atLimit = l.pct_used >= 100
                         const fillColor = atLimit ? '#ef4444' : atAlert ? '#f59e0b' : '#22c55e'
-                        const remaining = parseFloat(l.limit_amount) - parseFloat(l.current_spend)
-                        const actionLabel = l.action === 'alert_block' ? 'Alert + Block'
-                          : l.action === 'block' ? 'Block' : 'Alert'
-                        const actionColor = l.action === 'block' || l.action === 'alert_block' ? '#ef4444' : '#f59e0b'
+                        const spent = parseFloat(l.current_spend)
+                        const limit = parseFloat(l.limit_amount)
+                        const remaining = limit - spent
+                        const providerLabel = l.provider
+                          ? l.provider.charAt(0).toUpperCase() + l.provider.slice(1)
+                          : 'All Providers'
+                        const budgetName = l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1) + ' Budget'
 
                         return (
-                          <div key={l.id} className="card dv2-limit-card" style={{ flexDirection: 'column', gap: '0.4rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.25rem' }}>
-                              <div className="dv2-limit-scope">
-                                {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)} Budget
-                                <span style={{ color: fillColor, fontSize: '0.85em' }}>
-                                  {l.provider ? ` · ${l.provider.charAt(0).toUpperCase() + l.provider.slice(1)}` : ' · All Providers'}
-                                </span>
+                          <div key={l.id} className="card dv2-limit-card">
+                            {/* Header line */}
+                            <div className="dv2-limit-header">
+                              <div className="dv2-limit-label">
+                                <span className="dv2-limit-name">{budgetName}</span>
+                                <span className="dv2-limit-sep">&middot;</span>
+                                <span className="dv2-limit-provider">{providerLabel}</span>
                                 {l.scope_type === 'api_key' && l.scope_id && (
-                                  <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>
-                                    {' · Key: '}{l.key_label || l.scope_id.slice(0, 8) + '\u2026'}
-                                  </span>
+                                  <>
+                                    <span className="dv2-limit-sep">&middot;</span>
+                                    <span className="dv2-limit-key">Key: {l.key_label || l.scope_id.slice(0, 8) + '\u2026'}</span>
+                                  </>
                                 )}
-                                <span style={{ color: actionColor, fontSize: '0.85em' }}>{' · '}{actionLabel}</span>
+                                <span className="dv2-limit-sep">&middot;</span>
+                                {(l.action === 'alert' || l.action === 'alert_block') && (
+                                  <span className="action-badge action-alert">Alert</span>
+                                )}
+                                {(l.action === 'block' || l.action === 'alert_block') && (
+                                  <span className="action-badge action-block">Hard Block</span>
+                                )}
                               </div>
-                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                                <span style={{ color: fillColor }}>{fmt$(l.current_spend)}</span>
-                                <span style={{ color: 'var(--color-text-muted)' }}> / </span>
-                                <span>${parseFloat(l.limit_amount).toFixed(2)}</span>
+                              <span className="dv2-limit-amount">Limit ${limit.toFixed(2)}</span>
+                            </div>
+                            {/* Progress line */}
+                            <div className="dv2-limit-progress">
+                              <span className="dv2-limit-pct-used" style={{ color: fillColor }}>
+                                {fmtPct(l.pct_used)} used
+                              </span>
+                              <span className="dv2-limit-spent" style={{ color: fillColor }}>
+                                {fmt$(spent)}
+                              </span>
+                              <div className="dv2-limit-track">
+                                <div className="dv2-limit-fill"
+                                  style={{ width: `${pct}%`, background: fillColor }} />
                               </div>
-                            </div>
-                            <div className="dv2-limit-track">
-                              <div className="dv2-limit-fill"
-                                style={{ width: `${pct}%`, background: fillColor }} />
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                              <span style={{ color: fillColor, fontWeight: 600 }}>{fmtPct(l.pct_used)} used</span>
-                              <span style={{ color: 'var(--color-text-muted)' }}>
+                              <span className="dv2-limit-remaining">
                                 {remaining >= 0
                                   ? `${fmt$(remaining)} remaining`
                                   : `${fmt$(Math.abs(remaining))} over limit`}

@@ -1,0 +1,21 @@
+/* ── Shared Action Badges ────────────────────────────────────────────────── */
+/* Used across Limits page, Dashboard spend limit cards, and any table     */
+/* displaying enforcement mode (Alert / Hard Block / Alert + Block).       */
+
+.action-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.action-badge.action-block {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.action-badge.action-alert {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fdba74;
+}
