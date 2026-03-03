@@ -70,7 +70,7 @@ export default function ManagementPage() {
   const navigate = useNavigate()
   const { orgRole, userId, isSynced } = useTenant()
   const role = (orgRole as UserRole) ?? null
-  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, addMember, removeMember } = useProjects()
+  const { projects, limit: projectLimit, slotsLeft: projectSlotsLeft, createProject, updateProject, deleteProject, listMembers, addMember, updateMemberRole, removeMember } = useProjects()
   const { catalog } = usePricingConfig()
 
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
@@ -428,6 +428,17 @@ export default function ManagementPage() {
       showError(err instanceof Error ? err.message : 'Failed to load members')
     } finally {
       setLoadingMembers(false)
+    }
+  }
+
+  const handleUpdateProjectMemberRole = async (projectId: number, memberId: string, newRole: string) => {
+    try {
+      await updateMemberRole(projectId, memberId, newRole)
+      const members = await listMembers(projectId)
+      setProjectMembers(members)
+      showSuccess('Project role updated')
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to update project role')
     }
   }
 
@@ -929,9 +940,30 @@ export default function ManagementPage() {
                                             <td className="text-muted">{m.email}</td>
                                             <td><span className={`role-badge`}>{m.project_role}</span></td>
                                             <td>
-                                              <button className="btn btn-small btn-danger" onClick={() => handleRemoveProjectMember(p.id, m.user_id)}>
-                                                Remove
-                                              </button>
+                                              <div className="actions-cell">
+                                                {canManageTeam && m.user_id !== userId && (
+                                                  <>
+                                                    {m.project_role !== 'project_viewer' && (
+                                                      <button className="btn btn-small btn-secondary" onClick={() => handleUpdateProjectMemberRole(p.id, m.user_id, 'project_viewer')}>
+                                                        → Viewer
+                                                      </button>
+                                                    )}
+                                                    {m.project_role !== 'project_editor' && (
+                                                      <button className="btn btn-small btn-secondary" onClick={() => handleUpdateProjectMemberRole(p.id, m.user_id, 'project_editor')}>
+                                                        → Editor
+                                                      </button>
+                                                    )}
+                                                    {m.project_role !== 'project_admin' && (
+                                                      <button className="btn btn-small btn-secondary" onClick={() => handleUpdateProjectMemberRole(p.id, m.user_id, 'project_admin')}>
+                                                        → Admin
+                                                      </button>
+                                                    )}
+                                                  </>
+                                                )}
+                                                <button className="btn btn-small btn-danger" onClick={() => handleRemoveProjectMember(p.id, m.user_id)}>
+                                                  Remove
+                                                </button>
+                                              </div>
                                             </td>
                                           </tr>
                                         ))}
