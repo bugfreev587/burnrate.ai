@@ -163,6 +163,7 @@ export interface GovernanceData {
 
 export interface DashboardSummary {
   plan: string
+  cost_note: string
   range: { from: string; to: string; prev_from: string; prev_to: string }
   filters: { billing_mode: string; project_id: number; api_key_id: string }
   kpis: {

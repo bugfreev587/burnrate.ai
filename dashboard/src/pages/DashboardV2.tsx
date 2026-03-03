@@ -473,6 +473,12 @@ export default function DashboardV2() {
                 />
               </div>
 
+              {s.cost_note && (
+                <div className="dv2-chart-note" style={{ marginBottom: '0.75rem' }}>
+                  {s.cost_note}
+                </div>
+              )}
+
               {/* Mini insight row */}
               <div className="dv2-insight-strip">
                 <div className="card dv2-insight-card">
@@ -513,6 +519,12 @@ export default function DashboardV2() {
                     sub={`${s.forecast.days_elapsed}d elapsed, ${s.forecast.days_remaining}d remaining`} />
                 </div>
 
+                {s.cost_note && (
+                  <div className="dv2-chart-note" style={{ marginBottom: '0.75rem' }}>
+                    {s.cost_note}
+                  </div>
+                )}
+
                 <MiniLineChart
                   data={s.timeseries.daily_cost}
                   valueKey="cost"
@@ -529,6 +541,12 @@ export default function DashboardV2() {
             {/* ═══ C. Cost Attribution ═══════════════════════════════ */}
             <Section id="cost-attribution" title="Cost Attribution"
               tags={isTeamPlus ? [{ label: 'Team+', cls: 'dv2-tag-team' }] : [{ label: 'All Plans', cls: 'dv2-tag-all' }]}>
+
+              {s.cost_note && (
+                <div className="dv2-chart-note" style={{ marginBottom: '0.75rem' }}>
+                  {s.cost_note}
+                </div>
+              )}
 
               {/* Cost Drivers insight panel */}
               {s.insights.cost_drivers.length > 0 && (

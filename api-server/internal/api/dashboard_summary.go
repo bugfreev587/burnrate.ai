@@ -126,11 +126,14 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 	var wg sync.WaitGroup
 
 	// KPI: current period totals
+	// Cost is ALWAYS aggregated from api_usage_billed rows only, regardless
+	// of the billing_mode filter.  Token and request counts respect the filter.
 	type kpiRow struct {
-		SpendTotal    decimal.Decimal `gorm:"column:spend_total"`
-		RequestsTotal int64           `gorm:"column:requests_total"`
-		InputTokens   int64           `gorm:"column:input_tokens"`
-		OutputTokens  int64           `gorm:"column:output_tokens"`
+		SpendTotal     decimal.Decimal `gorm:"column:spend_total"`
+		BilledRequests int64           `gorm:"column:billed_requests"`
+		RequestsTotal  int64           `gorm:"column:requests_total"`
+		InputTokens    int64           `gorm:"column:input_tokens"`
+		OutputTokens   int64           `gorm:"column:output_tokens"`
 	}
 	var curKPI, prevKPI kpiRow
 
@@ -139,7 +142,8 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		defer wg.Done()
 		w, a := buildUsageWhere(filters, rangeStart, rangeEnd)
 		db.Raw(fmt.Sprintf(`
-			SELECT COALESCE(SUM(cost), 0) AS spend_total,
+			SELECT COALESCE(SUM(CASE WHEN api_usage_billed THEN cost ELSE 0 END), 0) AS spend_total,
+			       COUNT(CASE WHEN api_usage_billed THEN 1 END) AS billed_requests,
 			       COUNT(*) AS requests_total,
 			       COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(completion_tokens), 0) AS output_tokens
@@ -151,7 +155,8 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		defer wg.Done()
 		w, a := buildUsageWhere(filters, prevStart, prevEnd)
 		db.Raw(fmt.Sprintf(`
-			SELECT COALESCE(SUM(cost), 0) AS spend_total,
+			SELECT COALESCE(SUM(CASE WHEN api_usage_billed THEN cost ELSE 0 END), 0) AS spend_total,
+			       COUNT(CASE WHEN api_usage_billed THEN 1 END) AS billed_requests,
 			       COUNT(*) AS requests_total,
 			       COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(completion_tokens), 0) AS output_tokens
@@ -204,8 +209,18 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		monthEnd := monthStart.AddDate(0, 1, 0)
 		daysInMonth := int(monthEnd.Sub(monthStart).Hours() / 24)
+		fc.DaysRemaining = daysInMonth - now.Day()
 
-		w, a := buildUsageWhere(filters, monthStart, now)
+		// Forecast is always based on api_usage_billed cost only.
+		// When billing_mode = monthly_subscription the forecast is $0.
+		if billingMode == "monthly_subscription" {
+			fc.DaysElapsed = 1
+			return
+		}
+
+		// Build forecast filter: always api_usage_billed + project/key filters
+		fcFilter := filterCfg{billingMode: "api_usage_billed", projectID: projectID, apiKeyID: apiKeyID}
+		w, a := buildUsageWhere(fcFilter, monthStart, now)
 		db.Raw(fmt.Sprintf(`SELECT COALESCE(SUM(cost), 0) AS spend_total FROM usage_logs WHERE %s`, w), a...).Scan(&fc.TotalSoFar)
 
 		var daysWithData int64
@@ -218,7 +233,6 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		if fc.DaysElapsed < 1 {
 			fc.DaysElapsed = 1
 		}
-		fc.DaysRemaining = daysInMonth - now.Day()
 		fc.DailyAverage = fc.TotalSoFar.Div(decimal.NewFromInt(int64(fc.DaysElapsed)))
 		fc.Forecast = fc.TotalSoFar.Add(fc.DailyAverage.Mul(decimal.NewFromInt(int64(fc.DaysRemaining))))
 	}()
@@ -363,7 +377,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		db.Raw(fmt.Sprintf(`
 			SELECT
 				TO_CHAR(created_at AT TIME ZONE '%s', 'YYYY-MM-DD') AS ts,
-				COALESCE(SUM(cost), 0) AS cost,
+				COALESCE(SUM(CASE WHEN api_usage_billed THEN cost ELSE 0 END), 0) AS cost,
 				COUNT(*) AS requests,
 				COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tokens
 			FROM usage_logs WHERE %s
@@ -465,7 +479,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		w, a := buildUsageWhere(filters, rangeStart, rangeEnd)
 		db.Raw(fmt.Sprintf(`
 			SELECT provider AS name,
-			       COALESCE(SUM(cost), 0) AS cost,
+			       COALESCE(SUM(CASE WHEN api_usage_billed THEN cost ELSE 0 END), 0) AS cost,
 			       COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(completion_tokens), 0) AS output_tokens,
 			       COUNT(*) AS requests
@@ -492,7 +506,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		w, a := buildUsageWhere(filters, rangeStart, rangeEnd)
 		db.Raw(fmt.Sprintf(`
 			SELECT model AS name, provider,
-			       COALESCE(SUM(cost), 0) AS cost,
+			       COALESCE(SUM(CASE WHEN api_usage_billed THEN cost ELSE 0 END), 0) AS cost,
 			       COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(completion_tokens), 0) AS output_tokens,
 			       COUNT(*) AS requests
@@ -520,7 +534,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		db.Raw(fmt.Sprintf(`
 			SELECT ul.key_id,
 			       COALESCE(ak.label, SUBSTRING(ul.key_id, 1, 12)) AS label,
-			       COALESCE(SUM(ul.cost), 0) AS cost,
+			       COALESCE(SUM(CASE WHEN ul.api_usage_billed THEN ul.cost ELSE 0 END), 0) AS cost,
 			       COALESCE(SUM(ul.prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(ul.completion_tokens), 0) AS output_tokens,
 			       COUNT(*) AS requests
@@ -551,7 +565,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		db.Raw(fmt.Sprintf(`
 			SELECT ul.project_id,
 			       COALESCE(p.name, 'Unassigned') AS name,
-			       COALESCE(SUM(ul.cost), 0) AS cost,
+			       COALESCE(SUM(CASE WHEN ul.api_usage_billed THEN ul.cost ELSE 0 END), 0) AS cost,
 			       COALESCE(SUM(ul.prompt_tokens), 0) AS input_tokens,
 			       COALESCE(SUM(ul.completion_tokens), 0) AS output_tokens,
 			       COUNT(*) AS requests
@@ -609,12 +623,14 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 	spendDelta := deltaPct(curKPI.SpendTotal, prevKPI.SpendTotal)
 	requestsDelta := deltaIntPct(curKPI.RequestsTotal, prevKPI.RequestsTotal)
 
+	// Avg cost per request uses only api_usage_billed rows for both
+	// numerator (cost) and denominator (request count).
 	var curAvgCost, prevAvgCost decimal.Decimal
-	if curKPI.RequestsTotal > 0 {
-		curAvgCost = curKPI.SpendTotal.Div(decimal.NewFromInt(curKPI.RequestsTotal))
+	if curKPI.BilledRequests > 0 {
+		curAvgCost = curKPI.SpendTotal.Div(decimal.NewFromInt(curKPI.BilledRequests))
 	}
-	if prevKPI.RequestsTotal > 0 {
-		prevAvgCost = prevKPI.SpendTotal.Div(decimal.NewFromInt(prevKPI.RequestsTotal))
+	if prevKPI.BilledRequests > 0 {
+		prevAvgCost = prevKPI.SpendTotal.Div(decimal.NewFromInt(prevKPI.BilledRequests))
 	}
 	avgCostDelta := deltaPct(curAvgCost, prevAvgCost)
 
@@ -795,9 +811,21 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		spendLimitEntries = []budgetEntry{}
 	}
 
+	// ── Build cost scope note for the frontend ─────────────────────────────
+	var costNote string
+	switch billingMode {
+	case "monthly_subscription":
+		costNote = "Monthly subscription traffic is not billed per token; cost is excluded."
+	case "all":
+		costNote = "Cost includes API usage billed traffic only."
+	default:
+		costNote = ""
+	}
+
 	// ── Build response ─────────────────────────────────────────────────────
 	c.JSON(http.StatusOK, gin.H{
-		"plan": plan,
+		"plan":      plan,
+		"cost_note": costNote,
 		"range": gin.H{
 			"from":      rangeStart.Format("2006-01-02"),
 			"to":        rangeEnd.Format("2006-01-02"),
@@ -944,6 +972,12 @@ func (s *Server) handleDashboardRecentRequests(c *gin.Context) {
 
 	rows := make([]gin.H, len(logs))
 	for i, log := range logs {
+		// Cost is only meaningful for api_usage_billed rows.
+		// Monthly subscription rows always show $0.
+		costStr := "0.0000"
+		if log.APIUsageBilled {
+			costStr = log.Cost.StringFixed(4)
+		}
 		rows[i] = gin.H{
 			"id":              log.ID,
 			"provider":        log.Provider,
@@ -952,7 +986,7 @@ func (s *Server) handleDashboardRecentRequests(c *gin.Context) {
 			"key_label":       log.KeyLabel,
 			"prompt_tokens":   log.PromptTokens,
 			"completion_tokens": log.CompletionTokens,
-			"cost":            log.Cost.StringFixed(4),
+			"cost":            costStr,
 			"latency_ms":      log.LatencyMs,
 			"api_usage_billed": log.APIUsageBilled,
 			"result":          "success",
