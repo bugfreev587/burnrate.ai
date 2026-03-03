@@ -106,14 +106,15 @@ func (s *AuditReportService) UpdateStatus(ctx context.Context, reportID uint, st
 }
 
 // StoreArtifact saves the generated report artifact data to R2.
-// Objects are stored under {tenant_id}/{report_id}.{format}.
+// Objects are stored under {tenant_id}/audit_report_{YYYYMMDD_HHmmss}.{format}.
 func (s *AuditReportService) StoreArtifact(ctx context.Context, reportID uint, data []byte, size int64, rowCount int64, checksum string) error {
 	var report models.AuditReport
-	if err := s.db.WithContext(ctx).Select("id, tenant_id, format").First(&report, reportID).Error; err != nil {
+	if err := s.db.WithContext(ctx).Select("id, tenant_id, format, created_at").First(&report, reportID).Error; err != nil {
 		return fmt.Errorf("load report for R2 upload: %w", err)
 	}
 	ext := strings.ToLower(report.Format)
-	key := fmt.Sprintf("%d/%d.%s", report.TenantID, report.ID, ext)
+	ts := report.CreatedAt.UTC().Format("20060102_150405")
+	key := fmt.Sprintf("%d/audit_report_%s.%s", report.TenantID, ts, ext)
 	if err := s.objStore.Upload(ctx, key, data); err != nil {
 		return fmt.Errorf("upload artifact to R2: %w", err)
 	}
