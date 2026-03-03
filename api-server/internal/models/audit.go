@@ -21,6 +21,8 @@ type AuditReportFilters struct {
 	BillingMode            string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
 	IncludeTopRequestsByCost bool   `json:"include_top_requests_by_cost,omitempty"`
 	TopRequestsLimit       int      `json:"top_requests_limit,omitempty"`       // default 10, max 100
+	IncludeRecentRequests  bool     `json:"include_recent_requests,omitempty"`
+	RecentRequestsLimit    int      `json:"recent_requests_limit,omitempty"`    // default 100, max 500
 }
 
 // AuditReport tracks an async report generation job and its resulting artifact.

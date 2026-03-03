@@ -458,13 +458,19 @@ func (w *ReportWorker) generatePDF(ctx context.Context, report *models.AuditRepo
 		return nil, 0, fmt.Errorf("admin actions query: %w", err)
 	}
 
-	// Recent Requests (always included, last 100 by time DESC)
+	// Recent Requests (conditional)
 	var recentRequests []usageRow
-	if err := w.buildQuery(ctx, report, filters).
-		Order("usage_logs.created_at DESC").
-		Limit(100).
-		Find(&recentRequests).Error; err != nil {
-		return nil, 0, fmt.Errorf("recent requests query: %w", err)
+	if filters.IncludeRecentRequests {
+		limit := filters.RecentRequestsLimit
+		if limit <= 0 {
+			limit = 100
+		}
+		if err := w.buildQuery(ctx, report, filters).
+			Order("usage_logs.created_at DESC").
+			Limit(limit).
+			Find(&recentRequests).Error; err != nil {
+			return nil, 0, fmt.Errorf("recent requests query: %w", err)
+		}
 	}
 
 	// ── Build PDF ────────────────────────────────────────────────────────

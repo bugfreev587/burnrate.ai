@@ -28,6 +28,8 @@ type createAuditReportReq struct {
 	BillingMode              string   `json:"billing_mode,omitempty"`             // "api_usage" | "subscription" | ""
 	IncludeTopRequestsByCost *bool    `json:"include_top_requests_by_cost,omitempty"`
 	TopRequestsLimit         *int     `json:"top_requests_limit,omitempty"`
+	IncludeRecentRequests    *bool    `json:"include_recent_requests,omitempty"`
+	RecentRequestsLimit      *int     `json:"recent_requests_limit,omitempty"`
 }
 
 // handleCreateAuditReport creates a new audit report generation job.
@@ -157,6 +159,22 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		}
 	}
 
+	// Validate RecentRequestsLimit.
+	includeRecentRequests := false
+	recentRequestsLimit := 100
+	if req.IncludeRecentRequests != nil && *req.IncludeRecentRequests {
+		includeRecentRequests = true
+	}
+	if req.RecentRequestsLimit != nil {
+		recentRequestsLimit = *req.RecentRequestsLimit
+		if recentRequestsLimit < 1 {
+			recentRequestsLimit = 1
+		}
+		if recentRequestsLimit > 500 {
+			recentRequestsLimit = 500
+		}
+	}
+
 	// Check concurrent limit.
 	pending, err := s.auditSvc.CountPending(c.Request.Context(), tenantID)
 	if err != nil {
@@ -178,6 +196,8 @@ func (s *Server) handleCreateAuditReport(c *gin.Context) {
 		BillingMode:              req.BillingMode,
 		IncludeTopRequestsByCost: includeTopRequests,
 		TopRequestsLimit:         topRequestsLimit,
+		IncludeRecentRequests:    includeRecentRequests,
+		RecentRequestsLimit:      recentRequestsLimit,
 	}
 	filtersJSON, _ := json.Marshal(filters)
 
