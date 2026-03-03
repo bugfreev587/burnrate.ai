@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -58,6 +59,23 @@ func (s *AuditReportService) GetWithArtifact(ctx context.Context, tenantID, repo
 		report.ArtifactData = data
 	}
 	return &report, nil
+}
+
+// GetDownloadURL returns a short-lived presigned URL for downloading the report
+// artifact directly from R2, bypassing the API server.
+func (s *AuditReportService) GetDownloadURL(ctx context.Context, tenantID, reportID uint) (string, error) {
+	var report models.AuditReport
+	err := s.db.WithContext(ctx).
+		Select("id, tenant_id, artifact_key, status").
+		Where("id = ? AND tenant_id = ?", reportID, tenantID).
+		First(&report).Error
+	if err != nil {
+		return "", err
+	}
+	if report.ArtifactKey == "" {
+		return "", fmt.Errorf("report %d has no R2 artifact", reportID)
+	}
+	return s.objStore.PresignedGetURL(ctx, report.ArtifactKey, 15*time.Minute)
 }
 
 // ListByTenant returns reports for a tenant (most recent first), excluding artifact data.

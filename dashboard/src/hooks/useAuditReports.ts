@@ -99,15 +99,14 @@ export function useAuditReports() {
       const d = await res.json().catch(() => ({}))
       throw new Error(d.error || 'Download failed')
     }
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
+    const data = await res.json()
+    // Open the presigned R2 URL directly — downloads from Cloudflare, not API server.
     const a = document.createElement('a')
-    a.href = url
+    a.href = data.download_url
     a.download = `audit-report-${id}.${format === 'PDF' ? 'pdf' : 'csv'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    URL.revokeObjectURL(url)
   }
 
   return { reports, loading, error, refresh: fetchReports, generate, deleteReport, downloadReport }

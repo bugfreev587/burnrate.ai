@@ -273,7 +273,7 @@ func (s *Server) handleListAuditReports(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"reports": reports})
 }
 
-// handleDownloadAuditReport streams the report artifact to the client.
+// handleDownloadAuditReport returns a presigned R2 URL for direct download.
 // GET /v1/audit/reports/:id/download
 func (s *Server) handleDownloadAuditReport(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantIDFromContext(c)
@@ -288,7 +288,7 @@ func (s *Server) handleDownloadAuditReport(c *gin.Context) {
 		return
 	}
 
-	report, err := s.auditSvc.GetWithArtifact(c.Request.Context(), tenantID, uint(reportID))
+	report, err := s.auditSvc.GetByID(c.Request.Context(), tenantID, uint(reportID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "report not found"})
 		return
@@ -302,31 +302,13 @@ func (s *Server) handleDownloadAuditReport(c *gin.Context) {
 		return
 	}
 
-	// Determine content type and filename.
-	var contentType, ext string
-	switch report.Format {
-	case "PDF":
-		contentType = "application/pdf"
-		ext = "pdf"
-	case "CSV":
-		contentType = "text/csv"
-		ext = "csv"
-	default:
-		contentType = "application/octet-stream"
-		ext = "bin"
+	downloadURL, err := s.auditSvc.GetDownloadURL(c.Request.Context(), tenantID, uint(reportID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate download URL"})
+		return
 	}
 
-	filename := fmt.Sprintf("audit-report-%d-%s-to-%s.%s",
-		report.ID,
-		report.PeriodStart.UTC().Format("2006-01-02"),
-		report.PeriodEnd.UTC().Format("2006-01-02"),
-		ext,
-	)
-
-	c.Header("Content-Type", contentType)
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	c.Header("Content-Length", strconv.FormatInt(int64(len(report.ArtifactData)), 10))
-	c.Writer.Write(report.ArtifactData)
+	c.JSON(http.StatusOK, gin.H{"download_url": downloadURL})
 }
 
 // handleDeleteAuditReport removes a report.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -60,6 +61,19 @@ func (o *ObjectStore) Download(ctx context.Context, key string) ([]byte, error) 
 		return nil, fmt.Errorf("objectstore read body %s: %w", key, err)
 	}
 	return data, nil
+}
+
+// PresignedGetURL returns a pre-signed GET URL for the given key, valid for the specified duration.
+func (o *ObjectStore) PresignedGetURL(ctx context.Context, key string, expires time.Duration) (string, error) {
+	presigner := s3.NewPresignClient(o.client)
+	req, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(o.bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(expires))
+	if err != nil {
+		return "", fmt.Errorf("objectstore presign %s: %w", key, err)
+	}
+	return req.URL, nil
 }
 
 // Delete removes the object at the given key.
