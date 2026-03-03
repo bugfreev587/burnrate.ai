@@ -690,6 +690,46 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		filledDailyCost = []gin.H{}
 	}
 
+	// Fill in missing dates for daily latency timeseries
+	dailyLatMap := make(map[string]dailyLatRow, len(dailyLatency))
+	for _, d := range dailyLatency {
+		dailyLatMap[d.Ts] = d
+	}
+	var filledDailyLatency []gin.H
+	for cursor := time.Date(rangeStart.Year(), rangeStart.Month(), rangeStart.Day(), 0, 0, 0, 0, loc); !cursor.After(time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 0, 0, 0, 0, loc)); cursor = cursor.AddDate(0, 0, 1) {
+		ds := cursor.Format("2006-01-02")
+		if row, ok := dailyLatMap[ds]; ok {
+			filledDailyLatency = append(filledDailyLatency, gin.H{"ts": ds, "ms": row.Ms})
+		} else {
+			filledDailyLatency = append(filledDailyLatency, gin.H{"ts": ds, "ms": float64(0)})
+		}
+	}
+	if filledDailyLatency == nil {
+		filledDailyLatency = []gin.H{}
+	}
+
+	// Fill in missing dates for daily outcomes timeseries
+	dailyOutMap := make(map[string]dailyOutcomeRow, len(dailyOutcomes))
+	for _, d := range dailyOutcomes {
+		dailyOutMap[d.Ts] = d
+	}
+	var filledDailyOutcomes []gin.H
+	for cursor := time.Date(rangeStart.Year(), rangeStart.Month(), rangeStart.Day(), 0, 0, 0, 0, loc); !cursor.After(time.Date(rangeEnd.Year(), rangeEnd.Month(), rangeEnd.Day(), 0, 0, 0, 0, loc)); cursor = cursor.AddDate(0, 0, 1) {
+		ds := cursor.Format("2006-01-02")
+		if row, ok := dailyOutMap[ds]; ok {
+			filledDailyOutcomes = append(filledDailyOutcomes, gin.H{
+				"ts": ds, "success": row.Success, "blocked": row.Blocked, "error": row.Error,
+			})
+		} else {
+			filledDailyOutcomes = append(filledDailyOutcomes, gin.H{
+				"ts": ds, "success": int64(0), "blocked": int64(0), "error": int64(0),
+			})
+		}
+	}
+	if filledDailyOutcomes == nil {
+		filledDailyOutcomes = []gin.H{}
+	}
+
 	// Breakdown pct_of_total calculations
 	byProviderOut := make([]gin.H, len(byProvider))
 	for i, b := range byProvider {
@@ -860,8 +900,8 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 		},
 		"timeseries": gin.H{
 			"daily_cost":       filledDailyCost,
-			"daily_latency_p95": dailyLatency,
-			"outcomes":          dailyOutcomes,
+			"daily_latency_p95": filledDailyLatency,
+			"outcomes":          filledDailyOutcomes,
 		},
 		"breakdowns": gin.H{
 			"by_provider": byProviderOut,
