@@ -1,3 +1,41 @@
+/* ── Info banner ─────────────────────────────────────────────────────────── */
+
+.pc-info-banner {
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius);
+  background: rgba(99, 102, 241, 0.04);
+  padding: 1rem 1.25rem;
+}
+
+.pc-info-banner-content p {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.pc-info-banner-content p + p {
+  margin-top: 0.5rem;
+}
+
+/* ── Info tooltip icon ───────────────────────────────────────────────────── */
+
+.pc-info-tip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.4rem;
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  cursor: help;
+  vertical-align: middle;
+  transition: opacity 0.15s;
+}
+
+.pc-info-tip:hover {
+  opacity: 0.85;
+}
+
 /* ── Top two-panel grid ──────────────────────────────────────────────────── */
 
 .pc-top-grid {

@@ -197,6 +197,23 @@ export default function PricingConfigPage() {
             <h1>Pricing Config</h1>
           </div>
 
+          {/* Explanatory banner */}
+          <div className="pc-info-banner">
+            <div className="pc-info-banner-content">
+              <p>
+                This page shows the default per-1M-token prices for supported AI models.
+                TokenGate uses these prices to calculate costs for all API-usage-billed requests
+                shown in dashboards, reports, and spend limits.
+              </p>
+              <p>
+                Monthly subscription usage is not affected by this pricing configuration.
+                You can create custom pricing configs below to reflect enterprise discounts
+                or negotiated rates — these adjustments only affect cost calculations
+                within TokenGate and do not change what your AI provider charges you.
+              </p>
+            </div>
+          </div>
+
           {/* Flash */}
           {flash && <div className={`flash flash-${flash.type}`}>{flash.msg}</div>}
 
@@ -212,7 +229,12 @@ export default function PricingConfigPage() {
                 <div className="mgmt-section pc-catalog-panel">
                   <div className="pc-panel-header">
                     <div>
-                      <h2>Default Model Pricing</h2>
+                      <h2>
+                        Default Model Pricing
+                        <span className="pc-info-tip" title="These are the standard per-1M-token prices used to calculate API usage costs. All cost figures in dashboards, reports, and alerts are derived from these rates.">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm1 12H7V7h2v5ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>
+                        </span>
+                      </h2>
                       <p className="section-desc">Official list prices · per 1M tokens · read-only</p>
                     </div>
                   </div>
@@ -288,9 +310,14 @@ export default function PricingConfigPage() {
               <div className="mgmt-section">
                 <div className="section-hdr">
                   <div>
-                    <h2>My Pricing Configs</h2>
+                    <h2>
+                      My Pricing Configs
+                      <span className="pc-info-tip" title="Custom pricing configs let you align TokenGate's cost calculations with your actual provider spend. Overrides only affect internal reporting — they do not modify your provider billing.">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm1 12H7V7h2v5ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>
+                      </span>
+                    </h2>
                     <p className="section-desc">
-                      Override default pricing per model and assign to an API key.
+                      Customize model prices to match your real-world provider costs (e.g. enterprise discounts or negotiated pricing). Assign a config to an API key to apply overrides.
                       {configs.length > 0 && ` ${configs.length} config${configs.length !== 1 ? 's' : ''}.`}
                     </p>
                   </div>
