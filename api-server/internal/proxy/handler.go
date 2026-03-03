@@ -278,7 +278,6 @@ func (h *ProxyHandler) publishUsageEvent(ctx context.Context, tenantID uint, pro
 // It resolves the provider from the X-TokenGate-Provider header or request path,
 // attempts BYOK auth, and falls back to pass-through when no key is configured.
 func (h *ProxyHandler) HandleProxy(c *gin.Context) {
-	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
 	projectID := c.GetUint("project_id")
 	keyID, _ := c.Get("key_id")
@@ -293,10 +292,16 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	apiUsageBilled := determineBillable(billingMode)
 
-	slog.Info("----------- pre time check point 1: ", "tenant_id", tenantID, "project_id", time.Since(start))
-
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	// Pre-allocate when Content-Length is known to avoid repeated slice growth.
+	var bodyBytes []byte
+	var err error
+	if c.Request.ContentLength > 0 {
+		bodyBytes = make([]byte, c.Request.ContentLength)
+		_, err = io.ReadFull(c.Request.Body, bodyBytes)
+	} else {
+		bodyBytes, err = io.ReadAll(c.Request.Body)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "tg_bad_request",
@@ -305,7 +310,10 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		return
 	}
 	reqMeta := parseRequestMeta(bodyBytes)
-	slog.Info("----------- pre time check point 2: ", "tenant_id", tenantID, "project_id", time.Since(start))
+
+	// Start the timer after body read so gateway latency measures only
+	// processing overhead, not client upload / network transfer time.
+	start := time.Now()
 
 	// Model allowlist enforcement: reject requests for models not in the API key's allowlist.
 	if akI, exists := c.Get("api_key"); exists {
@@ -319,7 +327,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			}
 		}
 	}
-	slog.Info("----------- pre time check point 3: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, reqMeta.Model, len(bodyBytes), reqMeta.MaxTokens) {
 		if h.gatewayEventSvc != nil {
@@ -336,7 +343,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		return
 	}
-	slog.Info("----------- pre time check point 4: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	reservedAmount, ok := h.preCheckBudget(c, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens)
 	if !ok {
@@ -354,12 +360,10 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		return
 	}
-	slog.Info("----------- pre time check point 5: ", "tenant_id", tenantID, "project_id", time.Since(start))
 	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
 	if !ok {
 		return
 	}
-	slog.Info("----------- pre time check point 6: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Extract provider key hint (masked) for audit display.
 	var providerKeyHint string
@@ -374,14 +378,12 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		providerKeyHint = models.MaskKey(rawKey)
 	}
-	slog.Info("----------- pre time check point 7: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
 	if c.Request.URL.RawQuery != "" {
 		upstreamURL += "?" + c.Request.URL.RawQuery
 	}
-	slog.Info("----------- pre time check point 8: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), c.Request.Method, upstreamURL, bodyBytes, provider, byokKey, c.Request)
 	if err != nil {
@@ -391,7 +393,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}})
 		return
 	}
-	slog.Info("----------- pre time check point 9: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Measure only TokenGate's own overhead, excluding upstream provider time.
 	preUpstream := time.Since(start)
@@ -490,14 +491,6 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 
 	gatewayDuration := preUpstream + time.Since(postUpstreamStart)
 	gatewayMs := gatewayDuration.Milliseconds()
-
-	// Suppress outliers from cold-cache requests (first request after deploy
-	// warms caches/pools and inflates the number).  Setting to 0 excludes
-	// the sample from percentile metrics (SQL filters latency_ms > 0) while
-	// the request is still fully tracked for tokens, cost, etc.
-	// if gatewayMs > 200 {
-	// 	gatewayMs = 0
-	// }
 
 	// Run post-response bookkeeping in a goroutine so the HTTP handler
 	// returns immediately and the client connection is freed sooner.

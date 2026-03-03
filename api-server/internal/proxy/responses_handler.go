@@ -31,7 +31,6 @@ type ResponsesRequest struct {
 // It resolves the provider from the model name, then either forwards to OpenAI
 // as-is or translates to the Anthropic Messages API.
 func (h *ProxyHandler) HandleResponses(c *gin.Context) {
-	start := time.Now()
 	tenantID := c.GetUint("tenant_id")
 	projectID := c.GetUint("project_id")
 	keyID, _ := c.Get("key_id")
@@ -41,7 +40,15 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	billingMode := c.GetString("billing_mode")
 
 	// Read the request body.
-	bodyBytes, err := io.ReadAll(c.Request.Body)
+	// Pre-allocate when Content-Length is known to avoid repeated slice growth.
+	var bodyBytes []byte
+	var err error
+	if c.Request.ContentLength > 0 {
+		bodyBytes = make([]byte, c.Request.ContentLength)
+		_, err = io.ReadFull(c.Request.Body, bodyBytes)
+	} else {
+		bodyBytes, err = io.ReadAll(c.Request.Body)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "tg_bad_request",
@@ -109,6 +116,10 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	if req.MaxOutputTokens != nil {
 		maxTokens = *req.MaxOutputTokens
 	}
+
+	// Start the timer after body read + parsing so gateway latency measures
+	// only processing overhead, not client upload / network transfer time.
+	start := time.Now()
 
 	apiUsageBilled := determineBillable(billingMode)
 
@@ -197,9 +208,6 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 
 	// Gateway latency = pre-upstream + post-upstream processing (excludes upstream call time).
 	gatewayMs := (preUpstream + time.Since(postUpstreamStart)).Milliseconds()
-	if gatewayMs > 200 {
-		gatewayMs = 0
-	}
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, projectID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 
