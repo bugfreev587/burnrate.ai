@@ -259,14 +259,22 @@ export default function DashboardV2() {
   const navigate = useNavigate()
   const { config } = useDashboardConfig()
   const { projects } = useProjects()
-  const {
-    summary, recentRequests, loading, error,
-    filters, setFilters, applyPreset, refresh, fetchRecentRequests,
-  } = useDashboardSummary()
-
   const [activeTab, setActiveTab] = useState<'api_key' | 'project' | 'model' | 'provider'>('api_key')
   const [recentExpanded, setRecentExpanded] = useState(false)
   const [recentLoading, setRecentLoading] = useState(false)
+
+  const pollInterval = recentExpanded ? 5_000 : 300_000
+  const {
+    summary, recentRequests, loading, error,
+    filters, setFilters, applyPreset, refresh, fetchRecentRequests,
+  } = useDashboardSummary(pollInterval)
+
+  // Auto-refresh recent requests when panel is open
+  useEffect(() => {
+    if (!recentExpanded) return
+    const id = setInterval(() => fetchRecentRequests(100), 5_000)
+    return () => clearInterval(id)
+  }, [recentExpanded, fetchRecentRequests])
 
   const plan = summary?.plan ?? config?.plan ?? 'free'
   const isTeamPlus = plan === 'team' || plan === 'business'
