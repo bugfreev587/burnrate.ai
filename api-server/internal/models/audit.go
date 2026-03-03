@@ -37,6 +37,7 @@ type AuditReport struct {
 	Status            string    `gorm:"default:QUEUED" json:"status"`        // QUEUED | RUNNING | COMPLETED | FAILED
 	ErrorMessage      string    `json:"error_message,omitempty"`
 	ArtifactData      []byte    `gorm:"type:bytea" json:"-"`                 // never serialized in JSON responses
+	ArtifactKey       string    `gorm:"type:text" json:"-"`                  // R2 object key (empty = data in DB)
 	ArtifactSizeBytes int64     `json:"artifact_size_bytes"`
 	RowCount          int64     `json:"row_count"`
 	GeneratedChecksum string    `json:"generated_checksum,omitempty"`

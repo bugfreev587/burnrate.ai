@@ -42,6 +42,13 @@ type StripeCfg struct {
 	PortalConfigurationID string `yaml:"portal_configuration_id"`
 }
 
+type R2Cfg struct {
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	BucketName      string `yaml:"bucket_name"`
+}
+
 type Config struct {
 	Environment string      `yaml:"environment"`
 	Server      ServerCfg   `yaml:"server"`
@@ -49,6 +56,7 @@ type Config struct {
 	Redis       RedisCfg    `yaml:"redis"`
 	Security    SecurityCfg `yaml:"security"`
 	Stripe      StripeCfg   `yaml:"stripe"`
+	R2          R2Cfg       `yaml:"r2"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -97,6 +105,18 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("STRIPE_PORTAL_CONFIGURATION_ID"); v != "" {
 		cfg.Stripe.PortalConfigurationID = v
+	}
+	if v := os.Getenv("R2_ENDPOINT"); v != "" {
+		cfg.R2.Endpoint = v
+	}
+	if v := os.Getenv("R2_ACCESS_KEY_ID"); v != "" {
+		cfg.R2.AccessKeyID = v
+	}
+	if v := os.Getenv("R2_ACCESS_KEY_SECRET"); v != "" {
+		cfg.R2.AccessKeySecret = v
+	}
+	if v := os.Getenv("R2_BUCKET_NAME"); v != "" {
+		cfg.R2.BucketName = v
 	}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		if v == "*" {

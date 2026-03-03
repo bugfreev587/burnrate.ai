@@ -137,8 +137,15 @@ func main() {
 	go usageWorker.Run(context.Background())
 	slog.Info("Usage worker started")
 
+	// Object store (Cloudflare R2) — optional
+	var objStore *services.ObjectStore
+	if cfg.R2.Endpoint != "" {
+		objStore = services.NewObjectStore(cfg.R2.Endpoint, cfg.R2.AccessKeyID, cfg.R2.AccessKeySecret, cfg.R2.BucketName)
+		slog.Info("R2 object store configured", "endpoint", cfg.R2.Endpoint, "bucket", cfg.R2.BucketName)
+	}
+
 	// Audit report service + queue + worker
-	auditSvc := services.NewAuditReportService(postgresDB.GetDB())
+	auditSvc := services.NewAuditReportService(postgresDB.GetDB(), objStore)
 	auditLogSvc := services.NewAuditLogService(postgresDB.GetDB())
 	reportQueue := events.NewReportQueue(rdb)
 	reportWorker := events.NewReportWorker(rdb, postgresDB.GetDB(), auditSvc)
