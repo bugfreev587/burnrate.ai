@@ -41,7 +41,7 @@ func (s *AuditReportService) GetByID(ctx context.Context, tenantID, reportID uin
 }
 
 // GetWithArtifact loads a report including the artifact data (for download).
-// If the artifact is stored in R2, it downloads from there; otherwise uses the DB blob.
+// Downloads the artifact from R2; falls back to the DB blob for legacy reports.
 func (s *AuditReportService) GetWithArtifact(ctx context.Context, tenantID, reportID uint) (*models.AuditReport, error) {
 	var report models.AuditReport
 	err := s.db.WithContext(ctx).
@@ -50,7 +50,7 @@ func (s *AuditReportService) GetWithArtifact(ctx context.Context, tenantID, repo
 	if err != nil {
 		return nil, err
 	}
-	if report.ArtifactKey != "" && s.objStore.IsConfigured() {
+	if report.ArtifactKey != "" {
 		data, err := s.objStore.Download(ctx, report.ArtifactKey)
 		if err != nil {
 			return nil, fmt.Errorf("download artifact from R2: %w", err)
@@ -87,52 +87,36 @@ func (s *AuditReportService) UpdateStatus(ctx context.Context, reportID uint, st
 		}).Error
 }
 
-// StoreArtifact saves the generated report artifact data.
-// If R2 is configured, it uploads to R2 and stores the key; otherwise falls back to DB blob.
+// StoreArtifact saves the generated report artifact data to R2.
+// Objects are stored under {tenant_id}/{report_id}.{format}.
 func (s *AuditReportService) StoreArtifact(ctx context.Context, reportID uint, data []byte, size int64, rowCount int64, checksum string) error {
-	if s.objStore.IsConfigured() {
-		// Look up the report to build the object key.
-		var report models.AuditReport
-		if err := s.db.WithContext(ctx).Select("id, tenant_id, format").First(&report, reportID).Error; err != nil {
-			return fmt.Errorf("load report for R2 upload: %w", err)
-		}
-		ext := strings.ToLower(report.Format)
-		key := fmt.Sprintf("audit-reports/%d/%d.%s", report.TenantID, report.ID, ext)
-		if err := s.objStore.Upload(ctx, key, data); err != nil {
-			return fmt.Errorf("upload artifact to R2: %w", err)
-		}
-		slog.Info("artifact uploaded to R2", "report_id", reportID, "key", key, "size", size)
-		return s.db.WithContext(ctx).
-			Model(&models.AuditReport{}).
-			Where("id = ?", reportID).
-			Updates(map[string]interface{}{
-				"artifact_key":        key,
-				"artifact_size_bytes": size,
-				"row_count":           rowCount,
-				"generated_checksum":  checksum,
-			}).Error
+	var report models.AuditReport
+	if err := s.db.WithContext(ctx).Select("id, tenant_id, format").First(&report, reportID).Error; err != nil {
+		return fmt.Errorf("load report for R2 upload: %w", err)
 	}
-	// Fallback: store in DB.
+	ext := strings.ToLower(report.Format)
+	key := fmt.Sprintf("%d/%d.%s", report.TenantID, report.ID, ext)
+	if err := s.objStore.Upload(ctx, key, data); err != nil {
+		return fmt.Errorf("upload artifact to R2: %w", err)
+	}
+	slog.Info("artifact uploaded to R2", "report_id", reportID, "key", key, "size", size)
 	return s.db.WithContext(ctx).
 		Model(&models.AuditReport{}).
 		Where("id = ?", reportID).
 		Updates(map[string]interface{}{
-			"artifact_data":       data,
+			"artifact_key":        key,
 			"artifact_size_bytes": size,
 			"row_count":           rowCount,
 			"generated_checksum":  checksum,
 		}).Error
 }
 
-// Delete removes a report by ID (scoped to tenant).
-// If the artifact is stored in R2, it also deletes the R2 object.
+// Delete removes a report by ID (scoped to tenant) and its R2 artifact.
 func (s *AuditReportService) Delete(ctx context.Context, tenantID, reportID uint) error {
-	if s.objStore.IsConfigured() {
-		var report models.AuditReport
-		if err := s.db.WithContext(ctx).Select("id, artifact_key").Where("id = ? AND tenant_id = ?", reportID, tenantID).First(&report).Error; err == nil && report.ArtifactKey != "" {
-			if err := s.objStore.Delete(ctx, report.ArtifactKey); err != nil {
-				slog.Warn("failed to delete R2 artifact", "report_id", reportID, "key", report.ArtifactKey, "error", err)
-			}
+	var report models.AuditReport
+	if err := s.db.WithContext(ctx).Select("id, artifact_key").Where("id = ? AND tenant_id = ?", reportID, tenantID).First(&report).Error; err == nil && report.ArtifactKey != "" {
+		if err := s.objStore.Delete(ctx, report.ArtifactKey); err != nil {
+			slog.Warn("failed to delete R2 artifact", "report_id", reportID, "key", report.ArtifactKey, "error", err)
 		}
 	}
 	return s.db.WithContext(ctx).

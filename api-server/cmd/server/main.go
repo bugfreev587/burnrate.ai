@@ -137,12 +137,13 @@ func main() {
 	go usageWorker.Run(context.Background())
 	slog.Info("Usage worker started")
 
-	// Object store (Cloudflare R2) — optional
-	var objStore *services.ObjectStore
-	if cfg.R2.Endpoint != "" {
-		objStore = services.NewObjectStore(cfg.R2.Endpoint, cfg.R2.AccessKeyID, cfg.R2.AccessKeySecret, cfg.R2.BucketName)
-		slog.Info("R2 object store configured", "endpoint", cfg.R2.Endpoint, "bucket", cfg.R2.BucketName)
+	// Object store (Cloudflare R2) — required for audit report artifact storage.
+	if cfg.R2.Endpoint == "" {
+		slog.Error("R2 object store is required: set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_ACCESS_KEY_SECRET, R2_BUCKET_NAME")
+		os.Exit(1)
 	}
+	objStore := services.NewObjectStore(cfg.R2.Endpoint, cfg.R2.AccessKeyID, cfg.R2.AccessKeySecret, cfg.R2.BucketName)
+	slog.Info("R2 object store configured", "endpoint", cfg.R2.Endpoint, "bucket", cfg.R2.BucketName)
 
 	// Audit report service + queue + worker
 	auditSvc := services.NewAuditReportService(postgresDB.GetDB(), objStore)
