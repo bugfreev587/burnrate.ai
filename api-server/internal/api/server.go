@@ -163,6 +163,7 @@ func (s *Server) setupRoutes() {
 		viewer.PATCH("/user/onboarding-hints", s.handleUpdateOnboardingHints)
 		viewer.GET("/user/notifications", s.handleListUserNotifications)
 		viewer.PATCH("/user/notifications/:id/read", s.handleMarkUserNotificationRead)
+		viewer.DELETE("/user/notifications/:id", s.handleDeleteUserNotification)
 		viewer.PATCH("/user/notifications/read-all", s.handleMarkAllUserNotificationsRead)
 		viewer.GET("/user/notification-channels", s.handleListUserNotificationChannels)
 		viewer.POST("/user/notification-channels", s.handleCreateUserNotificationChannel)

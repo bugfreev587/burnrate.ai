@@ -71,6 +71,19 @@ export function useUserNotifications(enabled = true) {
     setUnreadCount(prev => Math.max(0, prev - 1))
   }, [])
 
+  const deleteNotification = useCallback(async (id: number) => {
+    if (!enabled) return
+    const res = await apiFetch(`/v1/user/notifications/${id}`, { method: 'DELETE' })
+    if (!res.ok) return
+    setNotifications(prev => {
+      const target = prev.find(n => n.id === id)
+      if (target && target.status === 'unread') {
+        setUnreadCount(c => Math.max(0, c - 1))
+      }
+      return prev.filter(n => n.id !== id)
+    })
+  }, [enabled])
+
   const markAllRead = useCallback(async () => {
     if (!enabled) return
     const res = await apiFetch('/v1/user/notifications/read-all', { method: 'PATCH' })
@@ -99,7 +112,7 @@ export function useUserNotifications(enabled = true) {
     await refresh()
   }, [enabled, refresh])
 
-  return { notifications, unreadCount, loading, refresh, markRead, markAllRead, acceptInvitation, denyInvitation }
+  return { notifications, unreadCount, loading, refresh, markRead, markAllRead, deleteNotification, acceptInvitation, denyInvitation }
 }
 
 export function useUserNotificationChannels(enabled = true) {

@@ -428,7 +428,7 @@ func (s *Server) handleAcceptInvitation(c *gin.Context) {
 	db := s.postgresDB.GetDB()
 	var m models.TenantMembership
 	if err := db.Where("tenant_id = ? AND user_id = ?", tenantID, caller.ID).First(&m).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "this invitation has been revoked"})
 		return
 	}
 	if m.Status != models.StatusPending {
@@ -464,7 +464,7 @@ func (s *Server) handleDenyInvitation(c *gin.Context) {
 	db := s.postgresDB.GetDB()
 	var m models.TenantMembership
 	if err := db.Where("tenant_id = ? AND user_id = ?", tenantID, caller.ID).First(&m).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "this invitation has been revoked"})
 		return
 	}
 	if m.Status != models.StatusPending {

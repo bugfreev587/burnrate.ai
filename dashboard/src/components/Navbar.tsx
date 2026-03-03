@@ -39,6 +39,7 @@ export default function Navbar() {
     unreadCount,
     markRead,
     markAllRead,
+    deleteNotification,
     acceptInvitation,
     denyInvitation,
   } = useUserNotifications(notificationsEnabled)
@@ -260,15 +261,30 @@ export default function Navbar() {
                       {visibleNotifications.length === 0 ? (
                         <div className="notif-empty">No notifications yet.</div>
                       ) : visibleNotifications.map(n => (
-                        <button
+                        <div
                           key={n.id}
                           className={`notif-item${n.status === 'unread' ? ' unread' : ''}`}
                           onClick={() => handleSelectNotification(n)}
+                          role="button"
+                          tabIndex={0}
                         >
-                          <div className="notif-item-title">{n.title}</div>
-                          <div className="notif-item-body">{n.body || n.type}</div>
-                          <div className="notif-item-time">{new Date(n.created_at).toLocaleString()}</div>
-                        </button>
+                          <div className="notif-item-content">
+                            <div className="notif-item-title">{n.title}</div>
+                            <div className="notif-item-body">{n.body || n.type}</div>
+                            <div className="notif-item-time">{new Date(n.created_at).toLocaleString()}</div>
+                          </div>
+                          <button
+                            className="notif-item-delete"
+                            aria-label="Delete notification"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (selectedNotif?.id === n.id) setSelectedNotif(null)
+                              deleteNotification(n.id)
+                            }}
+                          >
+                            &times;
+                          </button>
+                        </div>
                       ))}
                     </div>
                     <div className="notif-footer">

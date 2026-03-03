@@ -80,6 +80,37 @@ func (s *Server) handleMarkUserNotificationRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// DELETE /v1/user/notifications/:id
+func (s *Server) handleDeleteUserNotification(c *gin.Context) {
+	caller, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	db := s.postgresDB.GetDB()
+	var n models.UserNotification
+	if err := db.First(&n, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		return
+	}
+	if n.UserID != caller.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	if err := db.Delete(&n).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete notification"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
 // PATCH /v1/user/notifications/read-all
 func (s *Server) handleMarkAllUserNotificationsRead(c *gin.Context) {
 	caller, ok := middleware.GetUserFromContext(c)

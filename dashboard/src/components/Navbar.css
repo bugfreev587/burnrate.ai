@@ -257,6 +257,35 @@
   background: transparent;
   text-align: left;
   padding: 0.65rem 0.8rem;
+  display: flex;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.notif-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-item-delete {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0 0 0.4rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s, opacity 0.15s;
+}
+
+.notif-item:hover .notif-item-delete {
+  opacity: 1;
+}
+
+.notif-item-delete:hover {
+  color: #ef4444;
 }
 
 .notif-item.unread {
