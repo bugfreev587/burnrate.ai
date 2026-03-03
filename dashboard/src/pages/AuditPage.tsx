@@ -67,7 +67,7 @@ export default function AuditPage() {
   const [logCategory, setLogCategory] = useState('')
   const [logStartDate, setLogStartDate] = useState('')
   const [logEndDate, setLogEndDate] = useState('')
-  const [logLimit, setLogLimit] = useState(50)
+  const [logLimit, setLogLimit] = useState(10)
   const [logOffset, setLogOffset] = useState(0)
   const [logTotal, setLogTotal] = useState(0)
   const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null)
@@ -170,8 +170,8 @@ export default function AuditPage() {
     if (isAdmin) fetchAuditLogs()
   }, [isAdmin, fetchAuditLogs])
 
-  // Reset offset when filters change
-  const resetOffset = () => setLogOffset(0)
+  // Reset pagination when filters change
+  const resetOffset = () => { setLogOffset(0); setLogLimit(10) }
 
   const plan = config?.plan || 'free'
   const canExport = plan !== 'free'
@@ -306,10 +306,8 @@ export default function AuditPage() {
   }
 
   // ── Pagination helpers ───────────────────────────────────────────────
-  const pageStart = logTotal === 0 ? 0 : logOffset + 1
-  const pageEnd = Math.min(logOffset + logLimit, logTotal)
-  const hasPrev = logOffset > 0
-  const hasNext = logOffset + logLimit < logTotal
+  const hasMoreLogs = auditLogs.length === logLimit && logOffset + logLimit < logTotal
+  const [visibleReportsCount, setVisibleReportsCount] = useState(10)
 
   // ── Loading ──────────────────────────────────────────────────────────
   if (!isSynced) {
@@ -516,14 +514,6 @@ export default function AuditPage() {
                   End Date
                   <input type="date" className="audit-date-input" value={logEndDate} max={todayStr} onChange={e => { setLogEndDate(e.target.value); resetOffset() }} />
                 </label>
-                <label className="audit-filter-label">
-                  Limit
-                  <select className="audit-select" value={logLimit} onChange={e => { setLogLimit(parseInt(e.target.value, 10)); resetOffset() }}>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                  </select>
-                </label>
               </div>
               {logsError && <div className="flash flash-error">{logsError}</div>}
               {auditLogs.length === 0 && !logsLoading ? (
@@ -562,15 +552,10 @@ export default function AuditPage() {
                   </table>
                 </div>
               )}
-              {/* Pagination */}
-              {logTotal > 0 && (
-                <div className="audit-pagination">
-                  <button className="btn btn-secondary btn-small" disabled={!hasPrev} onClick={() => setLogOffset(Math.max(0, logOffset - logLimit))}>
-                    Previous
-                  </button>
-                  <span className="audit-pagination-info">{pageStart}&ndash;{pageEnd} of {logTotal}</span>
-                  <button className="btn btn-secondary btn-small" disabled={!hasNext} onClick={() => setLogOffset(logOffset + logLimit)}>
-                    Next
+              {hasMoreLogs && (
+                <div className="audit-show-more">
+                  <button className="btn btn-secondary" onClick={() => setLogLimit(prev => prev + 10)}>
+                    Show more
                   </button>
                 </div>
               )}
@@ -840,7 +825,7 @@ export default function AuditPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reports.map(r => (
+                    {reports.slice(0, visibleReportsCount).map(r => (
                       <tr key={r.id}>
                         <td className="text-muted">{formatDateTime(r.created_at)}</td>
                         <td>{formatDate(r.period_start)} &mdash; {formatDate(r.period_end)}{r.timezone && r.timezone !== 'UTC' ? ` (${r.timezone})` : ''}</td>
@@ -879,6 +864,13 @@ export default function AuditPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {reports.length > visibleReportsCount && (
+              <div className="audit-show-more">
+                <button className="btn btn-secondary" onClick={() => setVisibleReportsCount(prev => prev + 10)}>
+                  Show more
+                </button>
               </div>
             )}
           </section>

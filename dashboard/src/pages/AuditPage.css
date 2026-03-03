@@ -253,18 +253,10 @@
 
 /* ── Pagination ──────────────────────────────────────────────────────────── */
 
-.audit-pagination {
+.audit-show-more {
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 1rem;
   margin-top: 1rem;
-  padding-top: 0.75rem;
-}
-
-.audit-pagination-info {
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
 }
 
 /* ── Detail Drawer ───────────────────────────────────────────────────────── */
