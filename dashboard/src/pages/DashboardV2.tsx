@@ -128,7 +128,7 @@ function MiniLineChart({ data, valueKey, formatter, title, note }: {
   }
 
   const values = data.map(d => {
-    const raw = (d as Record<string, unknown>)[valueKey]
+    const raw = (d as unknown as Record<string, unknown>)[valueKey]
     return typeof raw === 'string' ? parseFloat(raw) : (typeof raw === 'number' ? raw : 0)
   })
   const maxVal = Math.max(...values, 0.0001)
