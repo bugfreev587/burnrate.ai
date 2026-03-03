@@ -183,6 +183,7 @@ export default function Navbar() {
   const selectedInviteStatus = selectedNotif ? (parseInvitePayload(selectedNotif).invitation_status || 'pending') : 'pending'
 
   return (
+    <>
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
@@ -366,6 +367,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
+    </nav>
       {selectedNotif && (
         <div className="notif-modal-overlay" onClick={() => setSelectedNotif(null)}>
           <div className="notif-modal-card" onClick={e => e.stopPropagation()}>
@@ -396,6 +398,6 @@ export default function Navbar() {
           </div>
         </div>
       )}
-    </nav>
+    </>
   )
 }
