@@ -56,7 +56,6 @@ func TenantAuthMiddlewareForTest(apiKeySvc APIKeyValidatorForTest) gin.HandlerFu
 			c.Abort()
 			return
 		}
-		slog.Debug("------------- tgKey in tenant auth middle: ", "tgKey", tgKey)
 		ak, err := apiKeySvc.ValidateKey(c.Request.Context(), tgKey)
 		if err != nil {
 			errStr := err.Error()
