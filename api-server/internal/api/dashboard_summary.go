@@ -90,23 +90,29 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 	}
 	filters := filterCfg{billingMode: billingMode, projectID: projectID, apiKeyID: apiKeyID}
 
-	// Build base WHERE clause for usage_logs
-	buildUsageWhere := func(f filterCfg, from, to time.Time) (string, []interface{}) {
-		where := "tenant_id = ? AND created_at >= ? AND created_at <= ?"
+	// Build base WHERE clause for usage_logs.
+	// Pass a non-empty tableAlias (e.g. "ul") when the query joins other
+	// tables that share column names (tenant_id, created_at, etc.).
+	buildUsageWhere := func(f filterCfg, from, to time.Time, tableAlias ...string) (string, []interface{}) {
+		pfx := ""
+		if len(tableAlias) > 0 && tableAlias[0] != "" {
+			pfx = tableAlias[0] + "."
+		}
+		where := fmt.Sprintf("%stenant_id = ? AND %screated_at >= ? AND %screated_at <= ?", pfx, pfx, pfx)
 		args := []interface{}{tenantID, from, to}
 		if f.billingMode == "api_usage_billed" {
-			where += " AND api_usage_billed = ?"
+			where += fmt.Sprintf(" AND %sapi_usage_billed = ?", pfx)
 			args = append(args, true)
 		} else if f.billingMode == "monthly_subscription" {
-			where += " AND api_usage_billed = ?"
+			where += fmt.Sprintf(" AND %sapi_usage_billed = ?", pfx)
 			args = append(args, false)
 		}
 		if f.apiKeyID != "" {
-			where += " AND key_id = ?"
+			where += fmt.Sprintf(" AND %skey_id = ?", pfx)
 			args = append(args, f.apiKeyID)
 		}
 		if f.projectID > 0 {
-			where += " AND project_id = ?"
+			where += fmt.Sprintf(" AND %sproject_id = ?", pfx)
 			args = append(args, f.projectID)
 		}
 		return where, args
@@ -530,7 +536,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		w, a := buildUsageWhere(filters, rangeStart, rangeEnd)
+		w, a := buildUsageWhere(filters, rangeStart, rangeEnd, "ul")
 		db.Raw(fmt.Sprintf(`
 			SELECT ul.key_id,
 			       COALESCE(ak.label, SUBSTRING(ul.key_id, 1, 12)) AS label,
@@ -561,7 +567,7 @@ func (s *Server) handleDashboardSummary(c *gin.Context) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		w, a := buildUsageWhere(filters, rangeStart, rangeEnd)
+		w, a := buildUsageWhere(filters, rangeStart, rangeEnd, "ul")
 		db.Raw(fmt.Sprintf(`
 			SELECT ul.project_id,
 			       COALESCE(p.name, 'Unassigned') AS name,
