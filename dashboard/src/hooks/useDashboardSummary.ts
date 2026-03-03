@@ -80,7 +80,15 @@ function loadFilters(searchParams: URLSearchParams): DashboardFilters {
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<DashboardFilters>
       if (parsed.from && parsed.to) {
-        return { ...def, ...parsed }
+        const restored = { ...def, ...parsed }
+        // Recalculate from/to for non-custom presets so the date window
+        // stays relative to "now" instead of using stale stored dates.
+        if (restored.preset && restored.preset !== 'custom') {
+          const { from, to } = presetToDates(restored.preset)
+          restored.from = from
+          restored.to = to
+        }
+        return restored
       }
     }
   } catch { /* ignore */ }
