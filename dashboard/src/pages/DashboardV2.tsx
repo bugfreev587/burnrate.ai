@@ -290,7 +290,7 @@ export default function DashboardV2() {
   const [apiKeys, setApiKeys] = useState<{ key_id: string; label: string }[]>([])
   useEffect(() => {
     import('../lib/api').then(({ apiFetch }) => {
-      apiFetch('/v1/admin/api-keys').then(res => {
+      apiFetch('/v1/admin/api_keys').then(res => {
         if (res.ok) return res.json()
         return { api_keys: [] }
       }).then(data => {
