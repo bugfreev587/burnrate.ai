@@ -485,9 +485,9 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	// warms caches/pools and inflates the number).  Setting to 0 excludes
 	// the sample from percentile metrics (SQL filters latency_ms > 0) while
 	// the request is still fully tracked for tokens, cost, etc.
-	if gatewayMs > 200 {
-		gatewayMs = 0
-	}
+	// if gatewayMs > 200 {
+	// 	gatewayMs = 0
+	// }
 
 	// Run post-response bookkeeping in a goroutine so the HTTP handler
 	// returns immediately and the client connection is freed sooner.
