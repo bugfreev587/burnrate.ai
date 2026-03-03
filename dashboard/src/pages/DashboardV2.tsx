@@ -78,21 +78,26 @@ function KpiCard({ label, value, sub, delta, invert, small }: {
 
 // ─── Collapsible Section ──────────────────────────────────────────────────────
 
-function Section({ id, title, tags, children, defaultOpen = true }: {
+function Section({ id, title, tags, children, defaultOpen = true, onToggle }: {
   id: string; title: string; tags?: { label: string; cls: string }[]
-  children: React.ReactNode; defaultOpen?: boolean
+  children: React.ReactNode; defaultOpen?: boolean; onToggle?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    onToggle?.(next)
+  }
   return (
     <div className="dv2-section" id={id}>
-      <div className="dv2-section-header" onClick={() => setOpen(!open)}>
+      <div className="dv2-section-header" onClick={toggle}>
         <div className="dv2-section-title-row">
           <h2 className="dv2-section-title">{title}</h2>
           {tags?.map((t, i) => (
             <span key={i} className={`dv2-section-tag ${t.cls}`}>{t.label}</span>
           ))}
         </div>
-        <button className="dv2-section-toggle" onClick={e => { e.stopPropagation(); setOpen(!open) }}>
+        <button className="dv2-section-toggle" onClick={e => { e.stopPropagation(); toggle() }}>
           {open ? 'Collapse' : 'Expand'}
         </button>
       </div>
@@ -297,13 +302,25 @@ export default function DashboardV2() {
   }, [])
 
   const handleExpandRecent = useCallback(async () => {
-    if (!recentExpanded) {
-      setRecentExpanded(true)
-      setRecentLoading(true)
-      await fetchRecentRequests(100)
-      setRecentLoading(false)
+    setRecentExpanded(true)
+    setRecentLoading(true)
+    await fetchRecentRequests(100)
+    setRecentLoading(false)
+  }, [fetchRecentRequests])
+
+  const handleRecentToggle = useCallback((open: boolean) => {
+    if (open) {
+      handleExpandRecent()
+    } else {
+      setRecentExpanded(false)
     }
-  }, [recentExpanded, fetchRecentRequests])
+  }, [handleExpandRecent])
+
+  const handleRecentRefresh = useCallback(async () => {
+    setRecentLoading(true)
+    await fetchRecentRequests(100)
+    setRecentLoading(false)
+  }, [fetchRecentRequests])
 
   const handleShowMore = useCallback(async () => {
     setRecentLoading(true)
@@ -824,19 +841,25 @@ export default function DashboardV2() {
             {/* ═══ Recent Requests (collapsed by default) ══════════ */}
             <Section id="recent-requests" title="Recent Requests"
               tags={[{ label: 'All Plans', cls: 'dv2-tag-all' }]}
-              defaultOpen={false}>
+              defaultOpen={false}
+              onToggle={handleRecentToggle}>
               {!recentExpanded ? (
-                <div className="dv2-empty">
-                  <button className="btn btn-secondary" onClick={handleExpandRecent}>
-                    Load Recent Requests
-                  </button>
-                </div>
-              ) : recentLoading ? (
+                <div className="dv2-empty">Expand this section to load recent requests.</div>
+              ) : recentLoading && recentRequests.length === 0 ? (
                 <div className="dv2-empty">Loading requests...</div>
               ) : recentRequests.length === 0 ? (
                 <div className="dv2-empty">No requests in this period.</div>
               ) : (
                 <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                    <button
+                      className="btn btn-secondary btn-small"
+                      onClick={handleRecentRefresh}
+                      disabled={recentLoading}
+                    >
+                      {recentLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  </div>
                   <div className="dv2-table-wrap">
                     <table className="dv2-requests-table">
                       <thead>
