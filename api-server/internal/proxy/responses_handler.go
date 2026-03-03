@@ -165,7 +165,7 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 	}
 
 	// Measure only TokenGate's own overhead, excluding upstream provider time.
-	preUpstreamMs := time.Since(start).Milliseconds()
+	preUpstream := time.Since(start)
 
 	now := time.Now()
 	var counts TokenCounts
@@ -195,8 +195,11 @@ func (h *ProxyHandler) HandleResponses(c *gin.Context) {
 		counts.Model = req.Model
 	}
 
-	// Gateway latency = pre-upstream processing + post-upstream processing (excludes upstream call time).
-	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
+	// Gateway latency = pre-upstream + post-upstream processing (excludes upstream call time).
+	gatewayMs := (preUpstream + time.Since(postUpstreamStart)).Milliseconds()
+	if gatewayMs > 200 {
+		gatewayMs = 0
+	}
 	h.reconcilePostResponse(c.Request.Context(), tenantID, keyIDStr, provider, req.Model, maxTokens, counts.OutputTokens, reservedAmount)
 	h.publishUsageEvent(c.Request.Context(), tenantID, projectID, keyIDStr, provider, counts, apiUsageBilled, providerKeyHint, gatewayMs, now)
 

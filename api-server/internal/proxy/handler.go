@@ -384,7 +384,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 
 	// Measure only TokenGate's own overhead, excluding upstream provider time.
-	preUpstreamMs := time.Since(start).Milliseconds()
+	preUpstream := time.Since(start)
 
 	resp, err := h.httpClient.Do(upstreamReq)
 	if err != nil {
@@ -469,17 +469,22 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 	}
 
-	// Post-processing timer starts after response body is fully consumed.
-	// This excludes upstream call time AND SSE streaming / body read time.
+	// Gateway latency = TokenGate's own processing overhead, excluding
+	// upstream provider time and SSE streaming.  preUpstream covers auth,
+	// rate-limit checks, key lookup, and request building.  postUpstream
+	// covers header writing and any synchronous work after the response
+	// body is fully consumed.
 	postUpstreamStart := time.Now()
 
-	// Gateway latency = pre-upstream processing + post-upstream bookkeeping.
-	gatewayMs := preUpstreamMs + time.Since(postUpstreamStart).Milliseconds()
+	// (No synchronous post-processing here — bookkeeping runs in goroutine.)
 
-	// Suppress latency recording for cold-cache requests (cache warming hits
-	// the database and inflates the number). Setting to 0 excludes the sample
-	// from percentile metrics (SQL filters latency_ms > 0) while the request
-	// is still fully tracked for tokens, cost, etc.
+	gatewayDuration := preUpstream + time.Since(postUpstreamStart)
+	gatewayMs := gatewayDuration.Milliseconds()
+
+	// Suppress outliers from cold-cache requests (first request after deploy
+	// warms caches/pools and inflates the number).  Setting to 0 excludes
+	// the sample from percentile metrics (SQL filters latency_ms > 0) while
+	// the request is still fully tracked for tokens, cost, etc.
 	if gatewayMs > 200 {
 		gatewayMs = 0
 	}
