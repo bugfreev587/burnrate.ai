@@ -604,30 +604,59 @@ export default function DashboardV2() {
                       Spend Limits
                     </h3>
                     <div className="dv2-limits-list">
-                      {s.limits.active_spend_limits.map((l: SpendLimitEntry) => {
-                        const fillColor = l.status === 'ok' ? '#22c55e' :
-                          l.status === 'warning' ? '#f59e0b' : '#ef4444'
+                      {s.limits.active_spend_limits
+                        .sort((a, b) => {
+                          if (a.scope_type !== b.scope_type) return a.scope_type === 'account' ? -1 : 1
+                          const po: Record<string, number> = { monthly: 0, weekly: 1, daily: 2 }
+                          const pa = po[a.period_type] ?? 9
+                          const pb = po[b.period_type] ?? 9
+                          if (pa !== pb) return pa - pb
+                          if (!a.provider && b.provider) return -1
+                          if (a.provider && !b.provider) return 1
+                          return a.provider.localeCompare(b.provider)
+                        })
+                        .map((l: SpendLimitEntry) => {
+                        const pct = Math.min(l.pct_used, 100)
+                        const atAlert = l.pct_used >= parseFloat(l.alert_threshold)
+                        const atLimit = l.pct_used >= 100
+                        const fillColor = atLimit ? '#ef4444' : atAlert ? '#f59e0b' : '#22c55e'
+                        const remaining = parseFloat(l.limit_amount) - parseFloat(l.current_spend)
+                        const actionLabel = l.action === 'alert_block' ? 'Alert + Block'
+                          : l.action === 'block' ? 'Block' : 'Alert'
+                        const actionColor = l.action === 'block' || l.action === 'alert_block' ? '#ef4444' : '#f59e0b'
+
                         return (
-                          <div key={l.id} className="card dv2-limit-card">
-                            <div className="dv2-limit-info">
+                          <div key={l.id} className="card dv2-limit-card" style={{ flexDirection: 'column', gap: '0.4rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.25rem' }}>
                               <div className="dv2-limit-scope">
-                                {l.scope_type === 'api_key' ? (l.key_label || l.scope_id.slice(0, 12)) : 'Account'}
-                                {l.provider && ` (${l.provider})`}
+                                {l.period_type.charAt(0).toUpperCase() + l.period_type.slice(1)} Budget
+                                <span style={{ color: fillColor, fontSize: '0.85em' }}>
+                                  {l.provider ? ` · ${l.provider.charAt(0).toUpperCase() + l.provider.slice(1)}` : ' · All Providers'}
+                                </span>
+                                {l.scope_type === 'api_key' && l.scope_id && (
+                                  <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>
+                                    {' · Key: '}{l.key_label || l.scope_id.slice(0, 8) + '\u2026'}
+                                  </span>
+                                )}
+                                <span style={{ color: actionColor, fontSize: '0.85em' }}>{' · '}{actionLabel}</span>
                               </div>
-                              <div className="dv2-limit-details">
-                                {l.period_type} | {fmt$(l.current_spend)} / {fmt$(l.limit_amount)} |{' '}
-                                <span className={`dv2-status-chip dv2-status-${l.status}`}>{l.status}</span>
-                                {' '}{l.action}
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: fillColor }}>{fmt$(l.current_spend)}</span>
+                                <span style={{ color: 'var(--color-text-muted)' }}> / </span>
+                                <span>${parseFloat(l.limit_amount).toFixed(2)}</span>
                               </div>
                             </div>
-                            <div className="dv2-limit-bar">
-                              <div className="dv2-limit-track">
-                                <div className="dv2-limit-fill"
-                                  style={{ width: `${Math.min(l.pct_used, 100)}%`, background: fillColor }} />
-                              </div>
-                              <div className="dv2-limit-pct" style={{ color: fillColor }}>
-                                {fmtPct(l.pct_used)}
-                              </div>
+                            <div className="dv2-limit-track">
+                              <div className="dv2-limit-fill"
+                                style={{ width: `${pct}%`, background: fillColor }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                              <span style={{ color: fillColor, fontWeight: 600 }}>{fmtPct(l.pct_used)} used</span>
+                              <span style={{ color: 'var(--color-text-muted)' }}>
+                                {remaining >= 0
+                                  ? `${fmt$(remaining)} remaining`
+                                  : `${fmt$(Math.abs(remaining))} over limit`}
+                              </span>
                             </div>
                           </div>
                         )
