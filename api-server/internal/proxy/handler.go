@@ -293,6 +293,8 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 	}
 	apiUsageBilled := determineBillable(billingMode)
 
+	slog.Info("----------- pre time check point 1: ", "tenant_id", tenantID, "project_id", time.Since(start))
+
 	// Read the request body early so we can parse model/max_tokens for rate limiting and spend reservation.
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -303,6 +305,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		return
 	}
 	reqMeta := parseRequestMeta(bodyBytes)
+	slog.Info("----------- pre time check point 2: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Model allowlist enforcement: reject requests for models not in the API key's allowlist.
 	if akI, exists := c.Get("api_key"); exists {
@@ -316,6 +319,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 			}
 		}
 	}
+	slog.Info("----------- pre time check point 3: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	if h.checkRateLimit(c, tenantID, keyIDStr, provider, reqMeta.Model, len(bodyBytes), reqMeta.MaxTokens) {
 		if h.gatewayEventSvc != nil {
@@ -332,6 +336,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		return
 	}
+	slog.Info("----------- pre time check point 4: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	reservedAmount, ok := h.preCheckBudget(c, tenantID, keyIDStr, provider, reqMeta.Model, reqMeta.MaxTokens)
 	if !ok {
@@ -349,10 +354,12 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		return
 	}
+	slog.Info("----------- pre time check point 5: ", "tenant_id", tenantID, "project_id", time.Since(start))
 	byokKey, ok := h.resolveAuth(c, tenantID, provider, authMethod)
 	if !ok {
 		return
 	}
+	slog.Info("----------- pre time check point 6: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Extract provider key hint (masked) for audit display.
 	var providerKeyHint string
@@ -367,12 +374,14 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}
 		providerKeyHint = models.MaskKey(rawKey)
 	}
+	slog.Info("----------- pre time check point 7: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Build the upstream URL: base + provider-stripped path + query string.
 	upstreamURL := upstreamBase(provider) + upstreamPath(provider, c.Request.URL.Path)
 	if c.Request.URL.RawQuery != "" {
 		upstreamURL += "?" + c.Request.URL.RawQuery
 	}
+	slog.Info("----------- pre time check point 8: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	upstreamReq, err := h.buildUpstreamRequest(c.Request.Context(), c.Request.Method, upstreamURL, bodyBytes, provider, byokKey, c.Request)
 	if err != nil {
@@ -382,6 +391,7 @@ func (h *ProxyHandler) HandleProxy(c *gin.Context) {
 		}})
 		return
 	}
+	slog.Info("----------- pre time check point 9: ", "tenant_id", tenantID, "project_id", time.Since(start))
 
 	// Measure only TokenGate's own overhead, excluding upstream provider time.
 	preUpstream := time.Since(start)
