@@ -73,5 +73,60 @@ func Authorize(db *gorm.DB, userID string, tenantID uint, orgRole string, action
 	if HasProjectPermission(pm.ProjectRole, action) {
 		return Allow()
 	}
-	return Deny("insufficient project role for action " + action)
+	return Deny(projectDenyMessage(pm.ProjectRole, action))
+}
+
+// projectDenyMessage returns a user-friendly message explaining why a project
+// role is insufficient for the requested action and which role is required.
+func projectDenyMessage(role, action string) string {
+	required := minProjectRole(action)
+	roleName := friendlyProjectRole(role)
+	requiredName := friendlyProjectRole(required)
+
+	actionLabel, ok := friendlyActionLabels[action]
+	if !ok {
+		actionLabel = action
+	}
+
+	return "Your project role is " + roleName + ", but " + actionLabel +
+		" requires " + requiredName + " or above. Ask a project admin to upgrade your role."
+}
+
+func minProjectRole(action string) string {
+	// Check from least privileged upward.
+	if HasProjectPermission(models.ProjectRoleViewer, action) {
+		return models.ProjectRoleViewer
+	}
+	if HasProjectPermission(models.ProjectRoleEditor, action) {
+		return models.ProjectRoleEditor
+	}
+	return models.ProjectRoleAdmin
+}
+
+func friendlyProjectRole(role string) string {
+	switch role {
+	case models.ProjectRoleAdmin:
+		return "Project Admin"
+	case models.ProjectRoleEditor:
+		return "Project Editor"
+	case models.ProjectRoleViewer:
+		return "Project Viewer"
+	default:
+		return role
+	}
+}
+
+var friendlyActionLabels = map[string]string{
+	ActionAPIKeyCreate:            "creating API keys",
+	ActionAPIKeyUpdate:            "updating API keys",
+	ActionAPIKeyRevoke:            "revoking API keys",
+	ActionLimitCreate:             "creating limits",
+	ActionLimitUpdate:             "updating limits",
+	ActionLimitDelete:             "deleting limits",
+	ActionProjectUpdate:           "updating the project",
+	ActionProjectDelete:           "deleting the project",
+	ActionProjectMemberList:       "listing project members",
+	ActionProjectMemberAdd:        "adding project members",
+	ActionProjectMemberUpdateRole: "changing member roles",
+	ActionProjectMemberRemove:     "removing project members",
 }

@@ -623,6 +623,30 @@ Returns HTTP **403** with `"error": "plan_restriction"` if `period_type`, `actio
 | PATCH | `/v1/projects/:id/members/:user_id` | Change member's project role |
 | DELETE | `/v1/projects/:id/members/:user_id` | Remove member from project |
 
+##### Project Role Permission Matrix
+
+Org-level Owner and Admin bypass project membership checks and have implicit access to all actions in every project. For other org roles, the project-level role determines what is allowed:
+
+| Action | Project Admin | Project Editor | Project Viewer |
+|---|---|---|---|
+| `project:read` | yes | yes | yes |
+| `project:update` | yes | yes | — |
+| `project:delete` | yes | — | — |
+| `project_member:list` | yes | — | — |
+| `project_member:add` | yes | — | — |
+| `project_member:update_role` | yes | — | — |
+| `project_member:remove` | yes | — | — |
+| `api_key:list` | yes | yes | yes |
+| `api_key:read` | yes | yes | yes |
+| `api_key:create` | yes | yes | — |
+| `api_key:update` | yes | yes | — |
+| `api_key:revoke` | yes | yes | — |
+| `limit:list` | yes | yes | yes |
+| `limit:read` | yes | yes | yes |
+| `limit:create` | yes | — | — |
+| `limit:update` | yes | — | — |
+| `limit:delete` | yes | — | — |
+
 #### Notifications (Admin+)
 
 | Method | Path | Description |
