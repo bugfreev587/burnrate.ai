@@ -328,50 +328,82 @@
   text-underline-offset: 2px;
 }
 
-/* ── Invite action bar ──────────────────────────────────────────────────── */
-.invite-action-bar {
+/* ── Notification detail modal ──────────────────────────────────────────── */
+.notif-modal-overlay {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 400;
-  padding: 0.75rem 1rem;
-  background: rgba(11, 14, 22, 0.84);
-  border-top: 1px solid rgba(99, 102, 241, 0.45);
-  backdrop-filter: blur(8px);
-}
-
-.invite-action-content {
-  max-width: 1100px;
-  margin: 0 auto;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: center;
 }
 
-.invite-action-title {
-  font-size: 0.86rem;
+.notif-modal-card {
+  position: relative;
+  width: 420px;
+  max-width: calc(100vw - 2rem);
+  background: var(--color-surface, #151927);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  padding: 1.5rem;
+}
+
+.notif-modal-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.notif-modal-close:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notif-modal-title {
+  font-size: 1rem;
   font-weight: 700;
-  color: #eef2ff;
+  color: var(--color-text, #eef2ff);
+  padding-right: 1.5rem;
 }
 
-.invite-action-body {
-  margin-top: 0.15rem;
+.notif-modal-body {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-muted, #c7d2fe);
+}
+
+.notif-modal-time {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #94a3b8);
+  opacity: 0.7;
+}
+
+.notif-modal-error {
+  margin-top: 0.5rem;
   font-size: 0.78rem;
-  color: #c7d2fe;
-}
-
-.invite-action-error {
-  margin-top: 0.25rem;
-  font-size: 0.74rem;
   color: #fca5a5;
 }
 
-.invite-action-buttons {
+.notif-modal-actions {
+  margin-top: 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 /* ── Onboarding hints ───────────────────────────────────────────────────── */
@@ -488,8 +520,10 @@
     width: min(340px, calc(100vw - 1rem));
     right: -0.5rem;
   }
-  .invite-action-content {
-    flex-direction: column;
-    align-items: flex-start;
+  .notif-modal-card {
+    width: calc(100vw - 2rem);
+  }
+  .notif-modal-actions {
+    flex-wrap: wrap;
   }
 }

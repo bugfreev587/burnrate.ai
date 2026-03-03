@@ -539,6 +539,12 @@ func (s *Server) handleUpdateProjectMemberRole(c *gin.Context) {
 		},
 	})
 
+	s.notifyMemberChange(c, targetUserID, tenantID,
+		fmt.Sprintf("Your role in project \"%s\" has been updated", project.Name),
+		fmt.Sprintf("Your project role has been changed from %s to %s.", oldRole, req.ProjectRole),
+		map[string]interface{}{"action": "project_role_changed", "project_id": projectID, "project_name": project.Name, "old_role": oldRole, "new_role": req.ProjectRole},
+	)
+
 	c.JSON(http.StatusOK, gin.H{
 		"user_id":      targetUserID,
 		"project_role": req.ProjectRole,

@@ -481,6 +481,50 @@ func (s *Server) handleDenyInvitation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// ── Member change notification helper ────────────────────────────────────────
+
+// notifyMemberChange creates an in-app notification for the target user when
+// an admin modifies their membership (role change, suspend, remove, etc.).
+func (s *Server) notifyMemberChange(c *gin.Context, targetUserID string, tenantID uint, title, body string, extra map[string]interface{}) {
+	db := s.postgresDB.GetDB()
+
+	var tenant models.Tenant
+	if err := db.First(&tenant, tenantID).Error; err != nil {
+		slog.Warn("notify_member_change_tenant_lookup_failed", "tenant_id", tenantID, "error", err)
+		return
+	}
+
+	caller, _ := middleware.GetUserFromContext(c)
+	payloadMap := map[string]interface{}{
+		"tenant_id":   tenantID,
+		"tenant_name": tenant.Name,
+		"changed_by":  caller.Email,
+	}
+	for k, v := range extra {
+		payloadMap[k] = v
+	}
+	payload, _ := json.Marshal(payloadMap)
+
+	_ = db.Create(&models.UserNotification{
+		UserID:   targetUserID,
+		TenantID: &tenantID,
+		Type:     models.EventMemberUpdated,
+		Title:    title,
+		Body:     body,
+		Payload:  string(payload),
+		Status:   models.UserNotificationStatusUnread,
+	}).Error
+
+	if s.notifWorker != nil {
+		if err := s.notifWorker.SendUserNotification(
+			c.Request.Context(), targetUserID, models.EventMemberUpdated,
+			title, body, string(payload),
+		); err != nil {
+			slog.Warn("member_change_notification_dispatch_failed", "user_id", targetUserID, "tenant_id", tenantID, "error", err)
+		}
+	}
+}
+
 // ── Role management (admin+) ─────────────────────────────────────────────────
 
 type updateRoleReq struct {
@@ -559,6 +603,12 @@ func (s *Server) handleUpdateUserRole(c *gin.Context) {
 		},
 	})
 
+	s.notifyMemberChange(c, targetID, tenantID,
+		"Your organization role has been updated",
+		fmt.Sprintf("Your role has been changed from %s to %s.", roleLabel(oldRole), roleLabel(req.Role)),
+		map[string]interface{}{"action": "role_changed", "old_role": oldRole, "new_role": req.Role},
+	)
+
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
 	c.JSON(http.StatusOK, gin.H{"message": "Role updated successfully", "user": toUserResponse(target, req.Role, targetMembership.Status)})
@@ -613,6 +663,12 @@ func (s *Server) handleSuspendUser(c *gin.Context) {
 		Category: models.AuditCategoryTeam,
 	})
 
+	s.notifyMemberChange(c, targetID, tenantID,
+		"Your membership has been suspended",
+		"An administrator has suspended your access to this organization.",
+		map[string]interface{}{"action": "suspended"},
+	)
+
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
 	c.JSON(http.StatusOK, gin.H{"message": "User suspended successfully", "user": toUserResponse(target, targetMembership.OrgRole, models.StatusSuspended)})
@@ -651,6 +707,12 @@ func (s *Server) handleUnsuspendUser(c *gin.Context) {
 	s.recordAuditEvent(c, models.AuditMemberUnsuspended, "membership", targetID, AuditOpts{
 		Category: models.AuditCategoryTeam,
 	})
+
+	s.notifyMemberChange(c, targetID, tenantID,
+		"Your membership has been reactivated",
+		"An administrator has restored your access to this organization.",
+		map[string]interface{}{"action": "unsuspended"},
+	)
 
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
@@ -738,6 +800,15 @@ func (s *Server) handleRemoveUser(c *gin.Context) {
 	}
 
 	tx.Commit()
+
+	// Notify only if the user still exists (has other memberships).
+	if remainingCount > 0 {
+		s.notifyMemberChange(c, targetID, tenantID,
+			"You have been removed from an organization",
+			"An administrator has removed you from the organization.",
+			map[string]interface{}{"action": "removed"},
+		)
+	}
 
 	s.recordAuditEvent(c, models.AuditMemberRemoved, "membership", targetID, AuditOpts{
 		Category: models.AuditCategoryTeam,
@@ -931,6 +1002,12 @@ func (s *Server) handlePromoteAdmin(c *gin.Context) {
 		},
 	})
 
+	s.notifyMemberChange(c, targetID, tenantID,
+		"You have been promoted to admin",
+		fmt.Sprintf("Your role has been changed from %s to admin.", roleLabel(targetMembership.OrgRole)),
+		map[string]interface{}{"action": "promoted", "old_role": targetMembership.OrgRole, "new_role": models.RoleAdmin},
+	)
+
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)
 	slog.Info("user_promoted_to_admin", "email", target.Email, "by", caller.Email)
@@ -981,6 +1058,12 @@ func (s *Server) handleDemoteAdmin(c *gin.Context) {
 			"role": models.RoleEditor,
 		},
 	})
+
+	s.notifyMemberChange(c, targetID, tenantID,
+		"Your admin role has been revoked",
+		"Your role has been changed from admin to editor.",
+		map[string]interface{}{"action": "demoted", "old_role": models.RoleAdmin, "new_role": models.RoleEditor},
+	)
 
 	var target models.User
 	db.Where("id = ?", targetID).First(&target)

@@ -12,6 +12,7 @@ const (
 	EventBudgetWarning     = "budget_warning"
 	EventRateLimitExceeded = "rate_limit_exceeded"
 	EventTeamInvitation    = "team_invitation"
+	EventMemberUpdated    = "member_updated"
 )
 
 // NotificationChannel stores a tenant's notification channel configuration.

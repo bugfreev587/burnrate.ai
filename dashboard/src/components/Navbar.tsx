@@ -366,22 +366,24 @@ export default function Navbar() {
           )}
         </div>
       </div>
-      {selectedNotif && selectedNotif.type === 'team_invitation' && (
-        <div className="invite-action-bar">
-          <div className="invite-action-content">
-            <div>
-              <div className="invite-action-title">{selectedNotif.title}</div>
-              <div className="invite-action-body">
-                {selectedInviteStatus === 'accepted'
-                  ? 'This invitation has been accepted.'
-                  : selectedInviteStatus === 'denied'
-                  ? 'This invitation has been denied.'
-                  : (selectedNotif.body || 'Choose Accept, Deny, or Decide later.')}
-              </div>
-              {notifError && <div className="invite-action-error">{notifError}</div>}
+      {selectedNotif && (
+        <div className="notif-modal-overlay" onClick={() => setSelectedNotif(null)}>
+          <div className="notif-modal-card" onClick={e => e.stopPropagation()}>
+            <button className="notif-modal-close" onClick={() => setSelectedNotif(null)} aria-label="Close">&times;</button>
+            <div className="notif-modal-title">{selectedNotif.title}</div>
+            <div className="notif-modal-body">
+              {selectedNotif.type === 'team_invitation'
+                ? (selectedInviteStatus === 'accepted'
+                    ? 'This invitation has been accepted.'
+                    : selectedInviteStatus === 'denied'
+                    ? 'This invitation has been denied.'
+                    : (selectedNotif.body || 'Choose Accept, Deny, or Decide later.'))
+                : (selectedNotif.body || selectedNotif.type)}
             </div>
-            <div className="invite-action-buttons">
-              {selectedInviteStatus === 'pending' ? (
+            <div className="notif-modal-time">{new Date(selectedNotif.created_at).toLocaleString()}</div>
+            {notifError && <div className="notif-modal-error">{notifError}</div>}
+            <div className="notif-modal-actions">
+              {selectedNotif.type === 'team_invitation' && selectedInviteStatus === 'pending' ? (
                 <>
                   <button className="btn btn-primary" onClick={handleAccept}>Accept</button>
                   <button className="btn btn-danger" onClick={handleDeny}>Deny</button>
