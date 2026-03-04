@@ -62,6 +62,8 @@ export default function PrivacyContent() {
         </ul>
         <p className="mt-2">
           This data is required to provide dashboards, budget enforcement, billing, and audit trails.
+          Cost data displayed in the Service is computed based on publicly available provider pricing
+          and may not reflect the exact charges from your AI provider.
         </p>
 
         <h3 className="text-lg font-medium text-gray-800 mt-4 mb-2">
@@ -69,8 +71,10 @@ export default function PrivacyContent() {
         </h3>
         <p className="font-medium">We do not store the content of AI prompts or AI responses.</p>
         <p className="mt-2">
-          TokenGate operates as a pass-through control plane. Request and response payloads are
-          forwarded to the configured AI provider and are not persisted by TokenGate, except
+          TokenGate is an infrastructure gateway that acts as a proxy service between your
+          applications and third-party AI providers. TokenGate does not generate AI responses — all
+          model outputs are produced entirely by third-party providers. Request and response payloads
+          are forwarded to the configured AI provider and are not persisted by TokenGate, except
           transiently in memory for request handling.
         </p>
 

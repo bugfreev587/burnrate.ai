@@ -42,9 +42,9 @@ export default function TermsContent() {
       <section>
         <h2 className="text-xl font-semibold text-gray-900 mb-3">3. The Service (What TokenGate Does)</h2>
         <p>
-          TokenGate is an AI governance and usage control layer that provides visibility, budget
-          enforcement, rate limiting, audit logging, and cost tracking for teams using third-party AI
-          providers. The Service may act as a proxy and reporting layer between your clients/apps and
+          TokenGate is an infrastructure gateway and AI governance layer that provides visibility,
+          budget enforcement, rate limiting, audit logging, and cost tracking for teams using
+          third-party AI providers. The Service acts as a proxy between your clients/apps and
           third-party AI provider APIs (including but not limited to Anthropic and OpenAI).
         </p>
         <p className="mt-2">Core capabilities may include:</p>
@@ -56,8 +56,10 @@ export default function TermsContent() {
           <li>Provider key management (including encryption at rest)</li>
         </ul>
         <p className="mt-2">
-          <strong>Important:</strong> TokenGate does not operate or control third-party AI providers,
-          their models, their pricing, or their service availability.
+          <strong>Important:</strong> TokenGate does not generate AI responses. All model outputs
+          (including text, code, images, and other content) are produced entirely by third-party AI
+          providers. TokenGate does not operate or control third-party AI providers, their models,
+          their pricing, or their service availability.
         </p>
       </section>
 
@@ -202,6 +204,14 @@ export default function TermsContent() {
           <li>Latency, timestamps, request identifiers</li>
           <li>Workspace/project/api-key attribution and enforcement outcomes</li>
         </ul>
+        <p className="mt-2">
+          <strong>Cost estimates:</strong> Cost calculations displayed in the Service are estimates
+          based on publicly available provider pricing at the time of the request. Actual charges
+          from AI providers may differ due to pricing changes, rounding, promotional rates, or
+          provider-specific billing practices. TokenGate does not guarantee the accuracy of cost
+          estimates and is not responsible for discrepancies between estimated and actual provider
+          charges.
+        </p>
         <p className="mt-2">
           <strong>Content storage:</strong> By default, TokenGate does not store the full content of
           prompts or responses unless you explicitly enable a feature that requires it (if offered).
