@@ -240,6 +240,18 @@ export default function IntegrationPage() {
               bill per token &mdash; costs are covered by each user's existing Anthropic plan.
             </p>
 
+            <div className="ig-video">
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.youtube.com/embed/UQ2ei1Lf4l4"
+                title="Scenario 1: Anthropic — Browser Auth + Monthly Subscription"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+
             <FlowDiagram steps={[
               'Developer runs claude',
               'Selects "Claude account with subscription"',

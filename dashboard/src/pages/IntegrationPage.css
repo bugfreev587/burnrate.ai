@@ -146,6 +146,18 @@
   line-height: 1.7;
 }
 
+.ig-video {
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ig-video iframe {
+  display: block;
+  border: none;
+  border-radius: 8px;
+}
+
 .ig-h4 {
   font-size: 1rem;
   font-weight: 600;
