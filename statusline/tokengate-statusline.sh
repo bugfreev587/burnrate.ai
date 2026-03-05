@@ -224,13 +224,18 @@ tg_poll="${TOKENGATE_STATUSLINE_POLL:-60}"
 tg_blocks="${TOKENGATE_STATUSLINE_BARS:-6}"
 billing_mode="${TOKENGATE_BILLING_MODE:-}"
 
-# Auto-detect: if no ANTHROPIC_BASE_URL or key starts with non-tg prefix,
-# assume monthly subscription mode
+# Auto-detect billing mode:
+#   - Has ANTHROPIC_BASE_URL + key → TokenGate proxy (AUTO)
+#   - Has ANTHROPIC_API_KEY that looks like a direct Anthropic key (sk-*) → API_USAGE_DIRECT
+#   - No API key, OAuth login only → MONTHLY_SUBSCRIPTION
 if [ -z "$billing_mode" ]; then
-    if [ -z "$tg_base" ] || [ -z "$tg_key" ]; then
-        billing_mode="MONTHLY_SUBSCRIPTION"
-    else
+    if [ -n "$tg_base" ] && [ -n "$tg_key" ]; then
         billing_mode="AUTO"
+    elif [ -n "$ANTHROPIC_API_KEY" ] && [[ "$ANTHROPIC_API_KEY" != tg_* ]]; then
+        # Direct Anthropic API key (sk-ant-...) — API usage billing, not monthly subscription
+        billing_mode="API_USAGE_DIRECT"
+    else
+        billing_mode="MONTHLY_SUBSCRIPTION"
     fi
 fi
 
