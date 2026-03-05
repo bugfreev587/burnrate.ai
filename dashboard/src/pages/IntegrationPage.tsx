@@ -316,6 +316,18 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
               The gateway tracks usage and bills per token.
             </p>
 
+            <div className="ig-video">
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.youtube.com/embed/knhhcrzB30Q"
+                title="Scenario 2: Anthropic — Browser Auth + API Usage Billed"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+
             <FlowDiagram steps={[
               'Developer runs claude',
               'Selects "Anthropic Console account"',
@@ -381,6 +393,18 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
               with full budget enforcement.
             </p>
 
+            <div className="ig-video">
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.youtube.com/embed/-BOCS_YboR0"
+                title="Scenario 3: Anthropic — BYOK + API Usage Billed"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+
             <FlowDiagram steps={[
               'Admin stores Anthropic key in vault',
               'Developer sends request with TokenGate key',
@@ -438,6 +462,18 @@ export ANTHROPIC_CUSTOM_HEADERS="X-TokenGate-Key:<tokengate-api-key>"`}</CodeBlo
               Your developers use the <strong>OpenAI Codex CLI</strong> with their own ChatGPT/OpenAI
               subscriptions. The gateway tracks usage for visibility but does not bill per token.
             </p>
+
+            <div className="ig-video">
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.youtube.com/embed/WzxcJ1M2vZk"
+                title="Scenario 4: OpenAI — Browser Auth + Monthly Subscription (Codex)"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
 
             <FlowDiagram steps={[
               'Developer runs codex',
@@ -506,6 +542,18 @@ http_headers = {
               Your organization stores an OpenAI API key in the TokenGate vault. The gateway injects
               it automatically. Usage is billed per token.
             </p>
+
+            <div className="ig-video">
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.youtube.com/embed/sv-cYS3QzzI"
+                title="Scenario 5: OpenAI — BYOK + API Usage Billed"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
 
             <FlowDiagram steps={[
               'Admin stores OpenAI key in vault',
