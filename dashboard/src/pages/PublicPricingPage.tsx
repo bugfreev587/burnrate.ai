@@ -302,7 +302,7 @@ export default function PublicPricingPage() {
                   {card.contactSales ? (
                     <>
                       <span className="pub-pricing-amount">Contact Sales</span>
-                      <span className="pub-pricing-starting">Starting at $199 / month</span>
+                      <span className="pub-pricing-starting">Starting at $99 / month</span>
                     </>
                   ) : card.monthlyPrice === 0 ? (
                     <>

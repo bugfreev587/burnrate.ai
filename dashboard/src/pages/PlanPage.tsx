@@ -55,7 +55,7 @@ const PLANS: Array<{ key: PlanKey; label: string; price: string }> = [
   { key: 'free',     label: 'Free',     price: 'Free'    },
   { key: 'pro',      label: 'Pro',      price: '$15/mo'  },
   { key: 'team',     label: 'Team',     price: '$39/mo'  },
-  { key: 'business', label: 'Business', price: '$199/mo' },
+  { key: 'business', label: 'Business', price: '$99/mo' },
 ]
 
 type ComparisonValue = boolean | string

@@ -105,7 +105,7 @@ const plans: { key: PlanKey; name: string; tagline: string; monthlyPrice: number
     key: 'business',
     name: 'Business',
     tagline: 'Enterprise Policy & Compliance',
-    monthlyPrice: 199,
+    monthlyPrice: 99,
     annualMonthly: null,
     annualTotal: null,
     annualSaving: null,
