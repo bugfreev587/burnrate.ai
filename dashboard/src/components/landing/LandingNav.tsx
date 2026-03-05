@@ -23,6 +23,7 @@ export default function LandingNav() {
             <a href="#features" className="hover:text-white transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-white transition-colors">Setup</a>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
+            <Link to="/integration" className="hover:text-white transition-colors">Integration</Link>
             <a
               href="https://github.com/bugfreev587/TokenGate.to"
               target="_blank"

@@ -97,7 +97,7 @@ export default function App() {
           <Route path="/management" element={<ProtectedRoute><ManagementPage /></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
           <Route path="/limits" element={<ProtectedRoute><LimitsPage /></ProtectedRoute>} />
-          <Route path="/integration" element={<ProtectedRoute><IntegrationPage /></ProtectedRoute>} />
+          <Route path="/integration" element={<IntegrationPage />} />
           <Route path="/audit" element={<ProtectedRoute><AuditPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
