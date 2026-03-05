@@ -63,8 +63,10 @@ function UserSyncProvider({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth()
+  const { isSynced } = useTenant()
   if (!isLoaded) return <div className="loading-center"><div className="spinner" /></div>
   if (!isSignedIn) return <Navigate to="/sign-in" replace />
+  if (!isSynced) return <div className="loading-center"><div className="spinner" /></div>
   return <>{children}</>
 }
 
