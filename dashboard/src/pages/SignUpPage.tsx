@@ -41,7 +41,7 @@ export default function SignUpPage() {
       await signUp!.authenticateWithRedirect({
         strategy,
         redirectUrl: '/sso-callback',
-        redirectUrlComplete: '/dashboard',
+        redirectUrlComplete: '/sign-up',
         legalAccepted: true,
       })
     } catch (err: unknown) {
@@ -85,7 +85,7 @@ export default function SignUpPage() {
       const result = await signUp!.attemptEmailAddressVerification({ code })
       if (result.status === 'complete' && result.createdSessionId) {
         await setActive!({ session: result.createdSessionId })
-        navigate('/dashboard')
+        navigate('/sign-up')
       } else {
         setError('Verification incomplete. Please try again.')
       }
