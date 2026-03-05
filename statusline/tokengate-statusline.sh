@@ -374,7 +374,7 @@ build_output() {
 # ═════════════════════════════════════════════════════════════════════════════
 # API_USAGE / AUTO MODE — append TokenGate data to build_output
 # ═════════════════════════════════════════════════════════════════════════════
-tg_suffix=""
+tg_parts=()
 if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$tg_base" ]; then
     cache_file="/tmp/claude/tokengate-statusline-cache.json"
     mkdir -p /tmp/claude
@@ -412,7 +412,7 @@ if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$t
         if [ "$tg_billing" = "API_USAGE" ]; then
             cost_today=$(echo "$tg_data" | jq -r '.cost.today // "0.0000"')
             cost_display=$(echo "$cost_today" | awk '{printf "$%.2f", $1}')
-            tg_suffix+="${magenta}${cost_display} today${reset}"
+            tg_parts+=("${magenta}${cost_display} today${reset}")
 
             for period in monthly daily weekly; do
                 budget=$(echo "$tg_data" | jq -r ".budgets.${period} // empty")
@@ -423,29 +423,27 @@ if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$t
                     b_color=$(usage_color "$b_pct")
                     b_bar=$(progress_bar "$b_pct" "$tg_blocks")
                     label=$(echo "$period" | sed 's/monthly/Month/;s/daily/Day/;s/weekly/Week/')
-                    tg_suffix+="|${cyan}${label}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_bar}${reset} ${b_color}${b_pct}%${reset}"
+                    tg_parts+=("${cyan}${label}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_bar}${reset} ${b_color}${b_pct}%${reset}")
                 fi
             done
         fi
     elif [ -n "$tg_key" ]; then
-        tg_suffix+="${dim}TokenGate: unavailable${reset}"
+        tg_parts+=("${dim}TokenGate: unavailable${reset}")
     fi
 fi
 
-# ── Build with adaptive density and append TokenGate suffix ──────────────────
-# build_output returns the base line; we append tg_suffix with the same separator style
+# ── Build with adaptive density and append TokenGate parts ───────────────────
 
 assemble() {
     local level=$1
     local base
     base=$(build_output "$level")
-    if [ -n "$tg_suffix" ]; then
+    if [ "${#tg_parts[@]}" -gt 0 ]; then
         local s
         if [ "$level" -le 1 ]; then s=" ${dim}|${reset} "; else s="${dim}|${reset}"; fi
-        # tg_suffix uses | as internal separator; replace with styled separator
-        local styled_suffix
-        styled_suffix=$(echo "$tg_suffix" | sed "s/|/${s}/g")
-        base+="${s}${styled_suffix}"
+        for part in "${tg_parts[@]}"; do
+            base+="${s}${part}"
+        done
     fi
     echo "$base"
 }
