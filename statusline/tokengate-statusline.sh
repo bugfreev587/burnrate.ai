@@ -106,6 +106,14 @@ fi
 
 out+="${sep}${orange}${used_tokens}/${total_tokens}${reset}"
 
+# ── Context window utilization (always available from Claude Code input) ─────
+ctx_pct=0
+ctx_remain=100
+if [ "$size" -gt 0 ] 2>/dev/null; then
+    ctx_pct=$(( current * 100 / size ))
+    ctx_remain=$(( 100 - ctx_pct ))
+fi
+
 # ── TokenGate budget/cost data ───────────────────────────────────────────────
 tg_key="${TOKENGATE_API_KEY:-$ANTHROPIC_API_KEY}"
 tg_base="${ANTHROPIC_BASE_URL:-}"
@@ -152,45 +160,49 @@ if [ -n "$tg_key" ] && [ -n "$tg_base" ]; then
     if [ -n "$tg_data" ] && echo "$tg_data" | jq -e '.ok' >/dev/null 2>&1; then
         billing_mode=$(echo "$tg_data" | jq -r '.billing_mode // ""')
 
-        # Cost today
-        cost_today=$(echo "$tg_data" | jq -r '.cost.today // "0.0000"')
-        cost_display=$(echo "$cost_today" | awk '{printf "$%.2f", $1}')
-
         if [ "$billing_mode" = "API_USAGE" ]; then
+            # ── API Usage mode: show cost + budget bars ──────────────────
+            cost_today=$(echo "$tg_data" | jq -r '.cost.today // "0.0000"')
+            cost_display=$(echo "$cost_today" | awk '{printf "$%.2f", $1}')
             out+="${sep}${magenta}${cost_display} today${reset}"
-        fi
 
-        # Monthly budget
-        monthly=$(echo "$tg_data" | jq -r '.budgets.monthly // empty')
-        if [ -n "$monthly" ] && [ "$monthly" != "null" ]; then
-            m_pct=$(echo "$monthly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-            m_used=$(echo "$monthly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-            m_limit=$(echo "$monthly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-            m_color=$(usage_color "$m_pct")
-            m_bar=$(progress_bar "$m_pct" "$tg_blocks")
-            out+="${sep}${cyan}Month${reset} ${orange}${m_used}/${m_limit}${reset} ${m_color}${m_bar}${reset} ${m_color}${m_pct}%${reset}"
-        fi
+            # Monthly budget
+            monthly=$(echo "$tg_data" | jq -r '.budgets.monthly // empty')
+            if [ -n "$monthly" ] && [ "$monthly" != "null" ]; then
+                m_pct=$(echo "$monthly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
+                m_used=$(echo "$monthly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
+                m_limit=$(echo "$monthly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
+                m_color=$(usage_color "$m_pct")
+                m_bar=$(progress_bar "$m_pct" "$tg_blocks")
+                out+="${sep}${cyan}Month${reset} ${orange}${m_used}/${m_limit}${reset} ${m_color}${m_bar}${reset} ${m_color}${m_pct}%${reset}"
+            fi
 
-        # Daily budget
-        daily=$(echo "$tg_data" | jq -r '.budgets.daily // empty')
-        if [ -n "$daily" ] && [ "$daily" != "null" ]; then
-            d_pct=$(echo "$daily" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-            d_used=$(echo "$daily" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-            d_limit=$(echo "$daily" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-            d_color=$(usage_color "$d_pct")
-            d_bar=$(progress_bar "$d_pct" "$tg_blocks")
-            out+="${sep}${cyan}Day${reset} ${orange}${d_used}/${d_limit}${reset} ${d_color}${d_bar}${reset} ${d_color}${d_pct}%${reset}"
-        fi
+            # Daily budget
+            daily=$(echo "$tg_data" | jq -r '.budgets.daily // empty')
+            if [ -n "$daily" ] && [ "$daily" != "null" ]; then
+                d_pct=$(echo "$daily" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
+                d_used=$(echo "$daily" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
+                d_limit=$(echo "$daily" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
+                d_color=$(usage_color "$d_pct")
+                d_bar=$(progress_bar "$d_pct" "$tg_blocks")
+                out+="${sep}${cyan}Day${reset} ${orange}${d_used}/${d_limit}${reset} ${d_color}${d_bar}${reset} ${d_color}${d_pct}%${reset}"
+            fi
 
-        # Weekly budget (if present)
-        weekly=$(echo "$tg_data" | jq -r '.budgets.weekly // empty')
-        if [ -n "$weekly" ] && [ "$weekly" != "null" ]; then
-            w_pct=$(echo "$weekly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-            w_used=$(echo "$weekly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-            w_limit=$(echo "$weekly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-            w_color=$(usage_color "$w_pct")
-            w_bar=$(progress_bar "$w_pct" "$tg_blocks")
-            out+="${sep}${cyan}Week${reset} ${orange}${w_used}/${w_limit}${reset} ${w_color}${w_bar}${reset} ${w_color}${w_pct}%${reset}"
+            # Weekly budget (if present)
+            weekly=$(echo "$tg_data" | jq -r '.budgets.weekly // empty')
+            if [ -n "$weekly" ] && [ "$weekly" != "null" ]; then
+                w_pct=$(echo "$weekly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
+                w_used=$(echo "$weekly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
+                w_limit=$(echo "$weekly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
+                w_color=$(usage_color "$w_pct")
+                w_bar=$(progress_bar "$w_pct" "$tg_blocks")
+                out+="${sep}${cyan}Week${reset} ${orange}${w_used}/${w_limit}${reset} ${w_color}${w_bar}${reset} ${w_color}${w_pct}%${reset}"
+            fi
+        else
+            # ── Monthly Subscription mode: show context window usage ─────
+            ctx_color=$(usage_color "$ctx_pct")
+            ctx_bar=$(progress_bar "$ctx_pct" "$tg_blocks" "$ctx_color")
+            out+="${sep}${ctx_color}${ctx_bar}${reset} ${ctx_color}${ctx_pct}% used${reset} ${dim}${ctx_remain}% remain${reset}"
         fi
     elif [ -n "$tg_key" ]; then
         out+="${sep}${dim}TokenGate: unavailable${reset}"
