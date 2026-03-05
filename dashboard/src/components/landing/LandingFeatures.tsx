@@ -11,6 +11,7 @@ const categories: { label: string; tag: string; tagColor: string; items: Feature
       { text: 'Daily cost & token trend charts' },
       { text: 'Projected monthly spend' },
       { text: 'Multi-provider unified dashboard' },
+      { text: 'CLI status line with live budget progress bars' },
       { text: 'Cost equivalent: subscription vs API', comingSoon: true },
       { text: 'Usage by project / repository', comingSoon: true },
       { text: 'Latency & response time tracking', comingSoon: true },

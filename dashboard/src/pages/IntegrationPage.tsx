@@ -17,6 +17,7 @@ const SECTIONS: Section[] = [
   { id: 'scenario-3',     title: 'Anthropic \u2014 BYOK',                      icon: 'anthropic' },
   { id: 'scenario-4',     title: 'OpenAI \u2014 Subscription (Codex)',         icon: 'openai' },
   { id: 'scenario-5',     title: 'OpenAI \u2014 BYOK',                         icon: 'openai' },
+  { id: 'statusline',     title: 'CLI Status Line',                              icon: 'statusline' },
   { id: 'endpoints',      title: 'API Endpoints',                               icon: 'api' },
   { id: 'budget',         title: 'Budget Headers',                              icon: 'budget' },
   { id: 'notifications',  title: 'Notification Setup',                          icon: 'notification' },
@@ -33,6 +34,8 @@ function SectionIcon({ type }: { type: string }) {
       return <span className="ig-icon ig-icon--anthropic">A</span>
     case 'openai':
       return <span className="ig-icon ig-icon--openai">O</span>
+    case 'statusline':
+      return <span className="ig-icon ig-icon--statusline">&#x2581;</span>
     case 'api':
       return <span className="ig-icon ig-icon--api">&lt;/&gt;</span>
     case 'budget':
@@ -618,6 +621,145 @@ export OPENAI_API_KEY="<tokengate-api-key>"
 # No separate OpenAI key needed — the gateway uses your stored provider key`}</CodeBlock>
                 <span className="form-hint"><a className="form-hint-link" style={{ cursor: 'pointer' }} onClick={() => scrollTo('faq')}>Don't know how to set environment variables?</a></span>
               </div>
+            </div>
+          </section>
+
+          {/* ── CLI Status Line ──────────────────────────────────────── */}
+          <section id="statusline" ref={ref('statusline')} className="ig-section">
+            <h2 className="ig-h2">
+              <SectionIcon type="statusline" />
+              CLI Status Line Integration
+            </h2>
+            <p className="ig-desc">
+              See your budget, cost, and usage data directly in your Claude Code terminal &mdash; no context switching required.
+              TokenGate provides a drop-in status line script that polls the gateway and renders live progress bars.
+            </p>
+
+            {/* Terminal preview */}
+            <div className="ig-terminal-preview" style={{
+              background: '#0d1117',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              overflow: 'hidden',
+              marginBottom: '2rem',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff5f57' }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#febc2e' }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#28c840' }} />
+                <span style={{ marginLeft: 8, fontSize: '12px', color: '#6e7681' }}>Claude Code &mdash; tokengate-statusline.sh</span>
+              </div>
+              <div style={{ padding: '16px 20px', fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace', fontSize: '13px', lineHeight: '1.6', overflowX: 'auto' }}>
+                <div style={{ whiteSpace: 'nowrap' }}>
+                  <span style={{ color: '#0099ff' }}>Opus 4.6</span>
+                  <span style={{ color: '#484f58' }}> | </span>
+                  <span style={{ color: '#2e9599' }}>Desktop</span>
+                  <span style={{ color: '#484f58' }}> | </span>
+                  <span style={{ color: '#ffb055' }}>0/200k</span>
+                  <span style={{ color: '#484f58' }}> | </span>
+                  <span style={{ color: '#c878ff' }}>$2.43 today</span>
+                  <span style={{ color: '#484f58' }}> | </span>
+                  <span style={{ color: '#2e9599' }}>Month</span>
+                  {' '}
+                  <span style={{ color: '#ffb055' }}>$83/$100</span>
+                  {' '}
+                  <span style={{ color: '#ffb055' }}>[■■■■■■□□]</span>
+                  {' '}
+                  <span style={{ color: '#ffb055' }}>83%</span>
+                  <span style={{ color: '#484f58' }}> | </span>
+                  <span style={{ color: '#2e9599' }}>Day</span>
+                  {' '}
+                  <span style={{ color: '#ffb055' }}>$4/$10</span>
+                  {' '}
+                  <span style={{ color: '#e6c800' }}>[■■■□□□□□]</span>
+                  {' '}
+                  <span style={{ color: '#e6c800' }}>40%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="ig-steps">
+              <div className="ig-step">
+                <h3><StepNumber n={1} /> Install the status line script</h3>
+                <p>Copy the TokenGate status line script to your Claude config directory:</p>
+                <CodeBlock lang="bash">{`# Download the script
+curl -o ~/.claude/tokengate-statusline.sh \\
+  https://raw.githubusercontent.com/bugfreev587/burnrate.ai/main/statusline/tokengate-statusline.sh
+
+# Make it executable
+chmod +x ~/.claude/tokengate-statusline.sh`}</CodeBlock>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={2} /> Configure Claude Code</h3>
+                <p>Tell Claude Code to use the TokenGate status line. You can either:</p>
+                <p><strong>Option A:</strong> Run the <code>/statusline</code> command inside Claude Code and point it to the script.</p>
+                <p><strong>Option B:</strong> Add it manually to <code>~/.claude/settings.json</code>:</p>
+                <CodeBlock lang="json">{`{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/tokengate-statusline.sh"
+  }
+}`}</CodeBlock>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={3} /> Verify</h3>
+                <p>
+                  Start a new Claude Code session. You should see the status line at the bottom of the terminal
+                  showing your model, context window, and TokenGate budget/cost data.
+                </p>
+                <Callout type="info">
+                  The status line requires <code>ANTHROPIC_BASE_URL</code> and <code>ANTHROPIC_API_KEY</code> (or <code>TOKENGATE_API_KEY</code>)
+                  to be set. If these are already configured for gateway routing, the status line works automatically.
+                </Callout>
+              </div>
+            </div>
+
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>What&apos;s displayed</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Segment</th><th>Color</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><strong>Model</strong></td><td>Blue</td><td>Active Claude model (e.g. Opus 4.6)</td></tr>
+                  <tr><td><strong>Directory</strong></td><td>Cyan</td><td>Current working directory name</td></tr>
+                  <tr><td><strong>Context</strong></td><td>Orange</td><td>Token usage vs context window (e.g. 45k/200k)</td></tr>
+                  <tr><td><strong>Cost today</strong></td><td>Magenta</td><td>API cost today (only shown for API_USAGE billing mode)</td></tr>
+                  <tr><td><strong>Month budget</strong></td><td>Color-coded</td><td>Monthly spend vs limit with progress bar</td></tr>
+                  <tr><td><strong>Day budget</strong></td><td>Color-coded</td><td>Daily spend vs limit with progress bar</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Progress bar colors</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Usage</th><th>Color</th><th>Example</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>&lt; 40%</td><td style={{ color: '#00a000' }}>Green</td><td style={{ fontFamily: 'monospace' }}>[■■■□□□□□] 30%</td></tr>
+                  <tr><td>40 &ndash; 59%</td><td style={{ color: '#e6c800' }}>Yellow</td><td style={{ fontFamily: 'monospace' }}>[■■■■□□□□] 50%</td></tr>
+                  <tr><td>60 &ndash; 84%</td><td style={{ color: '#ffb055' }}>Orange</td><td style={{ fontFamily: 'monospace' }}>[■■■■■■□□] 75%</td></tr>
+                  <tr><td>&ge; 85%</td><td style={{ color: '#ff5555' }}>Red</td><td style={{ fontFamily: 'monospace' }}>[■■■■■■■□] 90%</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Configuration options</h3>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Environment Variable</th><th>Default</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>TOKENGATE_API_KEY</code></td><td><code>ANTHROPIC_API_KEY</code></td><td>Explicit TokenGate key (overrides ANTHROPIC_API_KEY)</td></tr>
+                  <tr><td><code>TOKENGATE_STATUSLINE_POLL</code></td><td><code>5</code></td><td>Cache TTL in seconds between API polls</td></tr>
+                  <tr><td><code>TOKENGATE_STATUSLINE_BARS</code></td><td><code>8</code></td><td>Number of blocks in progress bars</td></tr>
+                </tbody>
+              </table>
             </div>
           </section>
 

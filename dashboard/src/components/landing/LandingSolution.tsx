@@ -3,6 +3,7 @@ const capabilities: { text: string; comingSoon?: boolean }[] = [
   { text: 'Budget caps with hard stops — block before overspend' },
   { text: 'Rate limiting per key, model & provider' },
   { text: 'Projected monthly spend & trend analysis' },
+  { text: 'Live budget bars in your Claude Code terminal' },
   { text: 'Efficiency insights to cut waste', comingSoon: true },
 ]
 

@@ -26,6 +26,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Structured logging** – JSON logs to stdout plus optional Better Stack (Logtail) forwarding via `slog-betterstack`. Controlled by the `BETTERSTACK_SOURCE_TOKEN` env var.
 - **Super admin** – Platform-wide dashboard for operators: tenant listing with search/filter, plan changes, tenant suspension, platform statistics, and per-customer revenue tracking. Access gated by `SUPER_ADMIN_EMAILS` env var. Super admin billing routes to a Stripe sandbox for safe test transactions.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
+- **CLI status line** – A drop-in shell script for Claude Code's status line that displays real-time budget, cost, and usage data directly in the terminal. Polls the `GET /v1/statusline` gateway endpoint every 5 seconds, renders color-coded progress bars (`[■■■■■■□□] 83%`), and degrades gracefully when the gateway is unreachable. Works with any Claude Code session routed through the TokenGate gateway.
 
 ### Planned features
 
@@ -72,6 +73,7 @@ The following features are on the roadmap and marked "Coming Soon" on the landin
 
 ## Recent changes
 
+- **2026-03-05** – CLI status line integration: `GET /v1/statusline` endpoint and drop-in shell script for Claude Code. Displays real-time budget progress bars, cost tracking, and usage data in the terminal.
 - **2026-03-04** – New users without API keys are automatically redirected to the Integration page after sign-up.
 - **2026-03-04** – Sign-up completion routed through `PublicOnlyRoute` for proper redirect; auth sync completes before rendering protected routes.
 - **2026-03-04** – Checkout payment outcomes (success/failure) tracked in audit log.
