@@ -42,6 +42,17 @@ func loadMemberships(db *gorm.DB, userID string) []membershipResponse {
 	return results
 }
 
+// tenantHasAPIKeys returns true if any of the user's tenants has at least one (non-revoked) API key.
+func tenantHasAPIKeys(db *gorm.DB, userID string) bool {
+	var count int64
+	db.Model(&models.APIKey{}).
+		Where("revoked = false AND tenant_id IN (?)",
+			db.Table("tenant_memberships").Select("tenant_id").
+				Where("user_id = ? AND status = ?", userID, models.StatusActive),
+		).Count(&count)
+	return count > 0
+}
+
 // handleAuthSync syncs a Clerk-authenticated user with the local database.
 // POST /v1/auth/sync
 //
@@ -85,12 +96,13 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 		}
 		memberships := loadMemberships(db, user.ID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     user.ID,
-			"email":       user.Email,
-			"name":        user.Name,
-			"status":      user.Status,
-			"is_new_user": false,
-			"memberships": memberships,
+			"user_id":      user.ID,
+			"email":        user.Email,
+			"name":         user.Name,
+			"status":       user.Status,
+			"is_new_user":  false,
+			"has_api_keys": tenantHasAPIKeys(db, user.ID),
+			"memberships":  memberships,
 		})
 		return
 	}
@@ -112,12 +124,13 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 
 		memberships := loadMemberships(db, req.ClerkUserID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     req.ClerkUserID,
-			"email":       byEmail.Email,
-			"name":        byEmail.Name,
-			"status":      byEmail.Status,
-			"is_new_user": false,
-			"memberships": memberships,
+			"user_id":      req.ClerkUserID,
+			"email":        byEmail.Email,
+			"name":         byEmail.Name,
+			"status":       byEmail.Status,
+			"is_new_user":  false,
+			"has_api_keys": tenantHasAPIKeys(db, req.ClerkUserID),
+			"memberships":  memberships,
 		})
 		return
 	}
@@ -219,12 +232,13 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 		slog.Info("auth_sync_user_activated", "email", req.Email, "user_id", req.ClerkUserID)
 		memberships := loadMemberships(db, req.ClerkUserID)
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     req.ClerkUserID,
-			"email":       req.Email,
-			"name":        name,
-			"status":      models.StatusActive,
-			"is_new_user": true,
-			"memberships": memberships,
+			"user_id":      req.ClerkUserID,
+			"email":        req.Email,
+			"name":         name,
+			"status":       models.StatusActive,
+			"is_new_user":  true,
+			"has_api_keys": tenantHasAPIKeys(db, req.ClerkUserID),
+			"memberships":  memberships,
 		})
 		return
 	}
@@ -308,12 +322,13 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 			}
 			memberships := loadMemberships(db, recovered.ID)
 			c.JSON(http.StatusOK, gin.H{
-				"user_id":     recovered.ID,
-				"email":       recovered.Email,
-				"name":        recovered.Name,
-				"status":      recovered.Status,
-				"is_new_user": false,
-				"memberships": memberships,
+				"user_id":      recovered.ID,
+				"email":        recovered.Email,
+				"name":         recovered.Name,
+				"status":       recovered.Status,
+				"is_new_user":  false,
+				"has_api_keys": tenantHasAPIKeys(db, recovered.ID),
+				"memberships":  memberships,
 			})
 			return
 		}
@@ -325,11 +340,12 @@ func (s *Server) handleAuthSync(c *gin.Context) {
 	slog.Info("auth_sync_new_tenant", "email", newUser.Email, "tenant_id", newTenant.ID, "user_id", newUser.ID)
 	memberships := loadMemberships(db, newUser.ID)
 	c.JSON(http.StatusCreated, gin.H{
-		"user_id":     newUser.ID,
-		"email":       newUser.Email,
-		"name":        newUser.Name,
-		"status":      newUser.Status,
-		"is_new_user": true,
-		"memberships": memberships,
+		"user_id":      newUser.ID,
+		"email":        newUser.Email,
+		"name":         newUser.Name,
+		"status":       newUser.Status,
+		"is_new_user":  true,
+		"has_api_keys": false,
+		"memberships":  memberships,
 	})
 }

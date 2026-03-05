@@ -28,7 +28,7 @@ export function hasPermission(userRole: UserRole | null, requiredRole: UserRole)
 export function useUserSync() {
   const { isSignedIn, isLoaded, user } = useUser()
   const { signOut } = useClerk()
-  const { setMemberships, setUserId, isSynced, orgRole, userId, activeTenantId } = useTenant()
+  const { setMemberships, setUserId, setHasApiKeys, isSynced, orgRole, userId, activeTenantId } = useTenant()
   const syncAttempted = useRef(false)
 
   const [state, setState] = useState<UserSyncState>({
@@ -96,6 +96,7 @@ export function useUserSync() {
         // Store memberships in TenantContext — this also sets activeTenantId and orgRole.
         const memberships: TenantMembership[] = data.memberships ?? []
         setMemberships(memberships)
+        setHasApiKeys(data.has_api_keys ?? false)
 
         setState({
           isSyncing: false,

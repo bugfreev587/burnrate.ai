@@ -12,9 +12,11 @@ interface TenantContextValue {
   orgRole: string | null
   userId: string | null
   isSynced: boolean
+  hasApiKeys: boolean | null
   switchTenant: (tenantId: number) => void
   setMemberships: (memberships: TenantMembership[]) => void
   setUserId: (id: string) => void
+  setHasApiKeys: (v: boolean) => void
 }
 
 const TenantContext = createContext<TenantContextValue>({
@@ -23,9 +25,11 @@ const TenantContext = createContext<TenantContextValue>({
   orgRole: null,
   userId: null,
   isSynced: false,
+  hasApiKeys: null,
   switchTenant: () => {},
   setMemberships: () => {},
   setUserId: () => {},
+  setHasApiKeys: () => {},
 })
 
 export function useTenant() {
@@ -34,6 +38,7 @@ export function useTenant() {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [memberships, setMembershipsState] = useState<TenantMembership[]>([])
+  const [hasApiKeys, setHasApiKeys] = useState<boolean | null>(null)
   const [userId, setUserIdState] = useState<string | null>(() => {
     return localStorage.getItem('user_id')
   })
@@ -94,8 +99,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   return (
     <TenantContext.Provider value={{
-      activeTenantId, memberships, orgRole, userId, isSynced,
-      switchTenant, setMemberships, setUserId,
+      activeTenantId, memberships, orgRole, userId, isSynced, hasApiKeys,
+      switchTenant, setMemberships, setUserId, setHasApiKeys,
     }}>
       {children}
     </TenantContext.Provider>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
-import { TenantProvider } from './contexts/TenantContext'
+import { TenantProvider, useTenant } from './contexts/TenantContext'
 import { useUserSync } from './hooks/useUserSync'
 import APIKeyModal from './components/APIKeyModal'
 import InactivityGuard from './components/InactivityGuard'
@@ -70,8 +70,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth()
+  const { hasApiKeys, isSynced } = useTenant()
   if (!isLoaded) return <div className="loading-center"><div className="spinner" /></div>
-  if (isSignedIn) return <Navigate to="/dashboard" replace />
+  if (isSignedIn) {
+    if (!isSynced) return <div className="loading-center"><div className="spinner" /></div>
+    return <Navigate to={hasApiKeys === false ? '/integration' : '/dashboard'} replace />
+  }
   return <>{children}</>
 }
 
