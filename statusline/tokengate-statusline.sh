@@ -206,6 +206,12 @@ if [ "$size" -gt 0 ] 2>/dev/null; then
     ctx_remain=$(( 100 - ctx_pct ))
 fi
 
+session_cost=$(echo "$input" | jq -r '.cost // 0' | LC_NUMERIC=C awk '{printf "%.4f", $1}')
+session_cost_nonzero=false
+if LC_NUMERIC=C awk "BEGIN {exit !($session_cost > 0.00005)}"; then
+    session_cost_nonzero=true
+fi
+
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 display_dir=""
 if [ -n "$cwd" ]; then
@@ -219,6 +225,11 @@ fi
 
 # ── Detect billing mode ─────────────────────────────────────────────────────
 tg_key="${TOKENGATE_API_KEY:-$ANTHROPIC_API_KEY}"
+# If key is still empty, extract X-TokenGate-Key value from ANTHROPIC_CUSTOM_HEADERS.
+# Supports format: "X-TokenGate-Key:tg_xxx..." or "Header1:v1,X-TokenGate-Key:tg_xxx..."
+if [ -z "$tg_key" ] && [ -n "$ANTHROPIC_CUSTOM_HEADERS" ]; then
+    tg_key=$(printf '%s' "$ANTHROPIC_CUSTOM_HEADERS" | grep -oE 'X-TokenGate-Key:[^,[:space:]]+' | head -1 | cut -d: -f2-)
+fi
 tg_base="${ANTHROPIC_BASE_URL:-}"
 tg_poll="${TOKENGATE_STATUSLINE_POLL:-60}"
 tg_blocks="${TOKENGATE_STATUSLINE_BARS:-6}"
@@ -372,6 +383,13 @@ build_output() {
     fi
 
     [ -n "$extra_part" ] && o+="${s}${extra_part}"
+
+    # Session cost — shown when billing is per-token (cost > 0) and no
+    # TokenGate gateway is providing its own cost breakdown.
+    if $session_cost_nonzero && [ "${#tg_parts[@]}" -eq 0 ]; then
+        cost_disp=$(LC_NUMERIC=C awk "BEGIN {printf \"\$%.4f\", $session_cost}")
+        o+="${s}${magenta}${cost_disp} session${reset}"
+    fi
 
     echo "$o"
 }
