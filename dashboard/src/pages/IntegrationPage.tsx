@@ -244,7 +244,7 @@ export default function IntegrationPage() {
               <iframe
                 width="100%"
                 height="400"
-                src="https://www.youtube.com/embed/UQ2ei1Lf4l4"
+                src="https://www.youtube.com/embed/0DlF6scMDx0"
                 title="Scenario 1: Anthropic — Browser Auth + Monthly Subscription"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
