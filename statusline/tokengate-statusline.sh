@@ -421,9 +421,9 @@ if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$t
                     b_used=$(echo "$budget" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
                     b_limit=$(echo "$budget" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
                     b_color=$(usage_color "$b_pct")
-                    b_bar=$(progress_bar "$b_pct" "$tg_blocks")
-                    label=$(echo "$period" | sed 's/monthly/Month/;s/daily/Day/;s/weekly/Week/')
-                    tg_parts+=("${cyan}${label}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_bar}${reset} ${b_color}${b_pct}%${reset}")
+                    b_bar=$(dot_bar "$b_pct" "$tg_blocks" "$b_color")
+                    label=$(echo "$period" | sed 's/monthly/month/;s/daily/day/;s/weekly/week/')
+                    tg_parts+=("${white}${label}${reset} ${b_color}${b_bar}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_pct}%${reset}")
                 fi
             done
         fi
