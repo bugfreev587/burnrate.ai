@@ -4,20 +4,26 @@
 # Displays real-time budget/cost/usage data from TokenGate gateway alongside
 # the standard Claude Code session info.
 #
-# Setup:
-#   1. Copy this script to ~/.claude/tokengate-statusline.sh
-#   2. chmod +x ~/.claude/tokengate-statusline.sh
-#   3. Configure in ~/.claude/settings.json:
-#      { "statusLine": { "type": "command", "command": "~/.claude/tokengate-statusline.sh" } }
+# For API_USAGE mode (BYOK): queries the TokenGate gateway for cost/budget data.
+# For MONTHLY_SUBSCRIPTION mode: queries Anthropic OAuth usage API directly for
+# 5h/7d rate limit windows — no TokenGate API call needed.
 #
-# Required environment variables:
+# Setup:
+#   1. Copy this script to ~/.claude/statusline-command.sh
+#   2. chmod +x ~/.claude/statusline-command.sh
+#   3. Configure in ~/.claude/settings.json:
+#      { "statusLine": { "type": "command", "command": "sh ~/.claude/statusline-command.sh" } }
+#
+# Required environment variables (API_USAGE mode only):
 #   ANTHROPIC_BASE_URL  - TokenGate gateway URL (e.g. https://gateway.tokengate.to)
 #   ANTHROPIC_API_KEY   - TokenGate API key (tg_xxx) or set via TOKENGATE_API_KEY
 #
 # Optional environment variables:
 #   TOKENGATE_API_KEY          - Explicit TokenGate key (overrides ANTHROPIC_API_KEY)
-#   TOKENGATE_STATUSLINE_POLL  - Cache TTL in seconds (default: 5)
-#   TOKENGATE_STATUSLINE_BARS  - Progress bar block count (default: 8)
+#   TOKENGATE_STATUSLINE_POLL  - Cache TTL in seconds (default: 60)
+#   TOKENGATE_STATUSLINE_BARS  - Progress bar block count (default: 6)
+#   TOKENGATE_BILLING_MODE     - Force billing mode: MONTHLY_SUBSCRIPTION | API_USAGE
+#   CLAUDE_CODE_OAUTH_TOKEN    - Explicit OAuth token (skips Keychain lookup)
 
 set -f  # disable globbing
 
@@ -40,6 +46,8 @@ magenta='\033[38;2;200;120;255m'
 dim='\033[2m'
 reset='\033[0m'
 
+sep=" ${dim}|${reset} "
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 format_tokens() {
     local num=$1
@@ -54,14 +62,32 @@ format_tokens() {
 
 usage_color() {
     local pct=$1
-    if [ "$pct" -ge 85 ]; then echo "$red"
-    elif [ "$pct" -ge 60 ]; then echo "$orange"
-    elif [ "$pct" -ge 40 ]; then echo "$yellow"
+    if [ "$pct" -ge 90 ]; then echo "$red"
+    elif [ "$pct" -ge 70 ]; then echo "$orange"
+    elif [ "$pct" -ge 50 ]; then echo "$yellow"
     else echo "$green"
     fi
 }
 
-# Build a progress bar: [■■■■□□□□]
+# Build a dot progress bar: ●●●○○○
+# Usage: dot_bar <percent> <num_blocks> <color>
+dot_bar() {
+    local pct=$1
+    local blocks=${2:-6}
+    local color=${3:-$green}
+    local filled=$(( (pct * blocks + 99) / 100 ))  # round up so >0% shows at least 1
+    [ "$pct" -eq 0 ] && filled=0
+    [ "$filled" -gt "$blocks" ] && filled=$blocks
+    [ "$filled" -lt 0 ] && filled=0
+    local empty=$(( blocks - filled ))
+
+    local bar=""
+    for (( i=0; i<filled; i++ )); do bar+="●"; done
+    for (( i=0; i<empty; i++ )); do bar+="○"; done
+    echo "$bar"
+}
+
+# Build a bracket progress bar: [■■■■□□□□]
 # Usage: progress_bar <percent> <num_blocks> <color>
 progress_bar() {
     local pct=$1
@@ -79,7 +105,85 @@ progress_bar() {
     echo "$bar"
 }
 
-sep=" ${dim}|${reset} "
+# Cross-platform ISO to epoch conversion
+iso_to_epoch() {
+    local iso_str="$1"
+    local epoch
+    # GNU date (Linux)
+    epoch=$(date -d "${iso_str}" +%s 2>/dev/null)
+    if [ -n "$epoch" ]; then echo "$epoch"; return 0; fi
+    # BSD date (macOS)
+    local stripped="${iso_str%%.*}"
+    stripped="${stripped%%Z}"
+    stripped="${stripped%%+*}"
+    stripped="${stripped%%-[0-9][0-9]:[0-9][0-9]}"
+    if [[ "$iso_str" == *"Z"* ]] || [[ "$iso_str" == *"+00:00"* ]] || [[ "$iso_str" == *"-00:00"* ]]; then
+        epoch=$(env TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "$stripped" +%s 2>/dev/null)
+    else
+        epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$stripped" +%s 2>/dev/null)
+    fi
+    if [ -n "$epoch" ]; then echo "$epoch"; return 0; fi
+    return 1
+}
+
+# Format ISO reset time to compact local time
+format_reset_time() {
+    local iso_str="$1"
+    local style="$2"
+    [ -z "$iso_str" ] || [ "$iso_str" = "null" ] && return
+    local epoch
+    epoch=$(iso_to_epoch "$iso_str")
+    [ -z "$epoch" ] && return
+    case "$style" in
+        time)
+            date -j -r "$epoch" +"%l:%M%p" 2>/dev/null | sed 's/^ //' | tr '[:upper:]' '[:lower:]' || \
+            date -d "@$epoch" +"%l:%M%P" 2>/dev/null | sed 's/^ //'
+            ;;
+        datetime)
+            date -j -r "$epoch" +"%b %-d, %l:%M%p" 2>/dev/null | sed 's/  / /g; s/^ //' | tr '[:upper:]' '[:lower:]' || \
+            date -d "@$epoch" +"%b %-d, %l:%M%P" 2>/dev/null | sed 's/  / /g; s/^ //'
+            ;;
+        *)
+            date -j -r "$epoch" +"%b %-d" 2>/dev/null | tr '[:upper:]' '[:lower:]' || \
+            date -d "@$epoch" +"%b %-d" 2>/dev/null
+            ;;
+    esac
+}
+
+# Resolve OAuth token: env var → macOS Keychain → Linux creds → GNOME Keyring
+get_oauth_token() {
+    if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+        echo "$CLAUDE_CODE_OAUTH_TOKEN"; return 0
+    fi
+    # macOS Keychain
+    if command -v security >/dev/null 2>&1; then
+        local blob
+        blob=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
+        if [ -n "$blob" ]; then
+            local token
+            token=$(echo "$blob" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+            if [ -n "$token" ] && [ "$token" != "null" ]; then echo "$token"; return 0; fi
+        fi
+    fi
+    # Linux credentials file
+    local creds_file="${HOME}/.claude/.credentials.json"
+    if [ -f "$creds_file" ]; then
+        local token
+        token=$(jq -r '.claudeAiOauth.accessToken // empty' "$creds_file" 2>/dev/null)
+        if [ -n "$token" ] && [ "$token" != "null" ]; then echo "$token"; return 0; fi
+    fi
+    # GNOME Keyring
+    if command -v secret-tool >/dev/null 2>&1; then
+        local blob
+        blob=$(timeout 2 secret-tool lookup service "Claude Code-credentials" 2>/dev/null)
+        if [ -n "$blob" ]; then
+            local token
+            token=$(echo "$blob" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+            if [ -n "$token" ] && [ "$token" != "null" ]; then echo "$token"; return 0; fi
+        fi
+    fi
+    echo ""
+}
 
 # ── Standard Claude Code info ────────────────────────────────────────────────
 model_name=$(echo "$input" | jq -r '.model.display_name // "Claude"')
@@ -95,18 +199,6 @@ current=$(( input_tokens + cache_create + cache_read ))
 used_tokens=$(format_tokens $current)
 total_tokens=$(format_tokens $size)
 
-out=""
-out+="${blue}${model_name}${reset}"
-
-cwd=$(echo "$input" | jq -r '.cwd // empty')
-if [ -n "$cwd" ]; then
-    display_dir="${cwd##*/}"
-    out+="${sep}${cyan}${display_dir}${reset}"
-fi
-
-out+="${sep}${orange}${used_tokens}/${total_tokens}${reset}"
-
-# ── Context window utilization (always available from Claude Code input) ─────
 ctx_pct=0
 ctx_remain=100
 if [ "$size" -gt 0 ] 2>/dev/null; then
@@ -114,20 +206,196 @@ if [ "$size" -gt 0 ] 2>/dev/null; then
     ctx_remain=$(( 100 - ctx_pct ))
 fi
 
-# ── TokenGate budget/cost data ───────────────────────────────────────────────
+cwd=$(echo "$input" | jq -r '.cwd // empty')
+display_dir=""
+if [ -n "$cwd" ]; then
+    display_dir="${cwd##*/}"
+fi
+
+# ── Detect thinking mode from Claude settings ────────────────────────────────
+thinking_label="Off"
+claude_settings="$HOME/.claude/settings.json"
+if [ -f "$claude_settings" ]; then
+    think_val=$(jq -r '.thinking // empty' "$claude_settings" 2>/dev/null)
+    if [ "$think_val" = "true" ] || [ "$think_val" = "enabled" ]; then
+        thinking_label="On"
+    fi
+fi
+
+# ── Detect billing mode ─────────────────────────────────────────────────────
 tg_key="${TOKENGATE_API_KEY:-$ANTHROPIC_API_KEY}"
 tg_base="${ANTHROPIC_BASE_URL:-}"
-tg_poll="${TOKENGATE_STATUSLINE_POLL:-5}"
-tg_blocks="${TOKENGATE_STATUSLINE_BARS:-8}"
+tg_poll="${TOKENGATE_STATUSLINE_POLL:-60}"
+tg_blocks="${TOKENGATE_STATUSLINE_BARS:-6}"
+billing_mode="${TOKENGATE_BILLING_MODE:-}"
 
-if [ -n "$tg_key" ] && [ -n "$tg_base" ]; then
+# Auto-detect: if no ANTHROPIC_BASE_URL or key starts with non-tg prefix,
+# assume monthly subscription mode
+if [ -z "$billing_mode" ]; then
+    if [ -z "$tg_base" ] || [ -z "$tg_key" ]; then
+        billing_mode="MONTHLY_SUBSCRIPTION"
+    else
+        billing_mode="AUTO"
+    fi
+fi
+
+# ── Measure visible width (strip ANSI escapes) ──────────────────────────────
+visible_len() {
+    printf "%b" "$1" | sed $'s/\033\[[0-9;]*m//g' | wc -m | tr -d ' '
+}
+
+# Terminal width: status line scripts don't have a real TTY, so tput returns 80.
+# Use COLUMNS env var if set, otherwise default to 200 (assume wide terminal).
+# Users can override via: export COLUMNS=120 in their shell profile.
+cols=${COLUMNS:-200}
+
+# ── Precompute context color ────────────────────────────────────────────────
+ctx_color=$(usage_color "$ctx_pct")
+
+# ── Fetch usage data for MONTHLY_SUBSCRIPTION ────────────────────────────────
+five_pct="" ; five_reset="" ; five_color="" ; five_bar=""
+seven_pct="" ; seven_reset="" ; seven_color="" ; seven_bar=""
+extra_part=""
+
+if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
+    cache_file="/tmp/claude/statusline-usage-cache.json"
+    cache_max_age="${tg_poll}"
+    mkdir -p /tmp/claude
+
+    needs_refresh=true
+    usage_data=""
+
+    if [ -f "$cache_file" ]; then
+        cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
+        now_epoch=$(date +%s)
+        cache_age=$(( now_epoch - cache_mtime ))
+        if [ "$cache_age" -lt "$cache_max_age" ]; then
+            needs_refresh=false
+            usage_data=$(cat "$cache_file" 2>/dev/null)
+        fi
+    fi
+
+    if $needs_refresh; then
+        token=$(get_oauth_token)
+        if [ -n "$token" ] && [ "$token" != "null" ]; then
+            cc_version=$(echo "$input" | jq -r '.version // "2.1.0"')
+            response=$(curl -s --max-time 5 \
+                -H "Accept: application/json" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer $token" \
+                -H "anthropic-beta: oauth-2025-04-20" \
+                -H "User-Agent: claude-code/${cc_version}" \
+                "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
+            # Only cache valid usage responses (must have five_hour key, not error responses)
+            if [ -n "$response" ] && echo "$response" | jq -e '.five_hour' >/dev/null 2>&1; then
+                usage_data="$response"
+                echo "$response" > "$cache_file"
+            fi
+        fi
+        # Fall back to stale cache only if it contains valid data
+        if [ -z "$usage_data" ] && [ -f "$cache_file" ]; then
+            _stale=$(cat "$cache_file" 2>/dev/null)
+            if echo "$_stale" | jq -e '.five_hour' >/dev/null 2>&1; then
+                usage_data="$_stale"
+            fi
+        fi
+    fi
+
+    if [ -n "$usage_data" ] && echo "$usage_data" | jq -e '.five_hour' >/dev/null 2>&1; then
+        five_pct=$(echo "$usage_data" | jq -r '.five_hour.utilization // 0' | awk '{printf "%.0f", $1}')
+        five_reset_iso=$(echo "$usage_data" | jq -r '.five_hour.resets_at // empty')
+        five_reset=$(format_reset_time "$five_reset_iso" "time")
+        five_color=$(usage_color "$five_pct")
+        five_bar=$(dot_bar "$five_pct" "$tg_blocks" "$five_color")
+
+        seven_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
+        seven_reset_iso=$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')
+        seven_reset=$(format_reset_time "$seven_reset_iso" "datetime")
+        seven_color=$(usage_color "$seven_pct")
+        seven_bar=$(dot_bar "$seven_pct" "$tg_blocks" "$seven_color")
+
+        extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
+        if [ "$extra_enabled" = "true" ]; then
+            extra_pct=$(echo "$usage_data" | jq -r '.extra_usage.utilization // 0' | awk '{printf "%.0f", $1}')
+            extra_used=$(echo "$usage_data" | jq -r '.extra_usage.used_credits // 0' | LC_NUMERIC=C awk '{printf "%.2f", $1/100}')
+            extra_limit=$(echo "$usage_data" | jq -r '.extra_usage.monthly_limit // 0' | LC_NUMERIC=C awk '{printf "%.2f", $1/100}')
+            if [ -n "$extra_used" ] && [ -n "$extra_limit" ]; then
+                extra_color=$(usage_color "$extra_pct")
+                extra_part="${white}extra${reset} ${extra_color}\$${extra_used}/\$${extra_limit}${reset}"
+            fi
+        fi
+    fi
+fi
+
+# ── Assemble output with adaptive density ────────────────────────────────────
+# Strategy: try 3 levels — full → compact → minimal
+#   Level 1 (full):    " | " separators, thinking, dot bars
+#   Level 2 (compact): "|" separators (no spaces), drop thinking
+#   Level 3 (minimal): "|" separators, drop thinking + dot bars
+
+build_output() {
+    local level=$1   # 1=full, 2=compact, 3=minimal
+    local s          # separator
+
+    if [ "$level" -le 1 ]; then
+        s=" ${dim}|${reset} "
+    else
+        s="${dim}|${reset}"
+    fi
+
+    local o=""
+    o+="${blue}${model_name}${reset}"
+    [ -n "$display_dir" ] && o+="${s}${cyan}${display_dir}${reset}"
+    o+="${s}${orange}${used_tokens}/${total_tokens}${reset}"
+    o+="${s}${ctx_color}${ctx_pct}% used${reset}"
+    o+="${s}${dim}${ctx_remain}% remain${reset}"
+
+    # Thinking (only in level 1)
+    if [ "$level" -le 1 ]; then
+        if [ "$thinking_label" = "On" ]; then
+            o+="${s}thinking: ${green}On${reset}"
+        else
+            o+="${s}thinking: ${dim}Off${reset}"
+        fi
+    fi
+
+    # Monthly subscription rate windows
+    if [ -n "$five_pct" ]; then
+        if [ "$level" -le 2 ]; then
+            # With dot bars
+            o+="${s}${white}5h${reset} ${five_color}${five_bar}${reset} ${five_color}${five_pct}%${reset}"
+        else
+            # No dot bars
+            o+="${s}${white}5h${reset} ${five_color}${five_pct}%${reset}"
+        fi
+        [ -n "$five_reset" ] && o+=" ${dim}@${five_reset}${reset}"
+    fi
+
+    if [ -n "$seven_pct" ]; then
+        if [ "$level" -le 2 ]; then
+            o+="${s}${white}7d${reset} ${seven_color}${seven_bar}${reset} ${seven_color}${seven_pct}%${reset}"
+        else
+            o+="${s}${white}7d${reset} ${seven_color}${seven_pct}%${reset}"
+        fi
+        [ -n "$seven_reset" ] && o+=" ${dim}@${seven_reset}${reset}"
+    fi
+
+    [ -n "$extra_part" ] && o+="${s}${extra_part}"
+
+    echo "$o"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# API_USAGE / AUTO MODE — append TokenGate data to build_output
+# ═════════════════════════════════════════════════════════════════════════════
+tg_suffix=""
+if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$tg_base" ]; then
     cache_file="/tmp/claude/tokengate-statusline-cache.json"
     mkdir -p /tmp/claude
 
     needs_refresh=true
     tg_data=""
 
-    # Check cache
     if [ -f "$cache_file" ]; then
         cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
         now_epoch=$(date +%s)
@@ -138,75 +406,71 @@ if [ -n "$tg_key" ] && [ -n "$tg_base" ]; then
         fi
     fi
 
-    # Fetch from TokenGate gateway
     if $needs_refresh; then
         response=$(curl -s --max-time 2 \
             -H "X-TokenGate-Key: ${tg_key}" \
             -H "Accept: application/json" \
             "${tg_base}/v1/statusline" 2>/dev/null)
-
         if [ -n "$response" ] && echo "$response" | jq -e '.ok' >/dev/null 2>&1; then
             tg_data="$response"
             echo "$response" > "$cache_file"
         fi
-
-        # Fall back to stale cache
         if [ -z "$tg_data" ] && [ -f "$cache_file" ]; then
             tg_data=$(cat "$cache_file" 2>/dev/null)
         fi
     fi
 
-    # Render TokenGate data
     if [ -n "$tg_data" ] && echo "$tg_data" | jq -e '.ok' >/dev/null 2>&1; then
-        billing_mode=$(echo "$tg_data" | jq -r '.billing_mode // ""')
+        tg_billing=$(echo "$tg_data" | jq -r '.billing_mode // ""')
 
-        if [ "$billing_mode" = "API_USAGE" ]; then
-            # ── API Usage mode: show cost + budget bars ──────────────────
+        if [ "$tg_billing" = "API_USAGE" ]; then
             cost_today=$(echo "$tg_data" | jq -r '.cost.today // "0.0000"')
             cost_display=$(echo "$cost_today" | awk '{printf "$%.2f", $1}')
-            out+="${sep}${magenta}${cost_display} today${reset}"
+            tg_suffix+="${magenta}${cost_display} today${reset}"
 
-            # Monthly budget
-            monthly=$(echo "$tg_data" | jq -r '.budgets.monthly // empty')
-            if [ -n "$monthly" ] && [ "$monthly" != "null" ]; then
-                m_pct=$(echo "$monthly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-                m_used=$(echo "$monthly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-                m_limit=$(echo "$monthly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-                m_color=$(usage_color "$m_pct")
-                m_bar=$(progress_bar "$m_pct" "$tg_blocks")
-                out+="${sep}${cyan}Month${reset} ${orange}${m_used}/${m_limit}${reset} ${m_color}${m_bar}${reset} ${m_color}${m_pct}%${reset}"
-            fi
-
-            # Daily budget
-            daily=$(echo "$tg_data" | jq -r '.budgets.daily // empty')
-            if [ -n "$daily" ] && [ "$daily" != "null" ]; then
-                d_pct=$(echo "$daily" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-                d_used=$(echo "$daily" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-                d_limit=$(echo "$daily" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-                d_color=$(usage_color "$d_pct")
-                d_bar=$(progress_bar "$d_pct" "$tg_blocks")
-                out+="${sep}${cyan}Day${reset} ${orange}${d_used}/${d_limit}${reset} ${d_color}${d_bar}${reset} ${d_color}${d_pct}%${reset}"
-            fi
-
-            # Weekly budget (if present)
-            weekly=$(echo "$tg_data" | jq -r '.budgets.weekly // empty')
-            if [ -n "$weekly" ] && [ "$weekly" != "null" ]; then
-                w_pct=$(echo "$weekly" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
-                w_used=$(echo "$weekly" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
-                w_limit=$(echo "$weekly" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
-                w_color=$(usage_color "$w_pct")
-                w_bar=$(progress_bar "$w_pct" "$tg_blocks")
-                out+="${sep}${cyan}Week${reset} ${orange}${w_used}/${w_limit}${reset} ${w_color}${w_bar}${reset} ${w_color}${w_pct}%${reset}"
-            fi
-        else
-            # ── Monthly Subscription mode: show context window usage ─────
-            ctx_color=$(usage_color "$ctx_pct")
-            ctx_bar=$(progress_bar "$ctx_pct" "$tg_blocks" "$ctx_color")
-            out+="${sep}${ctx_color}${ctx_bar}${reset} ${ctx_color}${ctx_pct}% used${reset} ${dim}${ctx_remain}% remain${reset}"
+            for period in monthly daily weekly; do
+                budget=$(echo "$tg_data" | jq -r ".budgets.${period} // empty")
+                if [ -n "$budget" ] && [ "$budget" != "null" ]; then
+                    b_pct=$(echo "$budget" | jq -r '.percent // 0' | awk '{printf "%.0f", $1}')
+                    b_used=$(echo "$budget" | jq -r '.used // "0"' | awk '{printf "$%.0f", $1}')
+                    b_limit=$(echo "$budget" | jq -r '.limit // "0"' | awk '{printf "$%.0f", $1}')
+                    b_color=$(usage_color "$b_pct")
+                    b_bar=$(progress_bar "$b_pct" "$tg_blocks")
+                    label=$(echo "$period" | sed 's/monthly/Month/;s/daily/Day/;s/weekly/Week/')
+                    tg_suffix+="|${cyan}${label}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_bar}${reset} ${b_color}${b_pct}%${reset}"
+                fi
+            done
         fi
     elif [ -n "$tg_key" ]; then
-        out+="${sep}${dim}TokenGate: unavailable${reset}"
+        tg_suffix+="${dim}TokenGate: unavailable${reset}"
     fi
+fi
+
+# ── Build with adaptive density and append TokenGate suffix ──────────────────
+# build_output returns the base line; we append tg_suffix with the same separator style
+
+assemble() {
+    local level=$1
+    local base
+    base=$(build_output "$level")
+    if [ -n "$tg_suffix" ]; then
+        local s
+        if [ "$level" -le 1 ]; then s=" ${dim}|${reset} "; else s="${dim}|${reset}"; fi
+        # tg_suffix uses | as internal separator; replace with styled separator
+        local styled_suffix
+        styled_suffix=$(echo "$tg_suffix" | sed "s/|/${s}/g")
+        base+="${s}${styled_suffix}"
+    fi
+    echo "$base"
+}
+
+# Try each density level until it fits
+out=$(assemble 1)
+if [ "$(visible_len "$out")" -gt "$cols" ]; then
+    out=$(assemble 2)
+fi
+if [ "$(visible_len "$out")" -gt "$cols" ]; then
+    out=$(assemble 3)
 fi
 
 printf "%b" "$out"
