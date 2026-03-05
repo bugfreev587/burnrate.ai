@@ -159,17 +159,19 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 		return
 	}
 
-	url, err := svc.CreateCheckoutSession(c.Request.Context(), tenantID, req.Plan, req.SuccessURL, req.CancelURL)
+	url, sessionID, err := svc.CreateCheckoutSession(c.Request.Context(), tenantID, req.Plan, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		slog.Error("billing_checkout_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
 		return
 	}
 
-	s.recordAuditEvent(c, models.AuditBillingCheckout, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
+	s.recordAuditEvent(c, models.AuditBillingCheckoutInitiated, "billing", fmt.Sprintf("%d", tenantID), AuditOpts{
 		Category: models.AuditCategoryBilling,
 		Metadata: map[string]interface{}{
-			"plan": req.Plan,
+			"plan":                req.Plan,
+			"checkout_session_id": sessionID,
+			"status":              "pending",
 		},
 	})
 
@@ -545,6 +547,32 @@ func (s *Server) processBillingWebhook(c *gin.Context, svc *services.StripeServi
 			slog.Error("billing_webhook_handler_error", "handler", "HandleCheckoutCompleted", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
+		}
+		// Update the BILLING.CHECKOUT_INITIATED audit log to success
+		if tenantIDStr := sess.Metadata["tenant_id"]; tenantIDStr != "" {
+			var tid uint
+			if _, err := fmt.Sscanf(tenantIDStr, "%d", &tid); err == nil {
+				if err := s.auditLogSvc.UpdateCheckoutStatus(ctx, tid, sess.ID, true, "completed"); err != nil {
+					slog.Warn("audit_checkout_status_update_failed", "session_id", sess.ID, "error", err)
+				}
+			}
+		}
+
+	case "checkout.session.expired":
+		var sess stripe.CheckoutSession
+		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
+			slog.Error("billing_webhook_parse_error", "event_type", "checkout.session.expired", "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
+			return
+		}
+		// Update the BILLING.CHECKOUT_INITIATED audit log to failed
+		if tenantIDStr := sess.Metadata["tenant_id"]; tenantIDStr != "" {
+			var tid uint
+			if _, err := fmt.Sscanf(tenantIDStr, "%d", &tid); err == nil {
+				if err := s.auditLogSvc.UpdateCheckoutStatus(ctx, tid, sess.ID, false, "expired"); err != nil {
+					slog.Warn("audit_checkout_status_update_failed", "session_id", sess.ID, "error", err)
+				}
+			}
 		}
 
 	case "customer.subscription.created", "customer.subscription.updated":

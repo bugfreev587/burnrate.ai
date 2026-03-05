@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -93,4 +95,34 @@ func (s *AuditLogService) List(ctx context.Context, tenantID uint, filter AuditF
 		return nil, 0, err
 	}
 	return logs, total, nil
+}
+
+// UpdateCheckoutStatus finds the BILLING.CHECKOUT_INITIATED audit log entry
+// matching the given checkout session ID and updates its success status and metadata.
+func (s *AuditLogService) UpdateCheckoutStatus(ctx context.Context, tenantID uint, checkoutSessionID string, success bool, status string) error {
+	var entry models.AuditLog
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND action = ? AND metadata::jsonb @> ?::jsonb",
+			tenantID, models.AuditBillingCheckoutInitiated,
+			`{"checkout_session_id":"`+checkoutSessionID+`"}`).
+		Order("created_at DESC").
+		First(&entry).Error
+	if err != nil {
+		return fmt.Errorf("find checkout audit log: %w", err)
+	}
+
+	updates := map[string]interface{}{
+		"success": success,
+	}
+
+	// Update status in metadata
+	var meta map[string]interface{}
+	if err := json.Unmarshal([]byte(entry.Metadata), &meta); err == nil {
+		meta["status"] = status
+		if b, err := json.Marshal(meta); err == nil {
+			updates["metadata"] = string(b)
+		}
+	}
+
+	return s.db.WithContext(ctx).Model(&entry).Updates(updates).Error
 }

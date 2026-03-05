@@ -144,15 +144,16 @@ func (s *StripeService) EnsureCustomer(ctx context.Context, tenantID uint) (stri
 // ── Checkout & Portal ────────────────────────────────────────────────────────
 
 // CreateCheckoutSession creates a Stripe Checkout session for subscribing to a paid plan.
-func (s *StripeService) CreateCheckoutSession(ctx context.Context, tenantID uint, plan, successURL, cancelURL string) (string, error) {
+// It returns the checkout URL and the Stripe session ID.
+func (s *StripeService) CreateCheckoutSession(ctx context.Context, tenantID uint, plan, successURL, cancelURL string) (string, string, error) {
 	customerID, err := s.EnsureCustomer(ctx, tenantID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	priceID, err := s.PriceIDForPlan(plan)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	params := &stripe.CheckoutSessionParams{
@@ -179,10 +180,10 @@ func (s *StripeService) CreateCheckoutSession(ctx context.Context, tenantID uint
 
 	sess, err := s.client.CheckoutSessions.New(params)
 	if err != nil {
-		return "", fmt.Errorf("create checkout session: %w", err)
+		return "", "", fmt.Errorf("create checkout session: %w", err)
 	}
 
-	return sess.URL, nil
+	return sess.URL, sess.ID, nil
 }
 
 // VerifyCheckoutSession fetches a completed Checkout session from Stripe and

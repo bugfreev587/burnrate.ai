@@ -155,7 +155,7 @@ const (
 	AuditRateLimitUpdated = "RATE_LIMIT.UPDATED"
 	AuditRateLimitDeleted = "RATE_LIMIT.DELETED"
 
-	AuditBillingCheckout         = "BILLING.CHECKOUT"
+	AuditBillingCheckoutInitiated = "BILLING.CHECKOUT_INITIATED"
 	AuditBillingPlanChanged      = "BILLING.PLAN_CHANGED"
 	AuditBillingDowngraded       = "BILLING.DOWNGRADED"
 	AuditBillingDowngradeCanceled = "BILLING.DOWNGRADE_CANCELED"

@@ -469,7 +469,7 @@ export default function AuditPage() {
                       <option value="PRICING_CONFIG.UNASSIGNED">Pricing Config Unassigned</option>
                     </optgroup>
                     <optgroup label="Billing">
-                      <option value="BILLING.CHECKOUT">Billing Checkout</option>
+                      <option value="BILLING.CHECKOUT_INITIATED">Billing Checkout Initiated</option>
                       <option value="BILLING.PLAN_CHANGED">Billing Plan Changed</option>
                       <option value="BILLING.DOWNGRADED">Billing Downgraded</option>
                       <option value="BILLING.DOWNGRADE_CANCELED">Billing Downgrade Canceled</option>
