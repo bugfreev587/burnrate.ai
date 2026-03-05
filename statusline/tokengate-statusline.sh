@@ -210,15 +210,10 @@ cwd=$(echo "$input" | jq -r '.cwd // empty')
 display_dir=""
 if [ -n "$cwd" ]; then
     display_dir="${cwd##*/}"
-fi
-
-# ── Detect thinking mode from Claude settings ────────────────────────────────
-thinking_label="Off"
-claude_settings="$HOME/.claude/settings.json"
-if [ -f "$claude_settings" ]; then
-    think_val=$(jq -r '.thinking // empty' "$claude_settings" 2>/dev/null)
-    if [ "$think_val" = "true" ] || [ "$think_val" = "enabled" ]; then
-        thinking_label="On"
+    # Append git branch if inside a git repo
+    git_branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ -n "$git_branch" ]; then
+        display_dir="${display_dir}@${git_branch}"
     fi
 fi
 
@@ -329,9 +324,9 @@ fi
 
 # ── Assemble output with adaptive density ────────────────────────────────────
 # Strategy: try 3 levels — full → compact → minimal
-#   Level 1 (full):    " | " separators, thinking, dot bars
-#   Level 2 (compact): "|" separators (no spaces), drop thinking
-#   Level 3 (minimal): "|" separators, drop thinking + dot bars
+#   Level 1 (full):    " | " spacious separators, dot bars
+#   Level 2 (compact): "|" tight separators, no dot bars
+#   Level 3 (minimal): "|" tight separators, no dot bars, no reset times
 
 build_output() {
     local level=$1   # 1=full, 2=compact, 3=minimal
@@ -349,15 +344,6 @@ build_output() {
     o+="${s}${orange}${used_tokens}/${total_tokens}${reset}"
     o+="${s}${ctx_color}${ctx_pct}% used${reset}"
     o+="${s}${dim}${ctx_remain}% remain${reset}"
-
-    # Thinking (only in level 1)
-    if [ "$level" -le 1 ]; then
-        if [ "$thinking_label" = "On" ]; then
-            o+="${s}thinking: ${green}On${reset}"
-        else
-            o+="${s}thinking: ${dim}Off${reset}"
-        fi
-    fi
 
     # Monthly subscription rate windows
     if [ -n "$five_pct" ]; then
