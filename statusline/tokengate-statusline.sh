@@ -268,18 +268,18 @@ five_pct="" ; five_reset="" ; five_color="" ; five_bar=""
 seven_pct="" ; seven_reset="" ; seven_color="" ; seven_bar=""
 extra_part=""
 
-if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
-    cache_file="/tmp/claude/statusline-usage-cache.json"
-    cache_max_age="${tg_poll}"
+fetch_oauth_usage() {
+    local cache_file="/tmp/claude/statusline-usage-cache.json"
+    local cache_max_age="${tg_poll}"
     mkdir -p /tmp/claude
 
-    needs_refresh=true
+    local needs_refresh=true
     usage_data=""
 
     if [ -f "$cache_file" ]; then
-        cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
-        now_epoch=$(date +%s)
-        cache_age=$(( now_epoch - cache_mtime ))
+        local cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
+        local now_epoch=$(date +%s)
+        local cache_age=$(( now_epoch - cache_mtime ))
         if [ "$cache_age" -lt "$cache_max_age" ]; then
             needs_refresh=false
             usage_data=$(cat "$cache_file" 2>/dev/null)
@@ -287,9 +287,12 @@ if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
     fi
 
     if $needs_refresh; then
+        local token
         token=$(get_oauth_token)
         if [ -n "$token" ] && [ "$token" != "null" ]; then
+            local cc_version
             cc_version=$(echo "$input" | jq -r '.version // "2.1.0"')
+            local response
             response=$(curl -s --max-time 5 \
                 -H "Accept: application/json" \
                 -H "Content-Type: application/json" \
@@ -297,14 +300,13 @@ if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
                 -H "anthropic-beta: oauth-2025-04-20" \
                 -H "User-Agent: claude-code/${cc_version}" \
                 "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
-            # Only cache valid usage responses (must have five_hour key, not error responses)
             if [ -n "$response" ] && echo "$response" | jq -e '.five_hour' >/dev/null 2>&1; then
                 usage_data="$response"
                 echo "$response" > "$cache_file"
             fi
         fi
-        # Fall back to stale cache only if it contains valid data
         if [ -z "$usage_data" ] && [ -f "$cache_file" ]; then
+            local _stale
             _stale=$(cat "$cache_file" 2>/dev/null)
             if echo "$_stale" | jq -e '.five_hour' >/dev/null 2>&1; then
                 usage_data="$_stale"
@@ -336,6 +338,10 @@ if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
             fi
         fi
     fi
+}
+
+if [ "$billing_mode" = "MONTHLY_SUBSCRIPTION" ]; then
+    fetch_oauth_usage
 fi
 
 # ── Assemble output with adaptive density ────────────────────────────────────
@@ -449,6 +455,9 @@ if [ "$billing_mode" != "MONTHLY_SUBSCRIPTION" ] && [ -n "$tg_key" ] && [ -n "$t
                     tg_parts+=("${white}${label}${reset} ${b_color}${b_bar}${reset} ${orange}${b_used}/${b_limit}${reset} ${b_color}${b_pct}%${reset}")
                 fi
             done
+        elif [ "$tg_billing" = "MONTHLY_SUBSCRIPTION" ]; then
+            # TokenGate proxy with monthly subscription — fetch OAuth rate limits only
+            fetch_oauth_usage
         fi
     elif [ -n "$tg_key" ]; then
         tg_parts+=("${dim}TokenGate: unavailable${reset}")
