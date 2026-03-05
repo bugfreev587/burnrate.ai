@@ -130,6 +130,7 @@ func (s *Server) setupRoutes() {
 		proxyGroup.Any("/gemini/*path", s.proxyHandler.HandleProxy)
 		proxyGroup.Any("/bedrock/*path", s.proxyHandler.HandleProxy)
 		proxyGroup.Any("/vertex/*path", s.proxyHandler.HandleProxy)
+		proxyGroup.GET("/statusline", s.handleStatusLine)
 	}
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
