@@ -22,7 +22,9 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Stripe billing** – Self-serve plan upgrades via Stripe Checkout, customer portal for payment management, invoice history, and webhook-driven plan sync. Downgrades scheduled at period end.
 - **Plan tiers** – Free / Pro / Team / Business. Each tier controls API key count, provider key count, team member count, project count, allowed budget period types, hard-block permissions, per-key budget scope, rate limit access, per-key rate limits, notification channel count, data retention window, and export access.
 - **Audit logs** – Immutable audit trail for administrative actions (API key create/revoke, project create/update/delete, member invite/remove, provider key create/revoke). Logged with actor, action, resource type, and resource ID.
-- **Super admin** – Platform-wide dashboard for operators: tenant listing with search/filter, plan changes, tenant suspension, platform statistics, and per-customer revenue tracking. Access gated by `SUPER_ADMIN_EMAILS` env var.
+- **Audit reports** – On-demand PDF/CSV audit report generation with configurable filters (API keys, models, providers, billing mode, date range). Reports are generated asynchronously via a background worker, stored in Cloudflare R2, and downloadable via presigned URLs.
+- **Structured logging** – JSON logs to stdout plus optional Better Stack (Logtail) forwarding via `slog-betterstack`. Controlled by the `BETTERSTACK_SOURCE_TOKEN` env var.
+- **Super admin** – Platform-wide dashboard for operators: tenant listing with search/filter, plan changes, tenant suspension, platform statistics, and per-customer revenue tracking. Access gated by `SUPER_ADMIN_EMAILS` env var. Super admin billing routes to a Stripe sandbox for safe test transactions.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 
 ### Planned features
@@ -70,6 +72,20 @@ The following features are on the roadmap and marked "Coming Soon" on the landin
 
 ## Recent changes
 
+- **2026-03-04** – New users without API keys are automatically redirected to the Integration page after sign-up.
+- **2026-03-04** – Sign-up completion routed through `PublicOnlyRoute` for proper redirect; auth sync completes before rendering protected routes.
+- **2026-03-04** – Checkout payment outcomes (success/failure) tracked in audit log.
+- **2026-03-04** – Super admin billing routed to Stripe sandbox for safe test transactions.
+- **2026-03-04** – Video embeds added to all integration scenarios on the Integration page.
+- **2026-03-04** – Legal pages updated with explicit proxy, cost estimate, and AI generation disclaimers.
+- **2026-03-03** – Audit report downloads via presigned R2 URLs; Cloudflare R2 required for audit report artifact storage (tenant-scoped object keys).
+- **2026-03-03** – Dashboard spend limit cards redesigned to single-line layout with 5-second auto-refresh.
+- **2026-03-03** – Audit reports support optional Recent Requests section.
+- **2026-03-03** – Explanatory copy added to Pricing Config page.
+- **2026-03-03** – Gateway latency measured after body read to exclude network transfer time.
+- **2026-03-02** – Dashboard V2: unified summary endpoint, mini line charts, gap-filled timeseries, adaptive auto-refresh (5s when Recent Requests expanded, 5min when collapsed).
+- **2026-03-02** – Audit page shows 10 entries by default with "Show more" button.
+- **2026-03-02** – Structured logging with Better Stack integration (`slog-betterstack`); logs sent to both stdout and Better Stack when `BETTERSTACK_SOURCE_TOKEN` is set.
 - **2026-03-02** – Token Usage panels now show both "API usage billed" and "monthly subscription" breakdown lines. Backend exposes `requests` and `billed_requests` in the tokens summary.
 - **2026-03-01** – Custom sign-up flow with integrated Terms of Service checkbox using Clerk's `useSignUp()` hook.
 - **2026-03-01** – Comprehensive Terms of Service and Privacy Policy content added at `/terms` and `/privacy`.
@@ -301,6 +317,7 @@ api-server/
     │   ├── notifications.go          # Notification channel CRUD + user notifications
     │   ├── billing.go                # Stripe checkout, portal, plan changes, webhooks
     │   ├── superadmin.go             # Platform-wide tenant management
+    │   ├── audit.go                  # Audit report CRUD + download endpoints
     │   └── middleware.go             # CORS · logger (errors + slow only) · rate-limit
     ├── middleware/
     │   ├── auth.go                   # API key validation
@@ -320,11 +337,15 @@ api-server/
     ├── services/
     │   ├── apikey_service.go         # HMAC-SHA256 + Redis cache
     │   ├── usage_service.go          # Usage log CRUD
+    │   ├── audit_service.go          # Audit report CRUD + R2 presigned URL generation
+    │   ├── objectstore.go            # S3-compatible object store client (Cloudflare R2)
     │   └── providerkey_service.go    # AES-256-GCM envelope encryption + in-process cache (30s idle / 5m hard)
     │                                 # + Redis TPS cache (30s idle / 5m hard) + atomic Rotate + policy_version
     ├── events/
     │   ├── queue.go                  # Redis Streams producer (XADD)
-    │   └── worker.go                 # Redis Streams consumer (XREADGROUP + XACK)
+    │   ├── worker.go                 # Redis Streams consumer (XREADGROUP + XACK)
+    │   ├── report_queue.go           # Audit report job queue (Redis Streams)
+    │   └── report_worker.go          # Audit report generation worker (PDF/CSV)
     ├── proxy/
     │   ├── handler.go                # Reverse proxy + shared helpers (rate limit, budget, auth, response headers)
     │   ├── responses_handler.go      # POST /v1/responses — provider-aware routing (OpenAI / Anthropic)
@@ -336,6 +357,8 @@ api-server/
     │   └── request.go                # Request metadata extraction (model, max_tokens, max_output_tokens)
     ├── ratelimit/
     │   └── limiter.go                # Redis sliding-window rate limiter (RPM/ITPM/OTPM)
+    ├── logging/
+    │   └── logger.go                 # Structured logging: stdout JSON + optional Better Stack (multiHandler)
     ├── db/postgres.go                # GORM init + AutoMigrate + seed
     └── config/config.go              # YAML config + env overrides
 ```
@@ -363,6 +386,7 @@ api-server/
 | `ProjectMembership` | `id`, `project_id`, `user_id`, `role` (project_admin\|project_editor\|project_viewer) |
 | `NotificationChannel` | `id`, `tenant_id`, `type` (email\|slack\|webhook), `config` (jsonb), `events` (jsonb), `enabled` |
 | `UserNotification` | `id`, `user_id`, `tenant_id`, `type`, `title`, `body`, `data` (jsonb), `read` |
+| `AuditReport` | `id`, `tenant_id`, `created_by_user_id`, `period_start`, `period_end`, `timezone`, `filters` (jsonb), `format` (PDF\|CSV), `status` (QUEUED\|RUNNING\|COMPLETED\|FAILED), `artifact_key` (R2 object key), `artifact_size_bytes`, `row_count`, `generated_checksum` |
 
 ### Provider key encryption
 
@@ -680,6 +704,16 @@ Org-level Owner and Admin bypass project membership checks and have implicit acc
 | GET | `/v1/billing/invoices` | List Stripe invoices |
 | POST | `/v1/billing/webhook` | Stripe webhook handler |
 
+#### Audit reports (Viewer+ read, Admin+ create/delete)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/audit/reports` | List audit reports for the tenant |
+| GET | `/v1/audit/reports/:id` | Get a single audit report |
+| GET | `/v1/audit/reports/:id/download` | Get presigned R2 download URL |
+| POST | `/v1/audit/reports` | Create a new audit report generation job (Admin+) |
+| DELETE | `/v1/audit/reports/:id` | Delete an audit report (Admin+) |
+
 #### Audit logs (Admin+)
 
 | Method | Path | Description |
@@ -730,6 +764,18 @@ Production config is loaded from `conf/api-server-prod.yaml`. Sensitive values a
 | `STRIPE_PRICE_ID_PRO_ANNUAL` | Stripe Price ID for the Pro annual plan. |
 | `STRIPE_PRICE_ID_TEAM_MONTHLY` | Stripe Price ID for the Team monthly plan. |
 | `STRIPE_PRICE_ID_TEAM_ANNUAL` | Stripe Price ID for the Team annual plan. |
+| `STRIPE_SANDBOX_SECRET_KEY` | Stripe sandbox secret key (used by super admin for test billing). |
+| `STRIPE_SANDBOX_WEBHOOK_SECRET` | Stripe sandbox webhook signing secret. |
+| `R2_ENDPOINT` | Cloudflare R2 S3-compatible endpoint URL. **Required** for audit report storage. |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key ID. |
+| `R2_ACCESS_KEY_SECRET` | Cloudflare R2 secret access key. |
+| `R2_BUCKET_NAME` | Cloudflare R2 bucket name for audit report artifacts. |
+| `BETTERSTACK_SOURCE_TOKEN` | Better Stack (Logtail) source token. When set, logs are forwarded to Better Stack in addition to stdout. |
+| `SMTP_HOST` | SMTP server host for email notifications. |
+| `SMTP_PORT` | SMTP server port. |
+| `SMTP_USER` | SMTP username. |
+| `SMTP_PASS` | SMTP password. |
+| `SMTP_FROM` | Sender email address for notifications. |
 
 ---
 
@@ -753,7 +799,7 @@ dashboard/
 │   │   ├── LandingPage.tsx      # Marketing landing page (/)
 │   │   ├── SignInPage.tsx       # Clerk sign-in embed
 │   │   ├── SignUpPage.tsx       # Custom sign-up with ToS checkbox (useSignUp)
-│   │   ├── Dashboard.tsx        # Usage summary + trend charts + collapsible log table + date range
+│   │   ├── DashboardV2.tsx      # Unified dashboard: summary cards, mini line charts, spend limits, recent requests
 │   │   ├── ProfilePage.tsx      # Clerk profile embed
 │   │   ├── ManagementPage.tsx   # Team, API key (provider+auth_method+billing_mode), and provider key management
 │   │   ├── LimitsPage.tsx       # Spend limits + rate limits management (unified)
@@ -763,6 +809,7 @@ dashboard/
 │   │   ├── PlanPage.tsx         # Plan tier + usage meters + comparison table (owner only)
 │   │   ├── IntegrationPage.tsx  # Setup docs: provider scenarios, API reference, troubleshooting
 │   │   ├── SuperAdminPage.tsx   # Platform-wide tenant management (email-gated)
+│   │   ├── AuditPage.tsx        # Audit report generation + list + download
 │   │   ├── TermsPage.tsx        # Terms of Service (/terms)
 │   │   └── PrivacyPage.tsx      # Privacy Policy (/privacy)
 │   ├── components/
@@ -791,7 +838,8 @@ dashboard/
 │       ├── useDashboardConfig.ts# Dashboard config fetcher (plan-aware retention)
 │       ├── usePricingConfig.ts  # Pricing config fetcher
 │       ├── useSpendLimits.ts    # Spend limit CRUD hook
-│       └── useRateLimits.ts     # Rate limit CRUD hook
+│       ├── useRateLimits.ts     # Rate limit CRUD hook
+│       └── useAuditReports.ts  # Audit report CRUD + download hook
 ├── tailwind.config.ts           # Tailwind v3; preflight disabled; scoped to landing/** only
 ├── postcss.config.js            # PostCSS (tailwindcss + autoprefixer)
 ├── vercel.json                  # SPA rewrite (all routes → index.html)
@@ -802,14 +850,15 @@ dashboard/
 
 - **LandingPage** – Public marketing page at `/` with hero, problem, solution, features, how-it-works, social proof, pricing, FAQ, and footer sections. Built with Tailwind CSS (scoped to avoid conflict with the existing dark-theme CSS variables used by the dashboard).
 - **PublicPricingPage** – Full pricing page at `/pricing`. Monthly/annual billing toggle with savings callout, 4-column card grid (Pro saves $60/yr, Team saves $68/yr), feature comparison with "Everything in X, plus:" inheritance lines, and a Business card with Contact Sales CTA.
-- **Dashboard** – Summary cards (requests / tokens / cost), trend charts with plan-aware date range selection (presets: 1d, 3d, 7d, 14d, 30d, 90d + custom range picker), cost overview with explanatory note (filters by BYOK billable requests only), budget status bars sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical) showing provider name and correct action labels (Alert only / Block only / Alert + Block), and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Token Usage panels show both "API usage billed" and "monthly subscription" lines that sum to the main total. Non-billable (subscription) requests display $0.00 cost. Auto-refresh uses adaptive polling: 5-minute interval when the Recent Requests panel is collapsed, 5-second interval when expanded for near real-time monitoring. Refreshes update data silently in the background without showing a loading spinner (spinner only appears on initial page load or date range change). Recent Requests defaults to collapsed on page load.
+- **DashboardV2** – Unified dashboard with summary cards (requests / tokens / cost), mini line charts, spend limit cards (single-line layout with 5s auto-refresh), gap-filled daily timeseries, and a collapsible recent requests table (shows 10 rows by default with expand/collapse toggle) with a billing filter dropdown (All Requests / API Usage Billed / Monthly Subscription). Token Usage panels show both "API usage billed" and "monthly subscription" lines that sum to the main total. Non-billable (subscription) requests display $0.00 cost. Auto-refresh uses adaptive polling: 5-minute interval when the Recent Requests panel is collapsed, 5-second interval when expanded for near real-time monitoring. Refreshes update data silently in the background without showing a loading spinner (spinner only appears on initial page load or date range change). Recent Requests defaults to collapsed on page load.
 - **ManagementPage** – Team members table (invite, change role, suspend, remove), Gateway API Keys table (create with provider + auth method + billing mode selection, revoke, one-time secret display), Provider Keys table (add, activate, revoke). The curl test section is shown for BYOK keys.
 - **LimitsPage** – Unified spend limits and rate limits management. Spend limits support alert, hard block, or both actions with plan-gated period types, per-key scoping, and optional per-provider scoping (All Providers / Anthropic / OpenAI) via dropdown selectors. Spend limits table is sorted by period (monthly → weekly → daily) then provider (All first, then alphabetical). Rate limits support RPM, ITPM, and OTPM metrics with catalog-driven model/provider dropdowns.
 - **PricingConfigPage** – Create named pricing configs and assign them to individual API keys for per-key price overrides.
 - **PlanPage** – Owner-only. Shows current plan badge, live usage meters (API keys used / limit, members used / limit), a full four-tier comparison table with the current plan highlighted, and an upgrade CTA.
 - **IntegrationPage** – Comprehensive setup documentation: Anthropic scenarios (Subscription / API Usage / BYOK), OpenAI scenarios (Codex / BYOK), API endpoints, budget headers, notification setup, troubleshooting, FAQ, and Roles & Permissions reference. Includes VS Code extension configuration with `claudeCode.environmentVariables` settings.json snippets.
 - **SuperAdminPage** – Platform-wide dashboard for operators. Tenant listing with search, plan filter, status filter. Drill-down into tenant details (members, keys, projects, usage, revenue). Plan change and tenant suspension controls.
-- **TermsPage / PrivacyPage** – Public legal pages at `/terms` and `/privacy` with last-updated dates.
+- **AuditPage** – Generate, list, and download audit reports. Supports PDF and CSV formats with configurable filters (date range, API keys, models, providers, billing mode). Reports are generated asynchronously and stored in Cloudflare R2. Shows 10 entries by default with a "Show more" button.
+- **TermsPage / PrivacyPage** – Public legal pages at `/terms` and `/privacy` with last-updated dates. Includes explicit proxy, cost estimate, and AI generation disclaimers.
 - **SignUpPage** – Custom sign-up flow with integrated Terms of Service checkbox using Clerk's `useSignUp()` hook. Users must accept ToS before account creation.
 - **InactivityGuard** – Wraps the authenticated app. Tracks mouse, keyboard, scroll, touch, and click events. After 8 minutes idle a warning modal appears with a live countdown timer (turns red in the last 30 s). "Stay signed in" or any activity resets the full 10-minute timer; at 0:00 Clerk `signOut()` is called automatically. Renders via React portal (z-index 2000).
 
@@ -820,6 +869,7 @@ dashboard/
 - **`useDashboardConfig`** – Fetches plan-aware dashboard config (`GET /v1/dashboard/config`) including data retention window for the tenant's plan tier.
 - **`useSpendLimits`** – CRUD hook for spend limits (`GET/PUT/DELETE /v1/admin/budget`). Includes current spend, percentage used, and optional provider scope.
 - **`useRateLimits`** – CRUD hook for rate limits (`GET/PUT/DELETE /v1/admin/rate-limits`). Includes current usage from Redis counters.
+- **`useAuditReports`** – CRUD hook for audit reports (`GET/POST/DELETE /v1/audit/reports`). Handles report creation, polling for completion, and presigned R2 download URLs.
 
 ### Branding
 
@@ -854,6 +904,11 @@ REDIS_URL=redis://...
 API_KEY_PEPPER=<random-secret>
 CORS_ORIGINS=https://app.tokengate.to
 PROVIDER_KEY_ENCRYPTION_KEY=<openssl rand -hex 32>
+R2_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<r2-access-key>
+R2_ACCESS_KEY_SECRET=<r2-secret-key>
+R2_BUCKET_NAME=tokengate-audit-reports
+BETTERSTACK_SOURCE_TOKEN=<betterstack-source-token>  # optional
 ```
 
 ### Frontend (Vercel)
@@ -981,3 +1036,8 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Custom sign-up with ToS checkbox | ✅ Live |
 | Integration / How It Works documentation page | ✅ Live |
 | Audit logs (admin action trail) | ✅ Live |
+| Audit reports (PDF/CSV generation + R2 storage) | ✅ Live |
+| Cloudflare R2 object storage (audit report artifacts) | ✅ Live |
+| Better Stack structured logging | ✅ Live |
+| Stripe sandbox (super admin test billing) | ✅ Live |
+| New user onboarding redirect (→ Integration page) | ✅ Live |
