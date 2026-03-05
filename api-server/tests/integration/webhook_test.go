@@ -55,6 +55,7 @@ func webhookRouter() http.Handler {
 		nil, // proxyHandler
 		rateLimiter,
 		stripeSvc,
+		nil, // sandboxStripeSvc
 		nil, // auditSvc
 		auditLogSvc,
 		nil, // reportQueue

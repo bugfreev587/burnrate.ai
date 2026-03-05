@@ -51,7 +51,7 @@ func (s *Server) handleDeleteAccount(c *gin.Context) {
 
 	// 2. Cancel Stripe subscription immediately (best-effort)
 	if tenant.StripeSubscriptionID != "" {
-		if err := s.stripeSvc.CancelSubscriptionImmediately(tenant.StripeSubscriptionID); err != nil {
+		if err := s.stripeServiceForContext(c).CancelSubscriptionImmediately(tenant.StripeSubscriptionID); err != nil {
 			slog.Warn("account_delete_cancel_stripe_failed", "subscription_id", tenant.StripeSubscriptionID, "tenant_id", tenant.ID, "error", err)
 		}
 	}

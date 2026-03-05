@@ -13,6 +13,7 @@ import (
 
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
+	"github.com/xiaoboyu/tokengate/api-server/internal/services"
 )
 
 // validateRedirectURL ensures a URL is valid for use as a Stripe redirect target.
@@ -51,20 +52,22 @@ func (s *Server) handleBillingStatus(c *gin.Context) {
 		return
 	}
 
+	svc := s.stripeServiceForContext(c)
+
 	resp := gin.H{
 		"plan":               tenant.Plan,
 		"plan_status":        tenant.PlanStatus,
 		"has_subscription":   tenant.StripeSubscriptionID != "",
 		"billing_email":      tenant.BillingEmail,
 		"current_period_end": tenant.CurrentPeriodEnd,
-		"stripe_configured":  s.stripeSvc.IsConfigured(),
+		"stripe_configured":  svc.IsConfigured(),
 		"pending_plan":       tenant.PendingPlan,
 		"plan_effective_at":  tenant.PlanEffectiveAt,
 	}
 
 	// Fetch payment method info from Stripe if configured and subscribed
-	if s.stripeSvc.IsConfigured() && tenant.StripeSubscriptionID != "" {
-		subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), tenantID)
+	if svc.IsConfigured() && tenant.StripeSubscriptionID != "" {
+		subInfo, err := svc.GetSubscription(c.Request.Context(), tenantID)
 		if err != nil {
 			slog.Error("billing_fetch_subscription_failed", "tenant_id", tenantID, "error", err)
 		} else if subInfo != nil {
@@ -109,7 +112,8 @@ type checkoutRequest struct {
 }
 
 func (s *Server) handleBillingCheckout(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -155,7 +159,7 @@ func (s *Server) handleBillingCheckout(c *gin.Context) {
 		return
 	}
 
-	url, err := s.stripeSvc.CreateCheckoutSession(c.Request.Context(), tenantID, req.Plan, req.SuccessURL, req.CancelURL)
+	url, err := svc.CreateCheckoutSession(c.Request.Context(), tenantID, req.Plan, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		slog.Error("billing_checkout_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
@@ -179,7 +183,8 @@ type verifyCheckoutRequest struct {
 }
 
 func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -197,7 +202,7 @@ func (s *Server) handleBillingCheckoutVerify(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.VerifyCheckoutSession(c.Request.Context(), tenantID, req.SessionID); err != nil {
+	if err := svc.VerifyCheckoutSession(c.Request.Context(), tenantID, req.SessionID); err != nil {
 		slog.Error("billing_checkout_verify_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to verify checkout session"})
 		return
@@ -219,7 +224,8 @@ type portalRequest struct {
 }
 
 func (s *Server) handleBillingPortal(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -252,7 +258,7 @@ func (s *Server) handleBillingPortal(c *gin.Context) {
 		return
 	}
 
-	url, err := s.stripeSvc.CreatePortalSession(c.Request.Context(), tenantID, req.ReturnURL)
+	url, err := svc.CreatePortalSession(c.Request.Context(), tenantID, req.ReturnURL)
 	if err != nil {
 		slog.Error("billing_portal_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create portal session"})
@@ -269,7 +275,8 @@ type downgradeRequest struct {
 }
 
 func (s *Server) handleBillingDowngrade(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -308,7 +315,7 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 		return
 	}
 
-	if err := s.stripeSvc.ScheduleDowngrade(c.Request.Context(), tenantID, req.Plan); err != nil {
+	if err := svc.ScheduleDowngrade(c.Request.Context(), tenantID, req.Plan); err != nil {
 		slog.Error("billing_downgrade_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -335,7 +342,8 @@ func (s *Server) handleBillingDowngrade(c *gin.Context) {
 // ── POST /v1/billing/downgrade/cancel ───────────────────────────────────────
 
 func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -347,7 +355,7 @@ func (s *Server) handleBillingCancelDowngrade(c *gin.Context) {
 	}
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
-	if err := s.stripeSvc.CancelScheduledDowngrade(c.Request.Context(), tenantID); err != nil {
+	if err := svc.CancelScheduledDowngrade(c.Request.Context(), tenantID); err != nil {
 		slog.Error("billing_cancel_downgrade_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -373,7 +381,8 @@ type changeBillingPlanRequest struct {
 }
 
 func (s *Server) handleBillingChangePlan(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
@@ -419,7 +428,7 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 
 	oldPlan := tenant.Plan
 
-	if err := s.stripeSvc.ChangeSubscriptionPlan(c.Request.Context(), tenantID, req.Plan); err != nil {
+	if err := svc.ChangeSubscriptionPlan(c.Request.Context(), tenantID, req.Plan); err != nil {
 		slog.Error("billing_change_plan_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change plan"})
 		return
@@ -445,7 +454,8 @@ func (s *Server) handleBillingChangePlan(c *gin.Context) {
 // ── GET /v1/billing/invoices ─────────────────────────────────────────────────
 
 func (s *Server) handleBillingInvoices(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	svc := s.stripeServiceForContext(c)
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusOK, []interface{}{})
 		return
 	}
@@ -457,7 +467,7 @@ func (s *Server) handleBillingInvoices(c *gin.Context) {
 	}
 	tenantID, _ := middleware.GetTenantIDFromContext(c)
 
-	invoices, err := s.stripeSvc.ListInvoices(c.Request.Context(), tenantID, 24)
+	invoices, err := svc.ListInvoices(c.Request.Context(), tenantID, 24)
 	if err != nil {
 		slog.Error("billing_invoices_error", "tenant_id", tenantID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoices"})
@@ -470,11 +480,26 @@ func (s *Server) handleBillingInvoices(c *gin.Context) {
 // ── POST /v1/billing/webhook ─────────────────────────────────────────────────
 
 func (s *Server) handleBillingWebhook(c *gin.Context) {
-	if !s.stripeSvc.IsConfigured() {
+	s.processBillingWebhook(c, s.stripeSvc)
+}
+
+// ── POST /v1/billing/sandbox-webhook ─────────────────────────────────────────
+
+func (s *Server) handleBillingSandboxWebhook(c *gin.Context) {
+	if s.sandboxStripeSvc == nil || !s.sandboxStripeSvc.IsConfigured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sandbox Stripe is not configured"})
+		return
+	}
+	s.processBillingWebhook(c, s.sandboxStripeSvc)
+}
+
+// processBillingWebhook handles webhook events using the given StripeService.
+func (s *Server) processBillingWebhook(c *gin.Context, svc *services.StripeService) {
+	if !svc.IsConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Stripe is not configured"})
 		return
 	}
-	if !s.stripeSvc.IsWebhookConfigured() {
+	if !svc.IsWebhookConfigured() {
 		slog.Warn("billing_webhook_secret_not_configured")
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "webhook secret not configured"})
 		return
@@ -487,7 +512,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	}
 
 	sigHeader := c.GetHeader("Stripe-Signature")
-	event, err := s.stripeSvc.ConstructEvent(payload, sigHeader)
+	event, err := svc.ConstructEvent(payload, sigHeader)
 	if err != nil {
 		slog.Warn("billing_webhook_signature_failed", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid signature"})
@@ -495,7 +520,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 	}
 
 	// Idempotency check
-	isNew, err := s.stripeSvc.MarkEventProcessed(c.Request.Context(), event.ID)
+	isNew, err := svc.MarkEventProcessed(c.Request.Context(), event.ID)
 	if err != nil {
 		slog.Error("billing_idempotency_check_error", "event_id", event.ID, "error", err)
 		// Continue processing — better to double-process than to drop
@@ -516,7 +541,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
-		if err := s.stripeSvc.HandleCheckoutCompleted(ctx, &sess); err != nil {
+		if err := svc.HandleCheckoutCompleted(ctx, &sess); err != nil {
 			slog.Error("billing_webhook_handler_error", "handler", "HandleCheckoutCompleted", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
@@ -529,7 +554,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
-		if err := s.stripeSvc.HandleSubscriptionUpdated(ctx, &sub); err != nil {
+		if err := svc.HandleSubscriptionUpdated(ctx, &sub); err != nil {
 			slog.Error("billing_webhook_handler_error", "handler", "HandleSubscriptionUpdated", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
@@ -542,7 +567,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
-		if err := s.stripeSvc.HandleSubscriptionDeleted(ctx, &sub); err != nil {
+		if err := svc.HandleSubscriptionDeleted(ctx, &sub); err != nil {
 			slog.Error("billing_webhook_handler_error", "handler", "HandleSubscriptionDeleted", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
@@ -555,7 +580,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
-		if err := s.stripeSvc.HandleInvoicePaid(ctx, &inv); err != nil {
+		if err := svc.HandleInvoicePaid(ctx, &inv); err != nil {
 			slog.Error("billing_webhook_handler_error", "handler", "HandleInvoicePaid", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return
@@ -568,7 +593,7 @@ func (s *Server) handleBillingWebhook(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
 			return
 		}
-		if err := s.stripeSvc.HandleInvoicePaymentFailed(ctx, &inv); err != nil {
+		if err := svc.HandleInvoicePaymentFailed(ctx, &inv); err != nil {
 			slog.Error("billing_webhook_handler_error", "handler", "HandleInvoicePaymentFailed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "handler error"})
 			return

@@ -34,8 +34,9 @@ type Server struct {
 	providerKeySvc *services.ProviderKeyService
 	proxyHandler   *proxy.ProxyHandler
 	rateLimiter    *ratelimit.Limiter
-	stripeSvc      *services.StripeService
-	auditSvc       *services.AuditReportService
+	stripeSvc             *services.StripeService
+	sandboxStripeSvc      *services.StripeService
+	auditSvc              *services.AuditReportService
 	auditLogSvc    *services.AuditLogService
 	reportQueue    *events.ReportQueue
 	notifWorker    *events.NotificationWorker
@@ -58,6 +59,7 @@ func NewServer(
 	proxyHandler *proxy.ProxyHandler,
 	rateLimiter *ratelimit.Limiter,
 	stripeSvc *services.StripeService,
+	sandboxStripeSvc *services.StripeService,
 	auditSvc *services.AuditReportService,
 	auditLogSvc *services.AuditLogService,
 	reportQueue *events.ReportQueue,
@@ -80,8 +82,9 @@ func NewServer(
 		providerKeySvc: providerKeySvc,
 		proxyHandler:   proxyHandler,
 		rateLimiter:    rateLimiter,
-		stripeSvc:      stripeSvc,
-		auditSvc:       auditSvc,
+		stripeSvc:        stripeSvc,
+		sandboxStripeSvc: sandboxStripeSvc,
+		auditSvc:         auditSvc,
 		auditLogSvc:    auditLogSvc,
 		reportQueue:    reportQueue,
 		notifWorker:    notifWorker,
@@ -295,6 +298,8 @@ func (s *Server) setupRoutes() {
 
 	// Billing webhook (public — signature-verified in handler)
 	s.router.POST("/v1/billing/webhook", s.handleBillingWebhook)
+	// Sandbox billing webhook for super admin test transactions
+	s.router.POST("/v1/billing/sandbox-webhook", s.handleBillingSandboxWebhook)
 
 	// ─── Owner only ──────────────────────────────────────────────────────────
 	owner := s.router.Group("/v1/owner")
@@ -427,4 +432,17 @@ func (s *Server) superAdminMiddleware() gin.HandlerFunc {
 		c.Set("super_admin_user", &user)
 		c.Next()
 	}
+}
+
+// stripeServiceForContext returns the sandbox StripeService if the requesting user
+// is a super admin and sandbox Stripe is configured; otherwise returns the production service.
+// This allows super admin users to use Stripe test mode for billing operations.
+func (s *Server) stripeServiceForContext(c *gin.Context) *services.StripeService {
+	if s.sandboxStripeSvc != nil && s.sandboxStripeSvc.IsConfigured() {
+		user, ok := middleware.GetUserFromContext(c)
+		if ok && s.superAdminEmails[strings.ToLower(user.Email)] {
+			return s.sandboxStripeSvc
+		}
+	}
+	return s.stripeSvc
 }

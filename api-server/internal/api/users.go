@@ -853,8 +853,9 @@ func (s *Server) handleGetTenantSettings(c *gin.Context) {
 
 	// Self-heal: if Stripe's actual plan differs from DB (e.g. webhook was
 	// missed or a previous update failed), correct it on read.
-	if s.stripeSvc.IsConfigured() && tenant.StripeSubscriptionID != "" && tenant.PendingPlan == "" {
-		if subInfo, err := s.stripeSvc.GetSubscription(c.Request.Context(), tenantID); err != nil {
+	svc := s.stripeServiceForContext(c)
+	if svc.IsConfigured() && tenant.StripeSubscriptionID != "" && tenant.PendingPlan == "" {
+		if subInfo, err := svc.GetSubscription(c.Request.Context(), tenantID); err != nil {
 			slog.Error("settings_plan_sync_fetch_failed", "tenant_id", tenantID, "error", err)
 		} else if subInfo != nil && subInfo.DetectedPlan != "" && subInfo.DetectedPlan != tenant.Plan {
 			if err := s.postgresDB.GetDB().Model(&tenant).Updates(map[string]any{

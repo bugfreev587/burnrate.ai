@@ -8,11 +8,7 @@ import (
 	"time"
 
 	"github.com/stripe/stripe-go/v82"
-	billingportalsession "github.com/stripe/stripe-go/v82/billingportal/session"
-	checkoutsession "github.com/stripe/stripe-go/v82/checkout/session"
-	"github.com/stripe/stripe-go/v82/customer"
-	"github.com/stripe/stripe-go/v82/invoice"
-	"github.com/stripe/stripe-go/v82/subscription"
+	stripeclient "github.com/stripe/stripe-go/v82/client"
 	"github.com/stripe/stripe-go/v82/webhook"
 	"gorm.io/gorm"
 
@@ -21,17 +17,22 @@ import (
 )
 
 // StripeService encapsulates all Stripe operations.
+// Each instance holds its own API client with its own secret key,
+// allowing production and sandbox services to coexist.
 type StripeService struct {
-	db  *gorm.DB
-	cfg config.StripeCfg
+	db     *gorm.DB
+	cfg    config.StripeCfg
+	client *stripeclient.API
 }
 
-// NewStripeService creates a new StripeService and sets the global Stripe key.
+// NewStripeService creates a new StripeService with its own per-instance Stripe client.
+// It no longer sets the global stripe.Key, so multiple services with different keys can coexist.
 func NewStripeService(db *gorm.DB, cfg config.StripeCfg) *StripeService {
+	s := &StripeService{db: db, cfg: cfg}
 	if cfg.SecretKey != "" {
-		stripe.Key = cfg.SecretKey
+		s.client = stripeclient.New(cfg.SecretKey, nil)
 	}
-	return &StripeService{db: db, cfg: cfg}
+	return s
 }
 
 // IsConfigured returns true when a Stripe secret key has been provided.
@@ -50,7 +51,7 @@ func (s *StripeService) CancelSubscriptionImmediately(subscriptionID string) err
 	if subscriptionID == "" {
 		return nil
 	}
-	_, err := subscription.Cancel(subscriptionID, nil)
+	_, err := s.client.Subscriptions.Cancel(subscriptionID, nil)
 	if err != nil {
 		return fmt.Errorf("cancel subscription %s: %w", subscriptionID, err)
 	}
@@ -127,7 +128,7 @@ func (s *StripeService) EnsureCustomer(ctx context.Context, tenantID uint) (stri
 	params.AddMetadata("tenant_id", fmt.Sprintf("%d", tenant.ID))
 	params.Context = ctx
 
-	cust, err := customer.New(params)
+	cust, err := s.client.Customers.New(params)
 	if err != nil {
 		return "", fmt.Errorf("create stripe customer: %w", err)
 	}
@@ -176,7 +177,7 @@ func (s *StripeService) CreateCheckoutSession(ctx context.Context, tenantID uint
 	params.AddMetadata("plan", plan)
 	params.Context = ctx
 
-	sess, err := checkoutsession.New(params)
+	sess, err := s.client.CheckoutSessions.New(params)
 	if err != nil {
 		return "", fmt.Errorf("create checkout session: %w", err)
 	}
@@ -193,7 +194,7 @@ func (s *StripeService) VerifyCheckoutSession(ctx context.Context, tenantID uint
 	params.AddExpand("subscription")
 	params.Context = ctx
 
-	sess, err := checkoutsession.Get(sessionID, params)
+	sess, err := s.client.CheckoutSessions.Get(sessionID, params)
 	if err != nil {
 		return fmt.Errorf("fetch checkout session: %w", err)
 	}
@@ -234,7 +235,7 @@ func (s *StripeService) ScheduleDowngrade(ctx context.Context, tenantID uint, ta
 	// Determine the current period end from Stripe
 	getParams := &stripe.SubscriptionParams{}
 	getParams.Context = ctx
-	sub, err := subscription.Get(tenant.StripeSubscriptionID, getParams)
+	sub, err := s.client.Subscriptions.Get(tenant.StripeSubscriptionID, getParams)
 	if err != nil {
 		return fmt.Errorf("get subscription: %w", err)
 	}
@@ -252,7 +253,7 @@ func (s *StripeService) ScheduleDowngrade(ctx context.Context, tenantID uint, ta
 			CancelAtPeriodEnd: stripe.Bool(true),
 		}
 		updateParams.Context = ctx
-		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+		if _, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
 			return fmt.Errorf("set cancel_at_period_end: %w", err)
 		}
 	} else {
@@ -278,7 +279,7 @@ func (s *StripeService) ScheduleDowngrade(ctx context.Context, tenantID uint, ta
 			ProrationBehavior: stripe.String("none"),
 		}
 		updateParams.Context = ctx
-		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+		if _, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
 			return fmt.Errorf("update subscription price for downgrade: %w", err)
 		}
 	}
@@ -317,7 +318,7 @@ func (s *StripeService) CancelScheduledDowngrade(ctx context.Context, tenantID u
 			CancelAtPeriodEnd: stripe.Bool(false),
 		}
 		updateParams.Context = ctx
-		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+		if _, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
 			return fmt.Errorf("unset cancel_at_period_end: %w", err)
 		}
 	} else {
@@ -329,7 +330,7 @@ func (s *StripeService) CancelScheduledDowngrade(ctx context.Context, tenantID u
 
 		getParams := &stripe.SubscriptionParams{}
 		getParams.Context = ctx
-		sub, err := subscription.Get(tenant.StripeSubscriptionID, getParams)
+		sub, err := s.client.Subscriptions.Get(tenant.StripeSubscriptionID, getParams)
 		if err != nil {
 			return fmt.Errorf("get subscription: %w", err)
 		}
@@ -348,7 +349,7 @@ func (s *StripeService) CancelScheduledDowngrade(ctx context.Context, tenantID u
 			ProrationBehavior: stripe.String("none"),
 		}
 		updateParams.Context = ctx
-		if _, err := subscription.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
+		if _, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, updateParams); err != nil {
 			return fmt.Errorf("revert subscription price: %w", err)
 		}
 	}
@@ -388,7 +389,7 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 			CancelAtPeriodEnd: stripe.Bool(false),
 		}
 		undoParams.Context = ctx
-		if _, err := subscription.Update(tenant.StripeSubscriptionID, undoParams); err != nil {
+		if _, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, undoParams); err != nil {
 			slog.Warn("stripe_unset_cancel_at_period_end_failed", "tenant_id", tenantID, "error", err)
 		}
 	}
@@ -396,7 +397,7 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 	// Fetch the current subscription to get the item ID
 	getParams := &stripe.SubscriptionParams{}
 	getParams.Context = ctx
-	sub, err := subscription.Get(tenant.StripeSubscriptionID, getParams)
+	sub, err := s.client.Subscriptions.Get(tenant.StripeSubscriptionID, getParams)
 	if err != nil {
 		return fmt.Errorf("get subscription: %w", err)
 	}
@@ -420,7 +421,7 @@ func (s *StripeService) ChangeSubscriptionPlan(ctx context.Context, tenantID uin
 	updateParams.AddMetadata("plan", newPlan)
 	updateParams.Context = ctx
 
-	updatedSub, err := subscription.Update(tenant.StripeSubscriptionID, updateParams)
+	updatedSub, err := s.client.Subscriptions.Update(tenant.StripeSubscriptionID, updateParams)
 	if err != nil {
 		return fmt.Errorf("update subscription: %w", err)
 	}
@@ -464,7 +465,7 @@ func (s *StripeService) CreatePortalSession(ctx context.Context, tenantID uint, 
 	}
 	params.Context = ctx
 
-	sess, err := billingportalsession.New(params)
+	sess, err := s.client.BillingPortalSessions.New(params)
 	if err != nil {
 		return "", fmt.Errorf("create portal session: %w", err)
 	}
@@ -503,7 +504,7 @@ func (s *StripeService) GetSubscription(ctx context.Context, tenantID uint) (*Su
 	params.AddExpand("customer.invoice_settings.default_payment_method")
 	params.Context = ctx
 
-	sub, err := subscription.Get(tenant.StripeSubscriptionID, params)
+	sub, err := s.client.Subscriptions.Get(tenant.StripeSubscriptionID, params)
 	if err != nil {
 		return nil, fmt.Errorf("get subscription: %w", err)
 	}
@@ -568,7 +569,7 @@ func (s *StripeService) ListInvoices(ctx context.Context, tenantID uint, limit i
 	params.Context = ctx
 
 	var invoices []InvoiceInfo
-	iter := invoice.List(params)
+	iter := s.client.Invoices.List(params)
 	for iter.Next() {
 		inv := iter.Invoice()
 		invoices = append(invoices, InvoiceInfo{
@@ -606,7 +607,7 @@ func (s *StripeService) GetPlatformRevenue(ctx context.Context) (totalCents int6
 	params.Filters.AddFilter("limit", "", "100")
 	params.Context = ctx
 
-	iter := invoice.List(params)
+	iter := s.client.Invoices.List(params)
 	for iter.Next() {
 		inv := iter.Invoice()
 		totalCents += inv.AmountPaid
@@ -731,7 +732,7 @@ func (s *StripeService) HandleSubscriptionUpdated(ctx context.Context, sub *stri
 		)
 		params := &stripe.SubscriptionParams{}
 		params.Context = ctx
-		freshSub, err := subscription.Get(sub.ID, params)
+		freshSub, err := s.client.Subscriptions.Get(sub.ID, params)
 		if err == nil {
 			plan = s.planFromSubscription(freshSub)
 			if plan == "" {

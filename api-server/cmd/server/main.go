@@ -166,7 +166,7 @@ func main() {
 	pricingEngine.SetNotificationQueue(events.NewPricingNotificationAdapter(notifQueue))
 	rateLimiter.SetNotificationQueue(events.NewRateLimitNotificationAdapter(notifQueue))
 
-	// Stripe billing service
+	// Stripe billing service (production)
 	stripeSvc := services.NewStripeService(postgresDB.GetDB(), cfg.Stripe)
 	if stripeSvc.IsConfigured() {
 		slog.Info("Stripe billing configured")
@@ -177,6 +177,16 @@ func main() {
 		slog.Warn("Stripe not configured — billing endpoints will return 503/empty")
 	}
 
+	// Stripe sandbox service (for super admin test billing)
+	var sandboxStripeSvc *services.StripeService
+	if cfg.StripeSandbox.SecretKey != "" {
+		sandboxStripeSvc = services.NewStripeService(postgresDB.GetDB(), cfg.StripeSandbox)
+		slog.Info("Stripe sandbox configured for super admin billing")
+		if !sandboxStripeSvc.IsWebhookConfigured() {
+			slog.Warn("Stripe sandbox is configured but STRIPE_SANDBOX_WEBHOOK_SECRET is missing — sandbox webhooks will not be verified")
+		}
+	}
+
 	// Gateway event service (records blocked requests: rate limits, budget exceeded)
 	gatewayEventSvc := services.NewGatewayEventService(postgresDB.GetDB())
 
@@ -184,7 +194,7 @@ func main() {
 	proxyHandler := proxy.NewProxyHandler(providerKeySvc, eventQueue, pricingEngine, rateLimiter, gatewayEventSvc)
 
 	// API server
-	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, auditSvc, auditLogSvc, reportQueue, notifWorker)
+	apiServer := api.NewServer(cfg, postgresDB, rdb, apiKeySvc, usageSvc, pricingEngine, providerKeySvc, proxyHandler, rateLimiter, stripeSvc, sandboxStripeSvc, auditSvc, auditLogSvc, reportQueue, notifWorker)
 	go func() {
 		if err := apiServer.Run(); err != nil {
 			slog.Error("server error", "error", err)

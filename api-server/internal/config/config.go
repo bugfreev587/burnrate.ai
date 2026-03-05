@@ -50,13 +50,14 @@ type R2Cfg struct {
 }
 
 type Config struct {
-	Environment string      `yaml:"environment"`
-	Server      ServerCfg   `yaml:"server"`
-	Postgres    PostgresCfg `yaml:"postgres"`
-	Redis       RedisCfg    `yaml:"redis"`
-	Security    SecurityCfg `yaml:"security"`
-	Stripe      StripeCfg   `yaml:"stripe"`
-	R2          R2Cfg       `yaml:"r2"`
+	Environment    string      `yaml:"environment"`
+	Server         ServerCfg   `yaml:"server"`
+	Postgres       PostgresCfg `yaml:"postgres"`
+	Redis          RedisCfg    `yaml:"redis"`
+	Security       SecurityCfg `yaml:"security"`
+	Stripe         StripeCfg   `yaml:"stripe"`
+	StripeSandbox  StripeCfg   `yaml:"stripe_sandbox"`
+	R2             R2Cfg       `yaml:"r2"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -117,6 +118,24 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("R2_BUCKET_NAME"); v != "" {
 		cfg.R2.BucketName = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_SECRET_KEY"); v != "" {
+		cfg.StripeSandbox.SecretKey = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_WEBHOOK_SECRET"); v != "" {
+		cfg.StripeSandbox.WebhookSecret = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_PRICE_PRO_MONTHLY"); v != "" {
+		cfg.StripeSandbox.PriceProMonthly = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_PRICE_TEAM_MONTHLY"); v != "" {
+		cfg.StripeSandbox.PriceTeamMonthly = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_PRICE_BUSINESS_MONTHLY"); v != "" {
+		cfg.StripeSandbox.PriceBusinessMonthly = v
+	}
+	if v := os.Getenv("STRIPE_SANDBOX_PORTAL_CONFIGURATION_ID"); v != "" {
+		cfg.StripeSandbox.PortalConfigurationID = v
 	}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		if v == "*" {
