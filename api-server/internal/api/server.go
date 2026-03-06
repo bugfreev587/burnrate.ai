@@ -45,7 +45,8 @@ type Server struct {
 	httpServer     *http.Server
 	clerkSecretKey   string
 	internalSecret   string
-	superAdminEmails map[string]bool
+	superAdminEmails  map[string]bool
+	sandboxUserEmails map[string]bool
 }
 
 func NewServer(
@@ -92,7 +93,8 @@ func NewServer(
 		router:         router,
 		clerkSecretKey:   os.Getenv("CLERK_SECRET_KEY"),
 		internalSecret:   os.Getenv("INTERNAL_ADMIN_SECRET"),
-		superAdminEmails: parseSuperAdminEmails(os.Getenv("SUPER_ADMIN_EMAILS")),
+		superAdminEmails:  parseSuperAdminEmails(os.Getenv("SUPER_ADMIN_EMAILS")),
+		sandboxUserEmails: parseSuperAdminEmails(os.Getenv("SANDBOX_USER_EMAILS")),
 	}
 
 	s.setupMiddleware()
@@ -441,8 +443,11 @@ func (s *Server) superAdminMiddleware() gin.HandlerFunc {
 func (s *Server) stripeServiceForContext(c *gin.Context) *services.StripeService {
 	if s.sandboxStripeSvc != nil && s.sandboxStripeSvc.IsConfigured() {
 		user, ok := middleware.GetUserFromContext(c)
-		if ok && s.superAdminEmails[strings.ToLower(user.Email)] {
-			return s.sandboxStripeSvc
+		if ok {
+			email := strings.ToLower(user.Email)
+			if s.superAdminEmails[email] || s.sandboxUserEmails[email] {
+				return s.sandboxStripeSvc
+			}
 		}
 	}
 	return s.stripeSvc

@@ -684,7 +684,7 @@ export OPENAI_API_KEY="<tokengate-api-key>"
                 <p>Copy the TokenGate status line script to your Claude config directory:</p>
                 <CodeBlock lang="bash">{`# Download the script
 curl -o ~/.claude/tokengate-statusline.sh \\
-  https://raw.githubusercontent.com/bugfreev587/burnrate.ai/main/statusline/tokengate-statusline.sh
+  https://raw.githubusercontent.com/bugfreev587/TokenGate.to/main/statusline/tokengate-statusline.sh
 
 # Make it executable
 chmod +x ~/.claude/tokengate-statusline.sh`}</CodeBlock>
