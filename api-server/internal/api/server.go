@@ -19,6 +19,7 @@ import (
 	"github.com/xiaoboyu/tokengate/api-server/internal/middleware"
 	"github.com/xiaoboyu/tokengate/api-server/internal/models"
 	"github.com/xiaoboyu/tokengate/api-server/internal/pricing"
+	"github.com/xiaoboyu/tokengate/api-server/internal/provider"
 	"github.com/xiaoboyu/tokengate/api-server/internal/proxy"
 	"github.com/xiaoboyu/tokengate/api-server/internal/ratelimit"
 	"github.com/xiaoboyu/tokengate/api-server/internal/services"
@@ -32,8 +33,11 @@ type Server struct {
 	usageSvc       *services.UsageLogService
 	pricingEngine  *pricing.PricingEngine
 	providerKeySvc *services.ProviderKeyService
-	proxyHandler   *proxy.ProxyHandler
-	rateLimiter    *ratelimit.Limiter
+	proxyHandler      *proxy.ProxyHandler
+	smartProxyHandler *proxy.SmartProxyHandler
+	smartProxyRouter  *provider.Router
+	modelGroupSvc     *services.ModelGroupService
+	rateLimiter       *ratelimit.Limiter
 	stripeSvc             *services.StripeService
 	sandboxStripeSvc      *services.StripeService
 	auditSvc              *services.AuditReportService
@@ -73,6 +77,14 @@ func NewServer(
 	router := gin.New()
 	rbac := middleware.NewRBACMiddleware(postgresDB.GetDB())
 
+	// Create the smart proxy router and registry (shared across handler + service)
+	smartRegistry := provider.NewRegistry()
+	smartRouter := provider.NewRouter(smartRegistry)
+	modelGroupSvc := services.NewModelGroupService(postgresDB.GetDB(), providerKeySvc, smartRouter)
+
+	// Create an event queue for smart proxy usage publishing
+	smartEventQueue := events.NewEventQueue(rdb)
+
 	s := &Server{
 		cfg:            cfg,
 		postgresDB:     postgresDB,
@@ -81,8 +93,11 @@ func NewServer(
 		usageSvc:       usageSvc,
 		pricingEngine:  pricingEngine,
 		providerKeySvc: providerKeySvc,
-		proxyHandler:   proxyHandler,
-		rateLimiter:    rateLimiter,
+		proxyHandler:      proxyHandler,
+		smartProxyHandler: proxy.NewSmartProxyHandler(smartRegistry, smartRouter, smartEventQueue),
+		smartProxyRouter:  smartRouter,
+		modelGroupSvc:     modelGroupSvc,
+		rateLimiter:       rateLimiter,
 		stripeSvc:        stripeSvc,
 		sandboxStripeSvc: sandboxStripeSvc,
 		auditSvc:         auditSvc,
@@ -133,6 +148,7 @@ func (s *Server) setupRoutes() {
 		proxyGroup.Any("/bedrock/*path", s.proxyHandler.HandleProxy)
 		proxyGroup.Any("/vertex/*path", s.proxyHandler.HandleProxy)
 		proxyGroup.GET("/statusline", s.handleStatusLine)
+		proxyGroup.POST("/chat/completions", s.smartProxyHandler.HandleSmartProxy)
 	}
 
 	// ─── API-key authenticated (agent → reports usage) ───────────────────────
@@ -229,6 +245,13 @@ func (s *Server) setupRoutes() {
 		admin.DELETE("/provider_keys/:key_id", s.handleRevokeProviderKey)
 		admin.PUT("/provider_keys/:key_id/activate", s.handleActivateProviderKey)
 		admin.POST("/provider_keys/:key_id/rotate", s.handleRotateProviderKey)
+
+		// Model group management
+		admin.GET("/model-groups", s.handleListModelGroups)
+		admin.POST("/model-groups", s.handleCreateModelGroup)
+		admin.PUT("/model-groups/:id", s.handleUpdateModelGroup)
+		admin.DELETE("/model-groups/:id", s.handleDeleteModelGroup)
+		admin.GET("/model-groups/:id/health", s.handleGetModelGroupHealth)
 
 		// Pricing administration
 		pricingGroup := admin.Group("/pricing")

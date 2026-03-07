@@ -18,6 +18,9 @@ var modelPrefixToProvider = []modelPrefixEntry{
 	{"chatgpt-", ProviderOpenAI},
 	{"claude-", ProviderAnthropic},
 	{"gemini-", ProviderGemini},
+	{"deepseek-", ProviderOpenAI},  // DeepSeek is OpenAI-compatible
+	{"mistral-", ProviderOpenAI},   // Mistral is OpenAI-compatible
+	{"codestral-", ProviderOpenAI}, // Mistral's Codestral
 }
 
 // ResolveProviderFromModel returns the provider for a given model name

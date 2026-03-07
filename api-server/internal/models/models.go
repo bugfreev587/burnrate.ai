@@ -369,6 +369,47 @@ type UsageLog struct {
 	KeyLabel            string          `gorm:"-"                                                   json:"key_label"`
 }
 
+// ModelGroupConfig persists a model group's routing configuration to the database.
+// Each model group maps a virtual model name to one or more provider deployments.
+type ModelGroupConfig struct {
+	ID          uint      `gorm:"primaryKey"                                       json:"id"`
+	TenantID    uint      `gorm:"index;uniqueIndex:idx_mg_tenant_name"             json:"tenant_id"`
+	Name        string    `gorm:"size:128;uniqueIndex:idx_mg_tenant_name"          json:"name"`
+	Strategy    string    `gorm:"size:32;not null;default:fallback"                json:"strategy"` // fallback | round-robin | lowest-latency | cost-optimized
+	Description string    `gorm:"size:512"                                         json:"description,omitempty"`
+	Enabled     bool      `gorm:"not null;default:true"                            json:"enabled"`
+	CreatedAt   time.Time `                                                        json:"created_at"`
+	UpdatedAt   time.Time `                                                        json:"updated_at"`
+
+	Deployments []ModelGroupDeployment `gorm:"foreignKey:ModelGroupID;constraint:OnDelete:CASCADE" json:"deployments,omitempty"`
+}
+
+func (ModelGroupConfig) TableName() string { return "model_group_configs" }
+
+// ModelGroupDeployment is a single provider deployment within a model group.
+type ModelGroupDeployment struct {
+	ID              uint    `gorm:"primaryKey"                          json:"id"`
+	ModelGroupID    uint    `gorm:"index;not null"                     json:"model_group_id"`
+	Provider        string  `gorm:"size:32;not null"                   json:"provider"`  // openai | anthropic | deepseek | mistral
+	Model           string  `gorm:"size:128;not null"                  json:"model"`     // actual model name at provider
+	ProviderKeyID   *uint   `gorm:"column:provider_key_id"             json:"provider_key_id,omitempty"` // FK to provider_keys.id; nil = use tenant's active key
+	Priority        int     `gorm:"not null;default:0"                 json:"priority"`
+	Weight          int     `gorm:"not null;default:1"                 json:"weight"`
+	CostPer1KInput  float64 `gorm:"column:cost_per_1k_input;default:0" json:"cost_per_1k_input"`
+	CostPer1KOutput float64 `gorm:"column:cost_per_1k_output;default:0" json:"cost_per_1k_output"`
+	Enabled         bool    `gorm:"not null;default:true"              json:"enabled"`
+	CreatedAt       time.Time `                                        json:"created_at"`
+}
+
+func (ModelGroupDeployment) TableName() string { return "model_group_deployments" }
+
+// Audit action constants for model group management
+const (
+	AuditModelGroupCreated = "MODEL_GROUP.CREATED"
+	AuditModelGroupUpdated = "MODEL_GROUP.UPDATED"
+	AuditModelGroupDeleted = "MODEL_GROUP.DELETED"
+)
+
 // GatewayEvent records blocked requests (rate limit 429, budget exceeded 402)
 // that return early before usage events are published, so they never appear in usage_logs.
 type GatewayEvent struct {

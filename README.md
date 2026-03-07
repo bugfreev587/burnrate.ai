@@ -27,6 +27,7 @@ A multi-tenant usage tracking and management gateway for Claude Code and other L
 - **Super admin** – Platform-wide dashboard for operators: tenant listing with search/filter, plan changes, tenant suspension, platform statistics, and per-customer revenue tracking. Access gated by `SUPER_ADMIN_EMAILS` env var. Super admin billing routes to a Stripe sandbox for safe test transactions.
 - **Multi-tenant isolation** – Every organization gets its own workspace; data is fully separated.
 - **CLI status line** – A drop-in shell script for Claude Code's status line that displays real-time budget, cost, and usage data directly in the terminal. Polls the `GET /v1/statusline` gateway endpoint every 5 seconds, renders color-coded progress bars (`[■■■■■■□□] 83%`), and degrades gracefully when the gateway is unreachable. Works with any Claude Code session routed through the TokenGate gateway.
+- **Smart routing (LiteLLM-equivalent)** – Native multi-provider routing engine with automatic format translation. Define model groups that map a virtual model name (e.g. `gpt-4o-group`) to multiple provider deployments. Supports four routing strategies (fallback, round-robin, lowest-latency, cost-optimized), connection-phase streaming fallback, health tracking with exponential backoff cooldowns, per-deployment latency and rate-limit awareness, and unified error handling across OpenAI, Anthropic, DeepSeek, and Mistral. Requests are sent in OpenAI-compatible format and automatically translated to/from each provider's native API. Usage data flows into the existing billing and analytics pipeline. See [Smart Routing Guide](#smart-routing) below.
 
 ### Planned features
 
@@ -73,6 +74,7 @@ The following features are on the roadmap and marked "Coming Soon" on the landin
 
 ## Recent changes
 
+- **2026-03-06** – Smart routing engine: native LiteLLM-equivalent multi-provider routing with format translation (OpenAI, Anthropic, DeepSeek, Mistral), 4 routing strategies, streaming fallback, health tracking, retry with exponential backoff, model group management API, and full integration with existing auth/usage/billing pipeline.
 - **2026-03-05** – CLI status line integration: `GET /v1/statusline` endpoint and drop-in shell script for Claude Code. Displays real-time budget progress bars, cost tracking, and usage data in the terminal.
 - **2026-03-04** – New users without API keys are automatically redirected to the Integration page after sign-up.
 - **2026-03-04** – Sign-up completion routed through `PublicOnlyRoute` for proper redirect; auth sync completes before rendering protected routes.
@@ -999,6 +1001,183 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 
 ---
 
+## Smart Routing
+
+TokenGate includes a native multi-provider routing engine (similar to LiteLLM) that translates requests between OpenAI-compatible format and provider-native APIs. You define **model groups** — virtual model names that map to one or more provider deployments — and the router handles format translation, failover, health tracking, and usage reporting automatically.
+
+### Concepts
+
+- **Model Group** — A named collection of deployments that serve the same logical model. The client sends requests using the group name as the model (e.g. `"model": "gpt-4o-group"`).
+- **Deployment** — A single provider endpoint within a group (e.g. OpenAI `gpt-4o`, Anthropic `claude-sonnet-4-20250514`). Each deployment has a provider, model name, API key, priority, and weight.
+- **Routing Strategy** — How the router picks a deployment: `fallback` (priority order), `round-robin` (even distribution), `lowest-latency` (fastest), or `cost-optimized` (cheapest).
+
+### Supported Providers
+
+| Provider | Format Translation | Streaming | Rate Limit Awareness |
+|---|---|---|---|
+| OpenAI | Pass-through (canonical format) | Yes | `x-ratelimit-*` headers |
+| Anthropic | Full translation (Messages API ↔ OpenAI) | Yes (stateful SSE translator) | `anthropic-ratelimit-*` headers |
+| DeepSeek | Pass-through + `reasoning_content` handling | Yes (`<think>` tag wrapping) | `x-ratelimit-*` headers |
+| Mistral | Pass-through with unsupported param stripping | Yes | `x-ratelimit-*` headers |
+
+### Endpoint
+
+```
+POST /v1/chat/completions
+```
+
+Send an OpenAI-compatible request with the model group name as the `model` field. The gateway routes it through the configured deployments.
+
+```bash
+curl -X POST https://your-gateway.com/v1/chat/completions \
+  -H "X-TokenGate-Key: tg_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-group",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": false
+  }'
+```
+
+The response is always in OpenAI-compatible format, regardless of which provider actually handled the request.
+
+### Management API
+
+Model groups are managed via the admin API (requires editor+ role).
+
+#### Create a model group
+
+```bash
+curl -X POST https://your-gateway.com/v1/admin/model-groups \
+  -H "X-User-ID: user_xxx" \
+  -H "X-Tenant-Id: 1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "gpt-4o-group",
+    "strategy": "fallback",
+    "description": "GPT-4o with Anthropic fallback",
+    "deployments": [
+      {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "priority": 1,
+        "weight": 1
+      },
+      {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+        "provider_key_id": 5,
+        "priority": 2,
+        "weight": 1
+      }
+    ]
+  }'
+```
+
+#### List model groups
+
+```bash
+curl https://your-gateway.com/v1/admin/model-groups \
+  -H "X-User-ID: user_xxx" -H "X-Tenant-Id: 1"
+```
+
+#### Update a model group
+
+```bash
+curl -X PUT https://your-gateway.com/v1/admin/model-groups/1 \
+  -H "X-User-ID: user_xxx" -H "X-Tenant-Id: 1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "gpt-4o-group",
+    "strategy": "round-robin",
+    "enabled": true,
+    "deployments": [...]
+  }'
+```
+
+#### Delete a model group
+
+```bash
+curl -X DELETE https://your-gateway.com/v1/admin/model-groups/1 \
+  -H "X-User-ID: user_xxx" -H "X-Tenant-Id: 1"
+```
+
+#### Check deployment health
+
+```bash
+curl https://your-gateway.com/v1/admin/model-groups/1/health \
+  -H "X-User-ID: user_xxx" -H "X-Tenant-Id: 1"
+```
+
+Returns per-deployment health status and average latency:
+
+```json
+{
+  "model_group": "gpt-4o-group",
+  "deployments": [
+    {
+      "deployment_id": "mg-1-dep-1",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "healthy": true,
+      "avg_latency_ms": 245
+    },
+    {
+      "deployment_id": "mg-1-dep-2",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "healthy": true,
+      "avg_latency_ms": 380
+    }
+  ]
+}
+```
+
+### Routing Strategies
+
+| Strategy | Behavior |
+|---|---|
+| `fallback` | Tries deployments in priority order (lower number = higher priority). Skips unhealthy or rate-limited deployments. If all are in cooldown, tries the one that recovers soonest. |
+| `round-robin` | Distributes requests evenly across healthy deployments. Supports weighted distribution via the `weight` field. |
+| `lowest-latency` | Picks the deployment with the lowest sliding-window average latency (last 100 requests). New deployments get an exploration chance (1 in 10 requests). |
+| `cost-optimized` | Picks the cheapest healthy deployment based on `cost_per_1k_input` and `cost_per_1k_output`. |
+
+### Health Tracking & Cooldowns
+
+- **3 consecutive failures** trigger a cooldown period for that deployment.
+- Cooldown uses **exponential backoff**: 30s → 60s → 120s → 5min (max).
+- After cooldown expires, the first successful request resets the failure counter.
+- If all deployments are in cooldown, the router force-tries the one with the earliest expiry.
+
+### Retry & Backoff
+
+Non-streaming requests use the `RetryExecutor` with configurable behavior:
+
+| Error Type | Behavior |
+|---|---|
+| Timeout | Immediate retry on next deployment |
+| 429 (Rate Limited) | Respects `Retry-After` header, or 1s default |
+| 500/503 (Server Error) | Exponential backoff: 1s → 2s → 4s → 8s (max) |
+| 400/401/403 (Client Error) | No retry — returns error immediately |
+| 529 (Anthropic Overloaded) | Retryable, treated as overloaded |
+
+### Streaming
+
+Streaming uses **connection-phase fallback**: the router retries different deployments until one successfully starts streaming. Once the first SSE byte is sent to the client, mid-stream failures are not retried. This avoids the complexity of mid-stream provider switches.
+
+### API Key Resolution
+
+Each deployment resolves its API key in this order:
+
+1. **`provider_key_id`** — If set, uses that specific key from the provider key vault.
+2. **Tenant's active key** — Falls back to the tenant's active provider key for that provider (via `TenantProviderSettings`).
+
+### Usage Integration
+
+All routed requests publish usage events to the existing Redis Streams pipeline (`tokengate:usage:events`). Usage data flows through the standard worker pipeline into `UsageLog` and `CostLedger`, so smart-routed requests appear in the dashboard alongside direct-proxied requests.
+
+---
+
 ## Status
 
 | Component | Status |
@@ -1043,3 +1222,5 @@ curl -X POST https://gateway.tokengate.to/v1/agent/usage \
 | Better Stack structured logging | ✅ Live |
 | Stripe sandbox (super admin test billing) | ✅ Live |
 | New user onboarding redirect (→ Integration page) | ✅ Live |
+| Smart routing (multi-provider model groups) | ✅ Live |
+| Model group management API (CRUD + health) | ✅ Live |

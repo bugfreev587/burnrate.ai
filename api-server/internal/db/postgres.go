@@ -108,6 +108,8 @@ func InitPostgres(dsn string) (*PostgresDB, error) {
 		&models.UserNotificationChannel{},
 		&models.GatewayEvent{},
 		&models.AuditLog{},
+		&models.ModelGroupConfig{},
+		&models.ModelGroupDeployment{},
 	); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
