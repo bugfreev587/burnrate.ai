@@ -85,7 +85,12 @@ function StepNumber({ n }: { n: number }) {
 }
 
 function FaqItem({ question, children, id }: { question: string; children: React.ReactNode; id?: string }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(() => {
+    if (id && typeof window !== 'undefined') {
+      return window.location.hash === `#${id}`
+    }
+    return false
+  })
   return (
     <div id={id} className={`ig-faq-item ${open ? 'ig-faq-item--open' : ''}`}>
       <button className="ig-faq-q" onClick={() => setOpen(!open)}>
@@ -127,14 +132,14 @@ export default function IntegrationPage() {
   const [activeSection, setActiveSection] = useState('overview')
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
 
-  /* scroll to hash on mount (e.g. /integration#notifications) */
+  /* scroll to hash on mount (e.g. /integration#notifications or /integration#faq-env-vars) */
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash && sectionRefs.current[hash]) {
-      setTimeout(() => {
-        sectionRefs.current[hash]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-    }
+    if (!hash) return
+    setTimeout(() => {
+      const el = sectionRefs.current[hash] || document.getElementById(hash)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
   }, [])
 
   /* scroll spy */
@@ -144,6 +149,7 @@ export default function IntegrationPage() {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             setActiveSection(entry.target.id)
+            window.history.replaceState(null, '', `#${entry.target.id}`)
           }
         }
       },
@@ -158,6 +164,7 @@ export default function IntegrationPage() {
 
   const scrollTo = (id: string) => {
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.history.replaceState(null, '', `#${id}`)
   }
 
   const ref = (id: string) => (el: HTMLElement | null) => { sectionRefs.current[id] = el }
@@ -875,32 +882,32 @@ chmod +x ~/.claude/tokengate-statusline.sh`}</CodeBlock>
               Troubleshooting
             </h2>
             <div className="ig-trouble-list">
-              <div className="ig-trouble">
+              <div id="trouble-404" className="ig-trouble">
                 <div className="ig-trouble-issue"><code>404</code> on Anthropic requests</div>
                 <div className="ig-trouble-cause"><code>/v1</code> included in <code>ANTHROPIC_BASE_URL</code></div>
                 <div className="ig-trouble-fix">Remove <code>/v1</code> &mdash; use <code>https://gateway.tokengate.to</code> only</div>
               </div>
-              <div className="ig-trouble">
+              <div id="trouble-401" className="ig-trouble">
                 <div className="ig-trouble-issue"><code>401</code> Unauthorized</div>
                 <div className="ig-trouble-cause">Invalid or expired gateway key</div>
                 <div className="ig-trouble-fix">Check key in Management page, create a new one if needed</div>
               </div>
-              <div className="ig-trouble">
+              <div id="trouble-402" className="ig-trouble">
                 <div className="ig-trouble-issue"><code>402</code> Budget Exceeded</div>
                 <div className="ig-trouble-cause">Tenant spend above blocking limit</div>
                 <div className="ig-trouble-fix">Increase budget limit on the Limits page</div>
               </div>
-              <div className="ig-trouble">
+              <div id="trouble-403" className="ig-trouble">
                 <div className="ig-trouble-issue"><code>403</code> Forbidden</div>
                 <div className="ig-trouble-cause">API key provider does not match the endpoint path</div>
                 <div className="ig-trouble-fix">Ensure key provider matches: <code>anthropic</code> keys for <code>/v1/messages</code>, <code>openai</code> keys for <code>/v1/openai/*</code></div>
               </div>
-              <div className="ig-trouble">
+              <div id="trouble-codex-no-auth" className="ig-trouble">
                 <div className="ig-trouble-issue">Codex "no auth" error</div>
                 <div className="ig-trouble-cause">Missing <code>requires_openai_auth = true</code> in config</div>
                 <div className="ig-trouble-fix">Add the field in <code>~/.codex/config.toml</code> for Browser OAuth + Monthly Subscription scenarios</div>
               </div>
-              <div className="ig-trouble">
+              <div id="trouble-no-usage" className="ig-trouble">
                 <div className="ig-trouble-issue">No usage showing in dashboard</div>
                 <div className="ig-trouble-cause">Provider key not activated</div>
                 <div className="ig-trouble-fix">Go to Provider Keys on the Management page and click Activate</div>
@@ -916,7 +923,7 @@ chmod +x ~/.claude/tokengate-statusline.sh`}</CodeBlock>
             </h2>
 
             <div className="ig-faq-list">
-              <FaqItem question="How do I set environment variables?">
+              <FaqItem id="faq-env-vars" question="How do I set environment variables?">
                 <p>TokenGate integration requires setting environment variables like <code>ANTHROPIC_BASE_URL</code> or <code>OPENAI_BASE_URL</code>. Here's how to set them on each operating system:</p>
 
                 <h4 className="ig-h4">macOS</h4>
@@ -1198,23 +1205,23 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
             {/* ── RBAC FAQ ────────────────────────────────────────────── */}
             <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Common Questions</h3>
             <div className="ig-faq-list">
-              <FaqItem question="How do I invite a new team member?">
+              <FaqItem id="faq-invite-member" question="How do I invite a new team member?">
                 <p>Go to the <strong>Management</strong> page and open the <strong>Members</strong> section. Click <strong>Invite Member</strong>, enter their email, and select an org role. Only <strong>Owners</strong> and <strong>Admins</strong> can invite members.</p>
               </FaqItem>
 
-              <FaqItem question="Can I invite someone directly as an Admin?">
+              <FaqItem id="faq-invite-admin" question="Can I invite someone directly as an Admin?">
                 <p>Yes. When inviting a member, you can assign any org role (Owner, Admin, Editor, or Viewer). Owners and Admins can set the role at invite time.</p>
               </FaqItem>
 
-              <FaqItem question="What happens when a user is suspended?">
+              <FaqItem id="faq-user-suspended" question="What happens when a user is suspended?">
                 <p>Suspended users cannot log in or make API requests. Their membership record is preserved so they can be reinstated later. Only Owners and Admins can suspend or reinstate members.</p>
               </FaqItem>
 
-              <FaqItem question="What is the Default project?">
+              <FaqItem id="faq-default-project" question="What is the Default project?">
                 <p>Every organization has a <strong>Default</strong> project created automatically. All org members have access to the Default project. It cannot be deleted but can be renamed. New API keys are assigned to the Default project unless you choose a different one.</p>
               </FaqItem>
 
-              <FaqItem question="Which plan supports multi-user teams?">
+              <FaqItem id="faq-multi-user-plan" question="Which plan supports multi-user teams?">
                 <p>Multi-user teams with role-based access control are available on the <strong>Team</strong> plan and above. The Free plan is limited to a single user. Visit the <a href="/pricing"><strong>Pricing</strong></a> page for plan details.</p>
               </FaqItem>
             </div>
