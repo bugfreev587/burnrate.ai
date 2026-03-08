@@ -1,0 +1,108 @@
+/* ── Smart Routing page-specific styles ──────────────────────────────────── */
+/* Reuses .mgmt-*, .modal-*, .flash-*, .form-group, .rich-dropdown from ManagementPage.css */
+
+/* ── Strategy badges ────────────────────────────────────────────────────── */
+
+.strategy-fallback       { background: rgba(251,191,36,.2);  color: #fbbf24; }
+.strategy-round-robin    { background: rgba(34,197,94,.15);  color: #86efac; }
+.strategy-lowest-latency { background: rgba(56,189,248,.15); color: #7dd3fc; }
+.strategy-cost-optimized { background: rgba(168,85,247,.15); color: #c4b5fd; }
+
+/* ── Delete button text (red text, no bg change) ────────────────────────── */
+
+.btn-danger-text { color: #f87171; }
+.btn-danger-text:hover { color: #ef4444; }
+
+/* ── Deployments section inside modal ───────────────────────────────────── */
+
+.sr-deployments-section {
+  margin-top: 0.5rem;
+}
+
+.sr-deployments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.sr-deployments-header label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.sr-deployment-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.sr-deployment-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.sr-deployment-num {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sr-deployment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+.sr-deployment-grid .form-group {
+  margin-bottom: 0;
+}
+
+.sr-deployment-grid .form-group label {
+  font-size: 0.775rem;
+  margin-bottom: 0.25rem;
+}
+
+.sr-deployment-grid .form-group input,
+.sr-deployment-grid .form-group select {
+  font-size: 0.8rem;
+  padding: 0.45rem 0.6rem;
+}
+
+/* ── Checkbox label ─────────────────────────────────────────────────────── */
+
+.sr-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.sr-checkbox-label input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--color-primary);
+}
+
+/* ── Focused dropdown option ────────────────────────────────────────────── */
+
+.rich-dropdown-option.focused {
+  background: rgba(99,102,241,.08);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sr-deployment-grid {
+    grid-template-columns: 1fr;
+  }
+}

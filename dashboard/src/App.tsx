@@ -22,6 +22,7 @@ import NotificationsPage from './pages/NotificationsPage'
 import PublicPricingPage from './pages/PublicPricingPage'
 import TermsPage from './pages/TermsPage'
 import PrivacyPage from './pages/PrivacyPage'
+import SmartRoutingPage from './pages/SmartRoutingPage'
 import SuperAdminPage from './pages/SuperAdminPage'
 import SSOCallbackPage from './pages/SSOCallbackPage'
 
@@ -95,6 +96,7 @@ export default function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/profile/*" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/management" element={<ProtectedRoute><ManagementPage /></ProtectedRoute>} />
+          <Route path="/smart-routing" element={<ProtectedRoute><SmartRoutingPage /></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><PricingConfigPage /></ProtectedRoute>} />
           <Route path="/limits" element={<ProtectedRoute><LimitsPage /></ProtectedRoute>} />
           <Route path="/integration" element={<IntegrationPage />} />

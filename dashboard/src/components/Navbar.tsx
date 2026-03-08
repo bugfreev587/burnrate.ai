@@ -215,6 +215,7 @@ export default function Navbar() {
           <div className="navbar-center">
             <Link to="/dashboard" className="navbar-link">Dashboard</Link>
             {canAccessEditor && <Link to="/management" className="navbar-link">Management</Link>}
+            {canAccessEditor && <Link to="/smart-routing" className="navbar-link">Smart Routing</Link>}
             {canAccessEditor && <Link to="/limits" className="navbar-link">Limits</Link>}
             <Link to="/notifications" className="navbar-link">Notifications</Link>
             {canAccessEditor && <Link to="/pricing" className="navbar-link">Pricing Config</Link>}
