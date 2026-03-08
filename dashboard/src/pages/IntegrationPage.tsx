@@ -21,6 +21,7 @@ const SECTIONS: Section[] = [
   { id: 'endpoints',      title: 'API Endpoints',                               icon: 'api' },
   { id: 'budget',         title: 'Budget Headers',                              icon: 'budget' },
   { id: 'notifications',  title: 'Notification Setup',                          icon: 'notification' },
+  { id: 'smart-routing',  title: 'Smart Routing',                                icon: 'routing' },
   { id: 'troubleshoot',   title: 'Troubleshooting',                             icon: 'help' },
   { id: 'faq',            title: 'FAQ',                                          icon: 'faq' },
   { id: 'rbac',           title: 'Roles & Permissions',                          icon: 'rbac' },
@@ -46,6 +47,8 @@ function SectionIcon({ type }: { type: string }) {
       return <span className="ig-icon ig-icon--help">?</span>
     case 'faq':
       return <span className="ig-icon ig-icon--faq">Q</span>
+    case 'routing':
+      return <span className="ig-icon ig-icon--routing">&harr;</span>
     case 'rbac':
       return <span className="ig-icon ig-icon--rbac">&#x1f6e1;</span>
     default:
@@ -875,6 +878,511 @@ chmod +x ~/.claude/tokengate-statusline.sh`}</CodeBlock>
             </Callout>
           </section>
 
+          {/* ── Smart Routing Guide ──────────────────────────────────── */}
+          <section id="smart-routing" ref={ref('smart-routing')} className="ig-section">
+            <h2 className="ig-h2">
+              <SectionIcon type="routing" />
+              Smart Routing &mdash; User Guide
+            </h2>
+            <p className="ig-desc">
+              Smart Routing lets you send your AI requests to <strong>multiple providers</strong> (like Anthropic, OpenAI, DeepSeek, or Mistral)
+              through a single endpoint. Instead of being locked in to one provider, you can set up automatic failover,
+              load balancing, or cost optimization &mdash; all without changing any code on the developer side.
+            </p>
+
+            <Callout type="info">
+              <strong>Who is this for?</strong> Smart Routing is useful if you want to:
+              reduce downtime by having backup providers,
+              spread traffic across multiple models,
+              route to the cheapest available model automatically,
+              or test different providers without changing developer configurations.
+            </Callout>
+
+            {/* ── Key Concepts ──────────────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Key Concepts</h3>
+            <p className="ig-desc" style={{ marginBottom: '1rem' }}>
+              Before you get started, here are the terms you will see on the Smart Routing page:
+            </p>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Term</th><th>What It Means</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Model Group</strong></td>
+                    <td>
+                      A virtual model name that maps to one or more real AI models across different providers.
+                      For example, you could create a model group called <code>claude-ha</code> that sends requests
+                      to Anthropic Claude first, and falls back to OpenAI GPT if Claude is down.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Deployment</strong></td>
+                    <td>
+                      A single entry inside a model group. Each deployment points to one specific model at one specific provider.
+                      A model group contains one or more deployments. Think of deployments as the &ldquo;candidates&rdquo; that the
+                      routing strategy chooses from.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Strategy</strong></td>
+                    <td>
+                      The rule that decides <em>which</em> deployment gets each incoming request.
+                      There are four strategies to choose from (explained in detail below).
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Provider Key</strong></td>
+                    <td>
+                      The API key for a specific AI provider (e.g. your Anthropic API key, or your OpenAI API key).
+                      You manage these on the <strong>Management</strong> page under &ldquo;Provider Keys.&rdquo;
+                      Each deployment can use a specific provider key, or &ldquo;Auto&rdquo; to use the tenant&rsquo;s default key for that provider.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Priority</strong></td>
+                    <td>
+                      A number that determines the order in which deployments are tried.
+                      <strong>Lower numbers are tried first.</strong> Two deployments with the same priority are treated as equal.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Weight</strong></td>
+                    <td>
+                      Used by the Round Robin strategy to distribute traffic unevenly.
+                      A deployment with weight 2 gets twice as many requests as one with weight 1.
+                      If you don&rsquo;t need this, leave it at the default of 1.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Routing Strategies Explained ──────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Routing Strategies Explained</h3>
+            <p className="ig-desc" style={{ marginBottom: '1rem' }}>
+              When you create a model group, you choose one of four strategies. Here is what each one does in plain language:
+            </p>
+
+            <div className="ig-sr-strategy-cards">
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Fallback</div>
+                <div className="ig-sr-strategy-subtitle">Best for: Reliability &amp; uptime</div>
+                <p>
+                  Requests go to the <strong>highest-priority</strong> (lowest number) deployment first.
+                  If that deployment fails or is unhealthy, the system automatically tries the next one in line.
+                  This is the most common strategy &mdash; use it when you have a preferred provider but want a backup.
+                </p>
+                <div className="ig-sr-strategy-example">
+                  <strong>Example:</strong> You prefer Anthropic Claude but want OpenAI GPT as a backup.
+                  Set Claude as priority 0 and GPT as priority 1. If Claude goes down, requests automatically
+                  go to GPT without any developer action needed.
+                </div>
+              </div>
+
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Round Robin</div>
+                <div className="ig-sr-strategy-subtitle">Best for: Load balancing</div>
+                <p>
+                  Requests are distributed evenly across all healthy deployments.
+                  Each deployment takes turns handling requests. You can use the <strong>Weight</strong> field
+                  to send more traffic to certain deployments (e.g. weight 3 gets 3x the requests of weight 1).
+                </p>
+                <div className="ig-sr-strategy-example">
+                  <strong>Example:</strong> You have two OpenAI API keys with separate rate limits.
+                  Add both as deployments with weight 1 each. Requests alternate between them, effectively doubling
+                  your available throughput.
+                </div>
+              </div>
+
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Lowest Latency</div>
+                <div className="ig-sr-strategy-subtitle">Best for: Speed</div>
+                <p>
+                  The system tracks the average response time of each deployment and automatically
+                  routes requests to whichever one has been responding the fastest. Latency is measured
+                  continuously, so if a provider gets slower, traffic shifts away from it.
+                </p>
+                <div className="ig-sr-strategy-example">
+                  <strong>Example:</strong> You have deployments on Anthropic and DeepSeek.
+                  During peak hours DeepSeek responds faster &mdash; the system automatically sends more traffic there.
+                  When Anthropic speeds up again, traffic shifts back.
+                </div>
+              </div>
+
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Cost Optimized</div>
+                <div className="ig-sr-strategy-subtitle">Best for: Budget control</div>
+                <p>
+                  Routes requests to the <strong>cheapest healthy deployment</strong>, based on the
+                  cost-per-1K-tokens values you enter for each deployment. If the cheapest option becomes
+                  unhealthy, the system falls back to the next cheapest.
+                </p>
+                <div className="ig-sr-strategy-example">
+                  <strong>Example:</strong> You have DeepSeek at $0.001/1K input and Anthropic at $0.003/1K input.
+                  Normally all traffic goes to DeepSeek. If DeepSeek has an outage, traffic automatically
+                  switches to Anthropic until DeepSeek recovers.
+                </div>
+              </div>
+            </div>
+
+            {/* ── Step-by-Step: Creating Your First Model Group ───── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Step-by-Step: Creating Your First Model Group</h3>
+
+            <div className="ig-steps">
+              <div className="ig-step">
+                <h3><StepNumber n={1} /> Make sure you have Provider Keys</h3>
+                <p>
+                  Before creating a model group, you need at least one <strong>Provider Key</strong> for each AI provider
+                  you want to use. Go to the <strong>Management</strong> page, scroll to the <strong>Provider Keys</strong> section,
+                  and add keys for each provider (e.g. Anthropic, OpenAI).
+                </p>
+                <Callout type="info">
+                  If you are using <strong>Browser OAuth</strong> (subscription mode), you may not need provider keys for every
+                  deployment &mdash; the developer&rsquo;s own credentials are used for OAuth-based providers. Provider keys are required
+                  for <strong>BYOK</strong> and <strong>API Usage</strong> billing modes.
+                </Callout>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={2} /> Navigate to the Smart Routing page</h3>
+                <p>
+                  Click <strong>Smart Routing</strong> in the top navigation bar. You will see the Model Groups table.
+                  If this is your first time, it will be empty with a message inviting you to create your first group.
+                </p>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={3} /> Click &ldquo;Create Model Group&rdquo;</h3>
+                <p>
+                  A form will appear. Fill in these fields:
+                </p>
+                <div className="ig-table-wrap" style={{ marginTop: '0.75rem' }}>
+                  <table className="ig-table">
+                    <thead>
+                      <tr><th>Field</th><th>What to Enter</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><strong>Name</strong></td>
+                        <td>
+                          A short, descriptive name for this model group. This becomes the virtual model name that
+                          developers can use. For example: <code>claude-ha</code>, <code>fast-model</code>, or <code>budget-model</code>.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Strategy</strong></td>
+                        <td>
+                          Click the dropdown and choose one of the four strategies described above.
+                          If you are unsure, start with <strong>Fallback</strong> &mdash; it is the simplest and most common choice.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Description</strong></td>
+                        <td>
+                          Optional. A note for yourself or your team about what this group is for.
+                          For example: &ldquo;Primary Claude with GPT fallback.&rdquo;
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Enabled</strong></td>
+                        <td>
+                          Check this box to make the model group active. If unchecked, the group exists but won&rsquo;t receive any traffic.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={4} /> Add Deployments</h3>
+                <p>
+                  Below the main fields you will see a <strong>Deployments</strong> section with at least one deployment card.
+                  Each card represents one provider + model combination. Fill in:
+                </p>
+                <div className="ig-table-wrap" style={{ marginTop: '0.75rem' }}>
+                  <table className="ig-table">
+                    <thead>
+                      <tr><th>Field</th><th>What to Enter</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><strong>Provider</strong></td>
+                        <td>Select the AI provider: Anthropic, OpenAI, DeepSeek, or Mistral.</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Model</strong></td>
+                        <td>
+                          Type the exact model name the provider expects. For example:
+                          <code>claude-sonnet-4-20250514</code> for Anthropic,
+                          <code>gpt-4o</code> for OpenAI,
+                          <code>deepseek-chat</code> for DeepSeek.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Provider Key</strong></td>
+                        <td>
+                          Choose which API key to use for this deployment. Select &ldquo;Auto (default)&rdquo; to use your
+                          organization&rsquo;s default key for that provider. Or pick a specific key from the dropdown
+                          (keys are managed on the Management page).
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Priority</strong></td>
+                        <td>
+                          A number that controls the order. <strong>0 = highest priority</strong> (tried first).
+                          Only matters for Fallback and Cost Optimized strategies.
+                          For Round Robin and Lowest Latency, all deployments are equally eligible.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Weight</strong></td>
+                        <td>
+                          Controls traffic distribution in Round Robin mode. Default is 1.
+                          A deployment with weight 2 gets double the traffic of one with weight 1.
+                          For other strategies, you can leave this at 1.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Cost/1K input &amp; Cost/1K output</strong></td>
+                        <td>
+                          The cost (in dollars) per 1,000 tokens for this model. Only used by the <strong>Cost Optimized</strong> strategy
+                          to decide which deployment is cheapest. If you are not using cost optimization, leave these at 0.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td><strong>Enabled</strong></td>
+                        <td>
+                          Uncheck to temporarily remove this deployment from the rotation without deleting it.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p style={{ marginTop: '0.75rem' }}>
+                  Click <strong>+ Add</strong> to add more deployments. You can add as many as you need.
+                  Click <strong>Remove</strong> on a card to delete it (you must keep at least one).
+                </p>
+              </div>
+
+              <div className="ig-step">
+                <h3><StepNumber n={5} /> Save the Model Group</h3>
+                <p>
+                  Click <strong>Create</strong> (or <strong>Save Changes</strong> if editing). The model group will appear
+                  in the table. It is now active and ready to route requests.
+                </p>
+              </div>
+            </div>
+
+            {/* ── How to Use Model Groups in Practice ──────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>How to Use Model Groups in Practice</h3>
+            <p className="ig-desc" style={{ marginBottom: '1rem' }}>
+              Once you have created a model group, developers can send requests to it by using the
+              model group <strong>name</strong> as the model name in their API call. The gateway will
+              automatically route the request based on the strategy you configured.
+            </p>
+
+            <FlowDiagram steps={[
+              'Developer sends request with model = "claude-ha"',
+              'Gateway finds model group "claude-ha"',
+              'Strategy picks the best deployment',
+              'Request forwarded to the chosen provider',
+              'Response returned to developer',
+            ]} />
+
+            <Callout type="info">
+              <strong>No code changes needed for developers!</strong> Once you set up the model group,
+              developers just use the model group name (e.g. <code>claude-ha</code>) in place of a
+              real model name. They do not need to know which provider or model is actually serving
+              their request. Everything is handled by the gateway.
+            </Callout>
+
+            <p style={{ marginTop: '1rem' }}>
+              For example, if a developer normally sends requests to <code>claude-sonnet-4-20250514</code>,
+              you can tell them to use <code>claude-ha</code> instead. Behind the scenes, the gateway
+              will try Anthropic Claude first. If it is down, the gateway will automatically fall back
+              to whichever backup deployment you configured.
+            </p>
+
+            {/* ── Managing Model Groups ────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Managing Model Groups</h3>
+            <p className="ig-desc" style={{ marginBottom: '1rem' }}>
+              After creating a model group, you can manage it from the Smart Routing table:
+            </p>
+            <div className="ig-table-wrap">
+              <table className="ig-table">
+                <thead>
+                  <tr><th>Action</th><th>How to Do It</th><th>What Happens</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Edit</strong></td>
+                    <td>Click the <strong>Edit</strong> button on a row</td>
+                    <td>
+                      Opens the same form used to create the group. You can change the name, strategy,
+                      description, enabled/disabled status, and add, edit, or remove deployments.
+                      Click <strong>Save Changes</strong> when done.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Health Check</strong></td>
+                    <td>Click the <strong>Health</strong> button on a row</td>
+                    <td>
+                      Opens a popup showing the real-time health of each deployment:
+                      whether it is <span style={{ color: '#86efac' }}>Healthy</span> or <span style={{ color: '#fca5a5' }}>Unhealthy</span>,
+                      and its average response time in milliseconds. Use this to verify your deployments are working.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Delete</strong></td>
+                    <td>Click the <strong>Delete</strong> button on a row</td>
+                    <td>
+                      A confirmation dialog asks if you are sure. If you confirm, the model group and all its
+                      deployments are permanently removed. Any requests using that model group name will
+                      start failing. This cannot be undone.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Disable/Enable</strong></td>
+                    <td>Click <strong>Edit</strong>, then uncheck/check the <strong>Enabled</strong> checkbox</td>
+                    <td>
+                      A disabled model group still exists in the table but does not accept traffic.
+                      This is useful for temporarily pausing routing without deleting the configuration.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Example Scenarios ───────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Common Scenarios</h3>
+
+            <div className="ig-sr-strategy-cards">
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">High Availability Setup</div>
+                <p>
+                  <strong>Goal:</strong> Keep AI coding tools working even if one provider has an outage.<br />
+                  <strong>Strategy:</strong> Fallback<br />
+                  <strong>Setup:</strong> Deployment 1 = Anthropic Claude (priority 0), Deployment 2 = OpenAI GPT-4o (priority 1).<br />
+                  <strong>Result:</strong> Developers always get a response. If Anthropic is down, traffic automatically goes to OpenAI.
+                </p>
+              </div>
+
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Rate Limit Doubling</div>
+                <p>
+                  <strong>Goal:</strong> Handle more concurrent requests than a single API key allows.<br />
+                  <strong>Strategy:</strong> Round Robin<br />
+                  <strong>Setup:</strong> Two deployments, both pointing to the same model (e.g. <code>claude-sonnet-4-20250514</code>),
+                  each using a different provider key.<br />
+                  <strong>Result:</strong> Requests alternate between the two keys, effectively doubling your rate limit.
+                </p>
+              </div>
+
+              <div className="ig-sr-strategy-card">
+                <div className="ig-sr-strategy-name">Budget-Friendly Routing</div>
+                <p>
+                  <strong>Goal:</strong> Minimize costs by using the cheapest available model.<br />
+                  <strong>Strategy:</strong> Cost Optimized<br />
+                  <strong>Setup:</strong> Deployment 1 = DeepSeek (cost: $0.001/1K input), Deployment 2 = Anthropic Claude (cost: $0.003/1K input).<br />
+                  <strong>Result:</strong> All traffic goes to DeepSeek. If DeepSeek is unhealthy, Claude takes over automatically.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Smart Routing FAQ ────────────────────────────────── */}
+            <h3 className="ig-h3" style={{ marginTop: '2rem' }}>Frequently Asked Questions</h3>
+            <div className="ig-faq-list">
+              <FaqItem id="faq-sr-who" question="Who can create and manage model groups?">
+                <p>
+                  You need at least the <strong>Editor</strong> role in your organization to see the Smart Routing page
+                  and manage model groups. Viewers cannot access this feature. Owners and Admins always have full access.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-model-name" question="What model name should I give developers?">
+                <p>
+                  Tell them to use the <strong>model group name</strong> as their model. For example, if your
+                  model group is called <code>claude-ha</code>, developers should set <code>model: "claude-ha"</code>
+                  in their configuration. The gateway will handle the rest.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-existing" question="Do I need to change my existing gateway API keys?">
+                <p>
+                  No. Your existing gateway API keys work the same as before. Smart Routing only activates
+                  when a request uses a model group name instead of a real model name. Requests with regular
+                  model names (like <code>claude-sonnet-4-20250514</code>) are sent directly to the provider
+                  as they always were.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-health" question="How does the health check work?">
+                <p>
+                  The gateway continuously monitors each deployment&rsquo;s health by tracking response statuses
+                  and latency. If a deployment returns errors or becomes slow, it is marked as unhealthy.
+                  The Health button on the Smart Routing page shows you the current status of all deployments
+                  in a model group, including their average response time.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-failover" question="What happens when a deployment fails?">
+                <p>
+                  It depends on the strategy. With <strong>Fallback</strong>, the system tries the next deployment
+                  in priority order. With <strong>Round Robin</strong> or <strong>Lowest Latency</strong>,
+                  the unhealthy deployment is skipped and traffic goes to the remaining healthy ones.
+                  With <strong>Cost Optimized</strong>, the next cheapest healthy deployment is chosen.
+                  In all cases, the failover happens automatically and instantly &mdash; the developer does not notice.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-cost-fields" question="Do I need to fill in the cost fields?">
+                <p>
+                  Only if you are using the <strong>Cost Optimized</strong> strategy. The cost fields tell
+                  the system which deployment is cheaper. For other strategies (Fallback, Round Robin, Lowest Latency),
+                  you can leave them at 0.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-weight" question="When does the Weight field matter?">
+                <p>
+                  Weight only affects the <strong>Round Robin</strong> strategy. A deployment with weight 2
+                  receives twice as many requests as one with weight 1. For all other strategies, weight is ignored.
+                  If you are using Round Robin with equal distribution, leave all weights at 1.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-priority" question="When does the Priority field matter?">
+                <p>
+                  Priority is used by the <strong>Fallback</strong> strategy to determine which deployment
+                  to try first (lower number = higher priority = tried first). It also influences
+                  <strong> Cost Optimized</strong> as a tiebreaker when two deployments have the same cost.
+                  For Round Robin and Lowest Latency, priority is not used.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-disable" question="How do I temporarily stop routing without deleting?">
+                <p>
+                  You have two options: <strong>(1)</strong> Edit the model group and uncheck <strong>Enabled</strong> to
+                  disable the entire group. <strong>(2)</strong> Edit an individual deployment and uncheck
+                  its <strong>Enabled</strong> checkbox to remove just that one deployment from the rotation.
+                </p>
+              </FaqItem>
+
+              <FaqItem id="faq-sr-auto-key" question="What does 'Auto (default)' mean for Provider Key?">
+                <p>
+                  When you select &ldquo;Auto (default)&rdquo; for a deployment&rsquo;s provider key, the system
+                  uses your organization&rsquo;s default active key for that provider. This is the most common
+                  choice. You only need to select a specific key if you have multiple keys for the same
+                  provider and want to control which one is used for a particular deployment.
+                </p>
+              </FaqItem>
+            </div>
+
+          </section>
+
           {/* ── Troubleshooting ────────────────────────────────────────── */}
           <section id="troubleshoot" ref={ref('troubleshoot')} className="ig-section">
             <h2 className="ig-h2">
@@ -1193,6 +1701,7 @@ set ANTHROPIC_CUSTOM_HEADERS=X-TokenGate-Key:<your-key>`}</CodeBlock>
                 <tbody>
                   <tr><td>Dashboard</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td></tr>
                   <tr><td>Management</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
+                  <tr><td>Smart Routing</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
                   <tr><td>Limits</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
                   <tr><td>Notifications</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
                   <tr><td>Pricing Config</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-yes">&#x2713;</td><td className="ig-perm-no">&mdash;</td></tr>
