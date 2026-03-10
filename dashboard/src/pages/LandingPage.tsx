@@ -19,6 +19,7 @@ export default function LandingPage() {
       <LandingHero />
       <LandingSocialProof />
       <LandingProblem />
+      <iframe src="https://b4after.io/embed/kitchen-048204" width="100%" height="500" frameBorder="0"></iframe>
       <LandingSolution />
       <LandingForSubscription />
       <LandingForAPI />
