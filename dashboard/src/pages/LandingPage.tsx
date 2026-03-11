@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import LandingNav from '../components/landing/LandingNav'
 import LandingHero from '../components/landing/LandingHero'
 import LandingSocialProof from '../components/landing/LandingSocialProof'
@@ -14,13 +13,13 @@ import LandingFinalCTA from '../components/landing/LandingFinalCTA'
 import LandingFooter from '../components/landing/LandingFooter'
 
 export default function LandingPage() {
-  useEffect(() => {
-    const script = document.createElement('script')
-    script.src = 'https://testimonial.to/js/widget-embed.js'
-    script.async = true
-    document.body.appendChild(script)
-    return () => { document.body.removeChild(script) }
-  }, [])
+  // useEffect(() => {
+  //   const script = document.createElement('script')
+  //   script.src = 'https://testimonial.to/js/widget-embed.js'
+  //   script.async = true
+  //   document.body.appendChild(script)
+  //   return () => { document.body.removeChild(script) }
+  // }, [])
 
   return (
     <main className="bg-[#06090f] text-slate-100">
