@@ -11,15 +11,21 @@ import LandingPricing from '../components/landing/LandingPricing'
 import LandingFAQ from '../components/landing/LandingFAQ'
 import LandingFinalCTA from '../components/landing/LandingFinalCTA'
 import LandingFooter from '../components/landing/LandingFooter'
+import { useEffect } from 'react'
 
 export default function LandingPage() {
-  // useEffect(() => {
-  //   const script = document.createElement('script')
-  //   script.src = 'https://testimonial.to/js/widget-embed.js'
-  //   script.async = true
-  //   document.body.appendChild(script)
-  //   return () => { document.body.removeChild(script) }
-  // }, [])
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://testimonial.to/js/iframeResizer.min.js'
+    script.async = true
+    script.onload = () => {
+      if (typeof (window as any).iFrameResize === 'function') {
+        (window as any).iFrameResize({ log: false, checkOrigin: false }, '#testimonialto-embed-text--OnQP-091OFCm4b2Afv7')
+      }
+    }
+    document.body.appendChild(script)
+    return () => { document.body.removeChild(script) }
+  }, [])
 
   return (
     <main className="bg-[#06090f] text-slate-100">
@@ -27,8 +33,7 @@ export default function LandingPage() {
       <LandingHero />
       <LandingSocialProof />
       <LandingProblem />
-      <iframe src="https://b4after.io/embed/kitchen-048204" width="100%" height="500" frameBorder="0"></iframe>
-      <div className="testimonial-to-embed" data-url="https://embed-v2.testimonial.to/c/hello-world?theme=light" data-allow="camera;microphone" data-resize="true"></div>
+      <iframe id="testimonialto-embed-text--OnQP-091OFCm4b2Afv7" src="https://embed-v2.testimonial.to/text/-OnQP-091OFCm4b2Afv7" frameBorder="0" scrolling="no" width="100%"></iframe>
       <LandingSolution />
       <LandingForSubscription />
       <LandingForAPI />
