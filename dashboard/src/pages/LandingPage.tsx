@@ -34,6 +34,7 @@ export default function LandingPage() {
       <LandingSocialProof />
       <LandingProblem />
       <iframe id="testimonialto-embed-text--OnQP-091OFCm4b2Afv7" src="https://embed-v2.testimonial.to/text/-OnQP-091OFCm4b2Afv7" frameBorder="0" scrolling="no" width="100%"></iframe>
+      <iframe src="https://shipproof.io/embed/landing-page-space-afa275" width="100%" height="400" frameBorder="0" style={{ border: 'none' }}></iframe>
       <LandingSolution />
       <LandingForSubscription />
       <LandingForAPI />
