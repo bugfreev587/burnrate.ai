@@ -24,7 +24,17 @@ export default function LandingPage() {
       }
     }
     document.body.appendChild(script)
-    return () => { document.body.removeChild(script) }
+
+    const shipproofScript = document.createElement('script')
+    shipproofScript.src = 'https://shipproof.io/js/embed.js'
+    shipproofScript.type = 'text/javascript'
+    shipproofScript.async = true
+    document.body.appendChild(shipproofScript)
+
+    return () => {
+      document.body.removeChild(script)
+      document.body.removeChild(shipproofScript)
+    }
   }, [])
 
   return (
@@ -39,6 +49,7 @@ export default function LandingPage() {
       <LandingForSubscription />
       <LandingForAPI />
       <LandingFeatures />
+      <iframe id="shipproof-wall-first-wall-e9e4d4" src="https://shipproof.io/embed-wall/first-wall-e9e4d4" frameBorder="0" scrolling="no" width="100%"></iframe>
       <LandingHowItWorks />
       <LandingPricing />
       <LandingFAQ />
