@@ -11,45 +11,18 @@ import LandingPricing from '../components/landing/LandingPricing'
 import LandingFAQ from '../components/landing/LandingFAQ'
 import LandingFinalCTA from '../components/landing/LandingFinalCTA'
 import LandingFooter from '../components/landing/LandingFooter'
-import { useEffect } from 'react'
 
 export default function LandingPage() {
-  useEffect(() => {
-    const script = document.createElement('script')
-    script.src = 'https://testimonial.to/js/iframeResizer.min.js'
-    script.async = true
-    script.onload = () => {
-      if (typeof (window as any).iFrameResize === 'function') {
-        (window as any).iFrameResize({ log: false, checkOrigin: false }, '#testimonialto-embed-text--OnQP-091OFCm4b2Afv7')
-      }
-    }
-    document.body.appendChild(script)
-
-    const shipproofScript = document.createElement('script')
-    shipproofScript.src = 'https://shipproof.io/js/embed.js'
-    shipproofScript.type = 'text/javascript'
-    shipproofScript.async = true
-    document.body.appendChild(shipproofScript)
-
-    return () => {
-      document.body.removeChild(script)
-      document.body.removeChild(shipproofScript)
-    }
-  }, [])
-
   return (
     <main className="bg-[#06090f] text-slate-100">
       <LandingNav />
       <LandingHero />
       <LandingSocialProof />
       <LandingProblem />
-      <iframe id="testimonialto-embed-text--OnQP-091OFCm4b2Afv7" src="https://embed-v2.testimonial.to/text/-OnQP-091OFCm4b2Afv7" frameBorder="0" scrolling="no" width="100%"></iframe>
-      <iframe src="https://shipproof.io/embed/landing-page-space-afa275" width="100%" height="400" frameBorder="0" style={{ border: 'none' }}></iframe>
       <LandingSolution />
       <LandingForSubscription />
       <LandingForAPI />
       <LandingFeatures />
-      <iframe id="shipproof-wall-first-wall-e9e4d4" src="https://shipproof.io/embed-wall/first-wall-e9e4d4" frameBorder="0" scrolling="no" width="100%"></iframe>
       <LandingHowItWorks />
       <LandingPricing />
       <LandingFAQ />
